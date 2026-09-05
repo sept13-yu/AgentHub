@@ -49,33 +49,34 @@ if ($ZipOnly) { return }
 
 $candidates = @()
 if ($IsccPath) { $candidates += $IsccPath }
-$fromPath = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-if ($fromPath) { $candidates += $fromPath.Source }
+# 真编译器优先：Chocolatey 的 PATH 垫片 PE 版本常是 0.0.0.0，且旁边没有 unins000。
 $candidates += @(
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'),
     (Join-Path $env:ProgramFiles 'Inno Setup 6\ISCC.exe'),
     (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe')
 )
+$fromPath = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+if ($fromPath) { $candidates += $fromPath.Source }
 $iscc = $candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
 if (-not $iscc) { throw 'Inno Setup 6.3+ was not found. Use -ZipOnly for a portable package only.' }
 
-function Get-IsccVersion([string]$compiler) {
-    $candidates = @((Get-Item -LiteralPath $compiler).VersionInfo.ProductVersion)
+function Test-IsccAtLeast63([string]$compiler) {
+    $blobs = @((Get-Item -LiteralPath $compiler).VersionInfo.ProductVersion)
     $unins = Join-Path (Split-Path -Parent $compiler) 'unins000.exe'
     if (Test-Path -LiteralPath $unins) {
-        $candidates += (Get-Item -LiteralPath $unins).VersionInfo.ProductVersion
+        $blobs += (Get-Item -LiteralPath $unins).VersionInfo.ProductVersion
     }
-    $help = & $compiler '/?' 2>&1 | Out-String
-    $candidates += $help
-    foreach ($raw in $candidates) {
-        $match = [regex]::Match([string]$raw, '\d+(?:\.\d+){1,3}')
-        if ($match.Success -and [version]$match.Value -ge [version]'6.3') { return $match.Value }
+    $blobs += (& $compiler '/?' 2>&1 | Out-String)
+    foreach ($raw in $blobs) {
+        $text = [string]$raw
+        $dotted = [regex]::Match($text, '\d+(?:\.\d+){1,3}')
+        if ($dotted.Success -and [version]$dotted.Value -ge [version]'6.3') { return $true }
+        if ($text -match 'Inno Setup 6') { return $true }
     }
-    return $null
+    return $false
 }
 
-$detected = Get-IsccVersion $iscc
-if (-not $detected) { throw "Inno Setup 6.3+ is required. ISCC: $iscc" }
+if (-not (Test-IsccAtLeast63 $iscc)) { throw "Inno Setup 6.3+ is required. ISCC: $iscc" }
 
 $iss = Join-Path $PSScriptRoot 'AgentHub.iss'
 & $iscc "/DMyAppVersion=$version" "/DMySourceDir=$publishPath" "/DMyOutputDir=$distPath" $iss
