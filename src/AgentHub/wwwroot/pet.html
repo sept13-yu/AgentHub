@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN" data-size="medium">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgentHub Pet</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      /* 移植 TokenTracker pet.html：分层窗合成 WebView2 透明度，未绘制区域穿透桌面。 */
+      html, body, #pet-root {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: transparent !important;
+        overflow: hidden;
+      }
+      body {
+        cursor: grab;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      body:active { cursor: grabbing; }
+      #pet-root {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      #bubble {
+        flex: none;
+        height: 56px;
+        width: 100%;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        pointer-events: none;
+        box-sizing: border-box;
+        padding: 0 12px 6px;
+      }
+      html[data-size="small"] #bubble { height: 44px; padding: 0 8px 4px; }
+      html[data-size="large"] #bubble { height: 72px; }
+      #bubble span {
+        display: none;
+        max-width: 100%;
+        padding: 6px 10px;
+        border-radius: 10px;
+        background: rgba(12, 16, 28, 0.82);
+        color: #e8ecf8;
+        font: 12px/1.35 system-ui, "Segoe UI", sans-serif;
+        white-space: pre-line;
+        text-align: center;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+      }
+      #bubble.is-on span { display: block; }
+      #sprite {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        transform-origin: 50% 100%;
+        transition: transform 160ms ease-out;
+      }
+      #sprite svg, #sprite .frame {
+        width: auto;
+        height: 100%;
+        max-width: 100%;
+      }
+      #sprite.is-left .frame { transform: scaleX(-1); }
+    </style>
+  </head>
+  <body>
+    <div id="pet-root">
+      <div id="bubble" role="status" aria-live="polite"><span id="bubble-text"></span></div>
+      <div id="sprite" role="img" aria-label="桌面宠物"><div class="frame" id="frame"></div></div>
+    </div>
+    <script type="module" src="/js/pet.js"></script>
+  </body>
+</html>

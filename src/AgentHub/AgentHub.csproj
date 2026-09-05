@@ -1,0 +1,79 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>AgentHub</AssemblyName>
+    <RootNamespace>AgentHub</RootNamespace>
+    <Version>1.1.0</Version>
+    <Product>AgentHub</Product>
+    <Description>Local control center for desktop coding agents</Description>
+    <Company>AgentHub</Company>
+    <Authors>AgentHub</Authors>
+    <Copyright>Copyright (c) 2026 AgentHub</Copyright>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <ApplicationIcon>assets\agenthub.ico</ApplicationIcon>
+    <!-- zh-CN 的日期与数字格式化必须可用（方案 §5.1 一致性验收的运行前提） -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <StartupObject>AgentHub.Program</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 同进程本地 HTTP（方案 §3 后端服务层：静态 + REST，Kestrel 只绑 loopback） -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <PackageReference Include="Tomlyn" Version="0.17.0" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Core\DocCore\Templates\SharedRules.md" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="wwwroot\**\*" Exclude="wwwroot\app\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 应用图标等桌面资源 -->
+    <Content Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Vue 变更必须让工程过期，否则只改前端时 dotnet build 会整次跳过 -->
+    <UpToDateCheckInput Include="frontend\src\**\*" />
+    <UpToDateCheckInput Include="frontend\index.html" />
+    <UpToDateCheckInput Include="frontend\vite.config.ts" />
+    <UpToDateCheckInput Include="frontend\package-lock.json" />
+    <_FrontendSrc Include="frontend\src\**\*" />
+    <_FrontendSrc Include="frontend\index.html" />
+    <_FrontendSrc Include="frontend\vite.config.ts" />
+    <_FrontendSrc Include="frontend\package-lock.json" />
+  </ItemGroup>
+
+  <Target Name="BuildFrontend" BeforeTargets="BeforeBuild" Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipFrontendBuild)' != 'true'" Inputs="@(_FrontendSrc)" Outputs="$(MSBuildProjectDirectory)\wwwroot\app\index.html">
+    <Exec Command="npm ci" WorkingDirectory="$(MSBuildProjectDirectory)\frontend" Condition="!Exists('$(MSBuildProjectDirectory)\frontend\node_modules')" />
+    <Exec Command="npm run build" WorkingDirectory="$(MSBuildProjectDirectory)\frontend" />
+  </Target>
+
+  <!-- wwwroot\app 动态并入 Content：vite 产物带 hash、文件名每次变，静态 Include 会漏新文件；
+       挂在 AssignTargetPaths 前（npm 构建已跑完），dotnet build / publish 都能带上。 -->
+  <Target Name="IncludeVueApp" BeforeTargets="AssignTargetPaths">
+    <ItemGroup>
+      <Content Include="$(MSBuildProjectDirectory)\wwwroot\app\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
+
+  <!-- wwwroot\app 被排除出默认 Content；动态 Include 赶不上 CopyFilesToOutputDirectory，必须显式拷。 -->
+  <Target Name="CopyFrontendApp" AfterTargets="CopyFilesToOutputDirectory">
+    <RemoveDir Directories="$(OutputPath)wwwroot\app" />
+    <ItemGroup>
+      <_VueApp Include="$(MSBuildProjectDirectory)\wwwroot\app\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_VueApp)" DestinationFiles="@(_VueApp->'$(OutputPath)wwwroot\app\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

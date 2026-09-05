@@ -1,0 +1,135 @@
+#ifndef MyAppVersion
+  #define MyAppVersion "1.0.0"
+#endif
+#ifndef MySourceDir
+  #define MySourceDir "..\..\dist\win-x64"
+#endif
+#ifndef MyOutputDir
+  #define MyOutputDir "..\..\dist"
+#endif
+
+#define MyAppName "AgentHub"
+#define MyAppExeName "AgentHub.exe"
+
+[Setup]
+AppId={{B1A98275-3EEA-485E-A3AE-51E5AB8B9859}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher=AgentHub
+DefaultDirName={localappdata}\Programs\AgentHub
+DefaultGroupName=AgentHub
+OutputDir={#MyOutputDir}
+OutputBaseFilename=AgentHub-Setup-{#MyAppVersion}-win-x64
+SetupIconFile={#MySourceDir}\assets\agenthub.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
+Compression=lzma2
+SolidCompression=yes
+WizardStyle=modern
+PrivilegesRequired=lowest
+MinVersion=10.0.19041
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+AppMutex=Local\AgentHub.SingleInstance
+CloseApplications=yes
+RestartApplications=no
+DisableProgramGroupPage=yes
+UsedUserAreasWarning=no
+
+[Files]
+Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{autoprograms}\AgentHub"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\AgentHub"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Tasks]
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："
+
+[Run]
+Filename: "{app}\{#MyAppExeName}"; Description: "启动 AgentHub"; Flags: nowait postinstall skipifsilent
+
+[Code]
+const
+  WebView2ClientId = '{F3017226-FE2A-4295-8F39-EF6D7A0C0F03}';
+  RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+
+function HasWebView2In(RootKey: Integer; KeyPrefix: String): Boolean;
+var
+  Version: String;
+begin
+  Result := RegQueryStringValue(RootKey,
+    KeyPrefix + '\Microsoft\EdgeUpdate\Clients\' + WebView2ClientId,
+    'pv', Version) and (Version <> '') and (Version <> '0.0.0.0');
+end;
+
+function HasWebView2: Boolean;
+begin
+  Result := HasWebView2In(HKLM32, 'Software') or
+            HasWebView2In(HKLM64, 'Software') or
+            HasWebView2In(HKCU, 'Software');
+end;
+
+function InitializeSetup: Boolean;
+var
+  ErrorCode: Integer;
+begin
+  Result := HasWebView2;
+  if not Result then
+  begin
+    MsgBox('AgentHub 需要 Microsoft Edge WebView2 Runtime。安装程序将打开官方下载页，安装完成后请重新运行本安装包。',
+      mbError, MB_OK);
+    ShellExec('open', 'https://developer.microsoft.com/microsoft-edge/webview2/', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
+  end;
+end;
+
+function Unquote(Value: String): String;
+begin
+  Result := Value;
+  if (Length(Result) >= 2) and (Ord(Result[1]) = 34) and
+     (Ord(Result[Length(Result)]) = 34) then
+    Result := Copy(Result, 2, Length(Result) - 2);
+end;
+
+function RunValueExe(Value: String): String;
+var
+  ClosingQuote: Integer;
+begin
+  Value := Trim(Value);
+  if (Length(Value) > 0) and (Ord(Value[1]) = 34) then
+  begin
+    ClosingQuote := Pos(Chr(34), Copy(Value, 2, Length(Value)));
+    if ClosingQuote > 0 then Result := Copy(Value, 2, ClosingQuote - 1)
+    else Result := Unquote(Value);
+  end
+  else
+  begin
+    ClosingQuote := Pos(' ', Value);
+    if ClosingQuote > 0 then Result := Copy(Value, 1, ClosingQuote - 1)
+    else Result := Value;
+  end;
+end;
+
+function IsAgentHubRunValue(Value: String): Boolean;
+begin
+  Result := CompareText(ExtractFileName(RunValueExe(Value)), '{#MyAppExeName}') = 0;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Current: String;
+begin
+  if (CurStep = ssPostInstall) and
+     RegQueryStringValue(HKCU, RunKey, 'AgentHub', Current) and
+     IsAgentHubRunValue(Current) then
+    RegWriteStringValue(HKCU, RunKey, 'AgentHub', AddQuotes(ExpandConstant('{app}\{#MyAppExeName}')));
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Current: String;
+begin
+  if (CurUninstallStep = usUninstall) and
+     RegQueryStringValue(HKCU, RunKey, 'AgentHub', Current) and
+     (CompareText(RunValueExe(Current), ExpandConstant('{app}\{#MyAppExeName}')) = 0) then
+    RegDeleteValue(HKCU, RunKey, 'AgentHub');
+end;

@@ -1,0 +1,63 @@
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/AgentHub/frontend/package-lock.json
+
+      - name: 校验 tag 与 csproj 版本一致
+        shell: pwsh
+        run: |
+          $tag = "${env:GITHUB_REF_NAME}" -replace '^v',''
+          [xml]$p = Get-Content -Raw src/AgentHub/AgentHub.csproj
+          $pg = $p.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1
+          $v = [string]$pg.Version
+          if ($tag -ne $v) { throw "tag v$tag 与 csproj Version $v 不一致" }
+
+      - name: 安装 Inno Setup（固定步骤）
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: 打包（zip + Inno 安装包）
+        shell: pwsh
+        run: pack/windows/pack.ps1
+
+      - name: 安装 vpk
+        shell: pwsh
+        run: dotnet tool install --global vpk --version 1.2.0
+
+      - name: 拉取上一版（首发允许失败）
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          vpk download github --repoUrl https://github.com/sept13-yu/AgentHub `
+            --token ${{ secrets.GITHUB_TOKEN }} -o dist/Releases
+
+      - name: vpk pack（full + 对基 delta）
+        shell: pwsh
+        run: |
+          vpk pack -u AgentHub -v (("${env:GITHUB_REF_NAME}") -replace '^v','') `
+            -p dist/win-x64 -e AgentHub.exe --icon src/AgentHub/assets/agenthub.ico -o dist/Releases
+
+      - name: 发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/AgentHub-*-win-x64.zip
+            dist/AgentHub-Setup-*-win-x64.exe
+            dist/Releases/**
+          generate_release_notes: true
