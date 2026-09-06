@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using Velopack;
+using Velopack.Locators;
 using Velopack.Sources;
 
 namespace AgentHub.Shell;
@@ -12,9 +13,8 @@ public static class VelopackInstall
     {
         try
         {
-            var mgr = CreateManager();
-            var exe = mgr.Locator.UpdateExePath;
-            return mgr.IsInstalled && !string.IsNullOrWhiteSpace(exe) && File.Exists(exe);
+            var exe = UpdateExePath();
+            return CreateManager().IsInstalled && !string.IsNullOrWhiteSpace(exe) && File.Exists(exe);
         }
         catch (Exception)
         {
@@ -26,14 +26,13 @@ public static class VelopackInstall
     {
         try
         {
-            var mgr = CreateManager();
-            if (!mgr.IsInstalled)
+            if (!CreateManager().IsInstalled)
             {
                 error = "当前不是安装版，无法卸载。";
                 return false;
             }
 
-            var exe = mgr.Locator.UpdateExePath;
+            var exe = UpdateExePath();
             if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
             {
                 error = "找不到卸载程序。";
@@ -56,6 +55,9 @@ public static class VelopackInstall
             return false;
         }
     }
+
+    private static string? UpdateExePath() =>
+        VelopackLocator.IsCurrentSet ? VelopackLocator.Current.UpdateExePath : null;
 
     private static UpdateManager CreateManager() =>
         new(new GithubSource("https://github.com/sept13-yu/AgentHub", accessToken: null, prerelease: false));
