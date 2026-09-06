@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AgentHub</AssemblyName>
     <RootNamespace>AgentHub</RootNamespace>
-    <Version>1.1.3</Version>
+    <Version>1.1.4</Version>
     <Product>AgentHub</Product>
     <Description>Local control center for desktop coding agents</Description>
     <Company>AgentHub</Company>

@@ -231,7 +231,7 @@ public sealed class TokenService
         var total = byAgent.Sum(a => (long)a["tokens"]!);
         var prev = SumBilled(conn, prevFrom, prevTo, filter);
         var (cost, partial, currency) = UsageCost.Estimate(
-            rows.Select(r => (r.Model, r.Input, r.Output)),
+            rows.Select(r => (r.Model, r.Input + r.Cached + r.CacheWrite, r.Output)),
             PriceSyncService.Resolve(_config.Dashboard.PriceOverrides),
             _config.Dashboard.CostEstimate,
             _config.Dashboard.CostCurrency,

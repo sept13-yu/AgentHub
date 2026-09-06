@@ -36,7 +36,7 @@ public sealed class DocsSettings
     }
 }
 
-/// <summary>价格表一行：模型名 + 每 100 万 token 的输入/输出单价。无效行原样保存，算钱时再跳过。</summary>
+/// <summary>价格表一行：模型名 + 每 100 万 token 的输入/输出单价。输入按总量计价。无效行原样保存，算钱时再跳过。</summary>
 public sealed class PriceRow
 {
     public string Model { get; set; } = "";

@@ -2,7 +2,7 @@ using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.TokenCore;
 
-/// <summary>按输入 / 输出单价估算金额。缓存 token 不计价。
+/// <summary>按输入 / 输出单价估算金额。输入按总量（含缓存命中与写入）。
 /// 价格行保存厂商原币种原价（海外 USD、国内 CNY），算钱时统一按实时汇率折成 USD
 /// （CNY 行 ÷ USD→CNY 汇率；汇率接口拿不到用 fxFallback）。</summary>
 public static class UsageCost

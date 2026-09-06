@@ -1,6 +1,6 @@
 {
   "updatedAt": "2026-09-05",
-  "note": "官方牌价，USD 每 1M token；缓存 token 不计价；模型名大小写不敏感匹配",
+  "note": "官方牌价，USD 每 1M token；输入按总量计价；模型名大小写不敏感匹配",
   "prices": [
     { "model": "cursor-grok-4.6-xhigh-fast", "inputPer1m": 2.0, "outputPer1m": 6.0, "currency": "USD" },
     { "model": "cursor-grok-4.6-high-fast", "inputPer1m": 2.0, "outputPer1m": 6.0, "currency": "USD" },

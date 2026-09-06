@@ -497,7 +497,7 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <label class="lbl" for="s-cost">成本估算</label>
-            <span class="hint">只算输入/输出，不算缓存。{{ priceSyncHint() }}</span>
+            <span class="hint">输入按总量（含缓存）× 输入单价，输出 × 输出单价。{{ priceSyncHint() }}</span>
           </div>
           <div class="ctrl"><n-switch id="s-cost" :disabled="readonly" v-model:value="f.costEstimate" /></div>
         </div>
