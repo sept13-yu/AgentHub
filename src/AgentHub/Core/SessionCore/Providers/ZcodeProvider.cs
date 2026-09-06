@@ -466,15 +466,16 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
     /// <summary>清已不在 session 表里的产物、rollout、exec，以及桌面 last-session / setting.json。</summary>
     public static int SweepOrphanLeftovers()
     {
-        var live = LiveSessionIds();
+        var (live, workspaces) = ReadLiveSessions();
         var n = 0;
         foreach (var id in OrphanArtifactIds())
         {
             if (live.Contains(id)) continue;
             if (DeleteLeftovers(id, desktop: false)) n++;
         }
-        if (ClearDesktopPersist(live)) n++;
-        if (ZcodeDesktopStore.ClearSessionRefs(live, keepListed: true)) n++;
+        if (ClearDesktopPersist(live, keepListed: true, workspaces)) n++;
+        if (ZcodeDesktopStore.ClearSessionRefs(live, keepListed: true, workspaces)) n++;
+        if (ZcodeDesktopStore.ClearTaskIndex(live, keepListed: true)) n++;
         return n;
     }
 
@@ -501,27 +502,34 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
         if (desktop && ZcodeDesktopStore.ClearSessionRefs(
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }, keepListed: false))
             changed = true;
+        if (desktop && ZcodeDesktopStore.ClearTaskIndex(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }, keepListed: false))
+            changed = true;
         return changed;
     }
 
-    private static HashSet<string> LiveSessionIds()
+    private static (HashSet<string> Ids, HashSet<string> Workspaces) ReadLiveSessions()
     {
         var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (!ZcodeLocal.DbExists) return live;
+        var workspaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!ZcodeLocal.DbExists) return (live, workspaces);
         try
         {
             using var conn = OpenRead(ZcodeLocal.DbPath);
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT id FROM session";
+            cmd.CommandText = "SELECT id, directory FROM session";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
                 var id = r.IsDBNull(0) ? "" : r.GetString(0);
                 if (id.Length > 0) live.Add(id);
+                var directory = r.IsDBNull(1) ? "" : r.GetString(1);
+                var workspace = ZcodeDesktopStore.NormalizeWorkspace(directory);
+                if (workspace.Length > 0) workspaces.Add(workspace);
             }
         }
         catch (Exception) { }
-        return live;
+        return (live, workspaces);
     }
 
     private static IEnumerable<string> OrphanArtifactIds()
@@ -561,9 +569,10 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
     private static bool ClearDesktopPersist(string id) =>
         ClearDesktopPersist(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }, keepListed: false);
 
-    /// <summary>清 setting.json 里的 initialTaskId / lastActiveTaskByWorkspace。
+    /// <summary>清 setting.json 里的 initialTaskId / lastActiveTaskByWorkspace，
+    /// 以及没有活会话的 lastWorkspaceSession 页签（顶栏标题就是从这里恢复的）。
     /// keepListed=true 时只清不在 live 集合里的引用。</summary>
-    private static bool ClearDesktopPersist(HashSet<string> ids, bool keepListed = true)
+    private static bool ClearDesktopPersist(HashSet<string> ids, bool keepListed = true, HashSet<string>? liveWorkspaces = null)
     {
         var path = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -589,10 +598,39 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
                     var value = kv.Value?.GetValue<string>();
                     if (!string.IsNullOrEmpty(value) && ShouldDropPersist(value, ids, keepListed))
                         drop.Add(kv.Key);
+                    else if (keepListed && liveWorkspaces is not null
+                        && !ZcodeDesktopStore.ContainsWorkspace(liveWorkspaces, kv.Key))
+                        drop.Add(kv.Key);
                 }
                 foreach (var key in drop)
                 {
                     map.Remove(key);
+                    changed = true;
+                }
+            }
+            if (keepListed && liveWorkspaces is not null
+                && root["lastWorkspaceSession"] is JsonArray tabs)
+            {
+                var kept = new JsonArray();
+                var active = root["lastActiveTabIndex"]?.GetValue<int>() ?? 0;
+                var nextActive = 0;
+                var wrote = 0;
+                for (var i = 0; i < tabs.Count; i++)
+                {
+                    var workspace = tabs[i]?["workspacePath"]?.GetValue<string>();
+                    if (!ZcodeDesktopStore.ContainsWorkspace(liveWorkspaces, workspace))
+                    {
+                        changed = true;
+                        continue;
+                    }
+                    if (i == active) nextActive = wrote;
+                    kept.Add(tabs[i]!.DeepClone());
+                    wrote++;
+                }
+                if (kept.Count != tabs.Count)
+                {
+                    root["lastWorkspaceSession"] = kept;
+                    root["lastActiveTabIndex"] = kept.Count == 0 ? 0 : nextActive;
                     changed = true;
                 }
             }

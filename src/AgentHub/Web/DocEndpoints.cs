@@ -36,6 +36,8 @@ public static class DocEndpoints
                 skillsStore = docs.SkillsStore,
                 skillsStoreExists = Directory.Exists(docs.SkillsStore),
                 skillsCli = docs.Skills.CliStatus,
+                updateableCount = skillsAll.Count(s => s.CanUpdate),
+                skillsUpdate = SkillUpdateJson(docs.Skills.UpdateProgress),
                 libraryRoot = docs.LibraryRoot,
                 libraryRootExists = Directory.Exists(docs.LibraryRoot),
                 skillsHint,
@@ -154,6 +156,8 @@ public static class DocEndpoints
                     updated = r.Updated,
                     skipped = r.Skipped,
                     errors = r.Errors,
+                    alreadyRunning = r.AlreadyRunning,
+                    progress = SkillUpdateJson(docs.Skills.UpdateProgress),
                 });
             }
             catch (Exception ex)
@@ -161,6 +165,9 @@ public static class DocEndpoints
                 return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
             }
         });
+
+        app.MapGet("/api/docs/skills/update-progress", () =>
+            Results.Json(SkillUpdateJson(docs.Skills.UpdateProgress)));
 
         app.MapPost("/api/docs/skills/manage", async (HttpContext ctx) =>
         {
@@ -236,6 +243,19 @@ public static class DocEndpoints
             }
         });
     }
+
+    private static object SkillUpdateJson(SkillUpdateSnapshot p) => new
+    {
+        running = p.Running,
+        total = p.Total,
+        index = p.Index,
+        ok = p.Ok,
+        failed = p.Failed,
+        skipped = p.Skipped,
+        currentName = p.CurrentName,
+        detail = p.Detail,
+        errors = p.Errors,
+    };
 
     private sealed record OpenBody(string path);
     private sealed record OpenSessionBody(string agent, string id);

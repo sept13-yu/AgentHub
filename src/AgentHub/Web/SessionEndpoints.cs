@@ -297,19 +297,26 @@ public static class SessionEndpoints
             }
         });
 
-        app.MapPost("/api/sessions/host-title-clean", (HttpContext ctx) =>
+        app.MapPost("/api/sessions/residue-clean", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx)) return Forbidden();
+            var vacuum = false;
             try
             {
-                var r = sessions.SweepHostTitles();
+                var body = await ctx.Request.ReadFromJsonAsync<ResidueBody>();
+                vacuum = body?.vacuum == true;
+            }
+            catch (JsonException) { }
+            try
+            {
+                var r = sessions.SweepResidues(vacuum);
                 return Results.Json(new
                 {
-                    ok = true,
-                    zcodeRemoved = r.ZcodeRemoved,
-                    workbuddyAttempted = r.WorkBuddyAttempted,
-                    workbuddyOk = r.WorkBuddyOk,
-                    warning = r.Warning,
+                    ok = r.Zcode.Skipped != "error" && r.WorkBuddy.Skipped != "error" && r.Cursor.Skipped != "error",
+                    zcode = r.Zcode,
+                    workbuddy = r.WorkBuddy,
+                    cursor = r.Cursor,
+                    vacuum = r.Vacuum,
                 });
             }
             catch (Exception ex)
@@ -334,4 +341,5 @@ public static class SessionEndpoints
     private sealed record LockBody(string agent, string id, bool locked);
     private sealed record DeleteItemBody(string agent, string id);
     private sealed record DeleteBody(DeleteItemBody[] items, bool? vacuum);
+    private sealed record ResidueBody(bool? vacuum);
 }

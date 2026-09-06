@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref, watch, type Ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NInput, useMessage } from 'naive-ui'
-import { ChevronDown, Copy, Eraser, ExternalLink, FileMinus, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
+import { ChevronDown, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
 import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
@@ -83,7 +83,7 @@ const titleEdit = ref('')
 let previewAc: AbortController | null = null
 const vacuum = ref(false)
 const confirmShow = ref(false)
-const confirmKind = ref<'delete' | 'shell' | 'orphan' | 'host'>('delete')
+const confirmKind = ref<'delete' | 'residue'>('delete')
 const pendingRows = ref<SessionRow[]>([])
 
 const items = computed(() => page.value?.items ?? [])
@@ -111,8 +111,20 @@ const cursorOk = computed(() => !!page.value?.cursorAvailable)
 const cursorRunning = computed(() => !!page.value?.cursorRunning)
 const zcodeRunning = computed(() => !!page.value?.zcodeRunning)
 const workbuddyRunning = computed(() => !!page.value?.workbuddyRunning)
-const hostTitleVisible = computed(() =>
-  sources.value.some((s) => s.id === 'zcode' || s.id === 'workbuddy'))
+const hasZcode = computed(() => sources.value.some((s) => s.id === 'zcode'))
+const hasWorkbuddy = computed(() => sources.value.some((s) => s.id === 'workbuddy'))
+const residueVisible = computed(() => hasZcode.value || hasWorkbuddy.value || cursorOk.value)
+const residueCanRun = computed(() =>
+  (hasZcode.value && !zcodeRunning.value)
+  || (hasWorkbuddy.value && !workbuddyRunning.value)
+  || (cursorOk.value && !cursorRunning.value))
+const residueSkipHint = computed(() => {
+  const skip: string[] = []
+  if (hasZcode.value && zcodeRunning.value) skip.push('ZCode')
+  if (hasWorkbuddy.value && workbuddyRunning.value) skip.push('WorkBuddy')
+  if (cursorOk.value && cursorRunning.value) skip.push('Cursor')
+  return skip.length ? `${skip.join(' / ')} 还在运行，点清理时会跳过这${skip.length > 1 ? '几' : '一'}家。` : ''
+})
 const hostRunning = computed(() => zcodeRunning.value || workbuddyRunning.value)
 
 // Cursor agentKv 内容库占用 → 大时引导用户跑官方 GC 命令（AgentHub 不代删共享库）
@@ -138,7 +150,6 @@ interface CursorOrphans {
   totalBytes: number
 }
 const cursorOrphans = ref<CursorOrphans | null>(null)
-const orphanVisible = computed(() => cursorOk.value && (cursorOrphans.value?.totalRows ?? 0) > 0)
 
 async function loadCursorStorage() {
   if (!cursorOk.value) return
@@ -178,23 +189,30 @@ const confirmSkip = computed(() => {
   return lockedInFilter.value
 })
 const confirmText = computed(() => {
-  if (confirmKind.value === 'shell') return '清理 Cursor 空壳。'
-  if (confirmKind.value === 'orphan') {
-    const o = cursorOrphans.value
-    if (!o) return '回收已无会话的缓存。不碰列表里的会话，也不碰 agentKv。'
-    return `回收已无会话的缓存：行高 ${o.heightRows} · 部分 diff ${o.fateRows} · 内联 diff ${o.inlineDiffRows}（约 ${formatBytes(o.totalBytes)}）。不碰列表里的会话，也不碰 agentKv。`
+  if (confirmKind.value === 'residue') {
+    const lines = ['不删列表里的会话。谁还在跑就跳过谁。']
+    if (hasZcode.value)
+      lines.push(zcodeRunning.value ? 'ZCode：还在运行，这次跳过' : 'ZCode：侧栏任务索引、上次会话、空页签')
+    if (hasWorkbuddy.value)
+      lines.push(workbuddyRunning.value ? 'WorkBuddy：还在运行，这次跳过' : 'WorkBuddy：云端还挂着的已删会话')
+    if (cursorOk.value) {
+      const o = cursorOrphans.value
+      const orphan = o?.totalRows
+        ? `孤儿 ${o.totalRows} 行（约 ${formatBytes(o.totalBytes)}）`
+        : '孤儿缓存'
+      lines.push(cursorRunning.value ? 'Cursor：还在运行，这次跳过' : `Cursor：空壳，以及${orphan}；不碰 agentKv`)
+    }
+    return lines.join('\n')
   }
-  if (confirmKind.value === 'host')
-    return '清掉已不在列表里、但 ZCode / WorkBuddy 还挂着的标题。ZCode 会清桌面记住的上次会话。列表里还在的要单独删除。请先退出这两个应用（含托盘）。'
   const hostHint = pendingRows.value.some((r) => r.agent === 'zcode' || r.agent === 'workbuddy')
     ? (hostRunning.value
-      ? ' 请先完全退出 ZCode / WorkBuddy（含托盘）再删，否则标题栏还在。'
+      ? ' 请先完全退出要删的那一家（含托盘），否则标题栏还在。'
       : ' 退出后再点一次删除，列表里还在的会话不会自己消失。')
     : ''
   return `删除 ${pendingRows.value.length} 条，已跳过 ${confirmSkip.value} 条锁定。${hostHint}`
 })
 const confirmShowVacuum = computed(() =>
-  !readonly && (confirmKind.value === 'shell' || confirmKind.value === 'orphan' || filterHasCursor.value))
+  !readonly && confirmKind.value === 'residue' && cursorOk.value && !cursorRunning.value)
 const canDelete = computed(() => {
   if (readonly) return false
   if (selected.value.size) return true
@@ -386,26 +404,10 @@ function askRemove() {
   confirmShow.value = true
 }
 
-function askCleanShells() {
-  if (readonly || !cursorOk.value) return
+function askCleanResidue() {
+  if (readonly || !residueCanRun.value) return
   pendingRows.value = []
-  confirmKind.value = 'shell'
-  vacuum.value = false
-  confirmShow.value = true
-}
-
-function askCleanOrphans() {
-  if (readonly || !orphanVisible.value) return
-  pendingRows.value = []
-  confirmKind.value = 'orphan'
-  vacuum.value = false
-  confirmShow.value = true
-}
-
-function askCleanHostTitles() {
-  if (readonly || !hostTitleVisible.value) return
-  pendingRows.value = []
-  confirmKind.value = 'host'
+  confirmKind.value = 'residue'
   vacuum.value = false
   confirmShow.value = true
 }
@@ -454,64 +456,40 @@ async function runDelete(rows: SessionRow[]) {
   }
 }
 
-async function runCleanShells() {
-  setLoading(true)
-  try {
-    const r = await post<{ ok: boolean; found: number; vacuum?: { ok?: boolean; error?: string } }>(
-      '/api/sessions/cursor/shell-clean',
-      { vacuum: vacuum.value },
-    )
-    if (r.vacuum && r.vacuum.ok === false && r.vacuum.error)
-      message.error(r.vacuum.error)
-    else
-      message.success(`已清理 ${r.found} 个空壳`)
-    await loadList()
-    await loadCursorOrphans()
-  } catch (e) {
-    message.error(e instanceof Error ? e.message : '清理失败')
-  } finally {
-    setLoading(false)
-  }
-}
-
-async function runCleanHostTitles() {
+async function runCleanResidue() {
   setLoading(true)
   try {
     const r = await post<{
       ok: boolean
       error?: string
-      zcodeRemoved: number
-      workbuddyAttempted: number
-      workbuddyOk: number
-      warning?: string | null
-    }>('/api/sessions/host-title-clean', {})
-    if (r.ok === false && r.error) message.error(r.error)
-    else if (r.warning) message.warning(r.warning)
-    else message.success(`已清残留：ZCode ${r.zcodeRemoved} · WorkBuddy 云端 ${r.workbuddyOk}/${r.workbuddyAttempted}`)
+      zcode: { ran: boolean; skipped: string | null; count: number; detail: string | null }
+      workbuddy: { ran: boolean; skipped: string | null; count: number; detail: string | null }
+      cursor: { ran: boolean; skipped: string | null; count: number; detail: string | null }
+      vacuum?: { ok?: boolean; error?: string | null }
+    }>('/api/sessions/residue-clean', { vacuum: vacuum.value })
+    if (r.error) {
+      message.error(r.error)
+      return
+    }
+    const bits: string[] = []
+    const fail: string[] = []
+    for (const [name, part] of [
+      ['ZCode', r.zcode],
+      ['WorkBuddy', r.workbuddy],
+      ['Cursor', r.cursor],
+    ] as const) {
+      if (part.skipped === 'running') bits.push(`${name} 已跳过`)
+      else if (part.skipped === 'error') fail.push(part.detail || `${name} 失败`)
+      else if (part.ran) bits.push(`${name} ${part.count}`)
+    }
+    if (r.vacuum && r.vacuum.ok === false && r.vacuum.error) fail.push(r.vacuum.error)
+    else if (r.workbuddy.ran && r.workbuddy.detail) bits.push(r.workbuddy.detail)
+    if (fail.length) message.error(fail[0])
+    else message.success(bits.length ? `已清残留：${bits.join(' · ')}` : '没有可清的残留')
     await loadList()
-  } catch (e) {
-    message.error(e instanceof Error ? e.message : '清理失败')
-  } finally {
-    setLoading(false)
-  }
-}
-
-async function runCleanOrphans() {
-  setLoading(true)
-  try {
-    const r = await post<{
-      ok: boolean
-      deletedRows: number
-      deletedBytes: number
-      vacuum?: { ok?: boolean; error?: string }
-    }>('/api/sessions/cursor/orphan-clean', { vacuum: vacuum.value })
-    if (r.vacuum && r.vacuum.ok === false && r.vacuum.error)
-      message.error(r.vacuum.error)
-    else
-      message.success(`已回收 ${r.deletedRows} 行（约 ${formatBytes(r.deletedBytes)}）`)
     await loadCursorOrphans()
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '回收失败')
+    message.error(e instanceof Error ? e.message : '清理失败')
   } finally {
     setLoading(false)
   }
@@ -519,9 +497,7 @@ async function runCleanOrphans() {
 
 async function confirmOk() {
   confirmShow.value = false
-  if (confirmKind.value === 'shell') await runCleanShells()
-  else if (confirmKind.value === 'orphan') await runCleanOrphans()
-  else if (confirmKind.value === 'host') await runCleanHostTitles()
+  if (confirmKind.value === 'residue') await runCleanResidue()
   else await runDelete(pendingRows.value)
 }
 
@@ -586,36 +562,18 @@ onMounted(() => { void load() })
             </div>
             <n-input v-model:value="q" class="sess-search" placeholder="搜索标题 / 路径" clearable />
             <n-button
-              v-if="cursorOk"
+              v-if="residueVisible"
               quaternary
-              :disabled="readonly"
-              @click="askCleanShells"
+              :disabled="readonly || !residueCanRun"
+              @click="askCleanResidue"
             >
               <template #icon><n-icon><Eraser :size="16" :stroke-width="1.8" /></n-icon></template>
-              清理空壳
-            </n-button>
-            <n-button
-              v-if="orphanVisible"
-              quaternary
-              :disabled="readonly"
-              @click="askCleanOrphans"
-            >
-              <template #icon><n-icon><FileMinus :size="16" :stroke-width="1.8" /></n-icon></template>
-              回收孤儿 {{ cursorOrphans?.totalRows }}
-            </n-button>
-            <n-button
-              v-if="hostTitleVisible"
-              quaternary
-              :disabled="readonly || hostRunning"
-              @click="askCleanHostTitles"
-            >
-              <template #icon><n-icon><Eraser :size="16" :stroke-width="1.8" /></n-icon></template>
-              清理残留标题
+              清理残留
             </n-button>
           </div>
-          <p v-if="hostRunning" class="hint">
-            <span v-if="zcodeRunning">ZCode 还在运行（含托盘），删会话或清残留请先退出。</span>
-            <span v-if="workbuddyRunning">WorkBuddy 还在运行，删会话或清残留请先退出。</span>
+          <p v-if="residueSkipHint || hostRunning" class="hint">
+            <span v-if="residueSkipHint">{{ residueSkipHint }}</span>
+            <span v-if="hostRunning"> 删会话仍要先退出要删的那一家（含托盘）。</span>
           </p>
           <div v-if="gcHintVisible" class="gc-hint">
             <span class="gc-text">

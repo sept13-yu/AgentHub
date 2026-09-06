@@ -37,15 +37,68 @@ public sealed class SessionService
     public int IndexedCount => _index.Count;
     public SessionLockStore Locks => _locks;
 
-    public HostTitleSweepResult SweepHostTitles()
+    /// <summary>清各家残留。某一家还在跑就跳过那一家，不挡其余。</summary>
+    public ResidueSweepResult SweepResidues(bool vacuum)
+    {
+        CursorVacuum? vac = null;
+        return new(SweepZcodeResidue(), SweepWorkBuddyResidue(), SweepCursorResidue(vacuum, out vac), vac);
+    }
+
+    private static ResidueSweepAgent SweepZcodeResidue()
     {
         if (ZcodeProvider.ZcodeRunning())
-            throw new InvalidOperationException("请先完全退出 ZCode（包括托盘）");
+            return new(false, "running", 0, "还在运行，已跳过");
+        try
+        {
+            return new(true, null, ZcodeProvider.SweepOrphanLeftovers(), null);
+        }
+        catch (Exception ex)
+        {
+            return new(false, "error", 0, ex.Message);
+        }
+    }
+
+    private ResidueSweepAgent SweepWorkBuddyResidue()
+    {
         if (WorkBuddyProvider.WorkBuddyRunning())
-            throw new InvalidOperationException("请先完全退出 WorkBuddy");
-        var zcode = ZcodeProvider.SweepOrphanLeftovers();
-        var cloud = WorkBuddySidebar.SweepCloudDeleted(Dpapi.Unprotect(_config.Credentials.WorkBuddySession));
-        return new HostTitleSweepResult(zcode, cloud.Attempted, cloud.Ok, cloud.Warning);
+            return new(false, "running", 0, "还在运行，已跳过");
+        try
+        {
+            var cloud = WorkBuddySidebar.SweepCloudDeleted(Dpapi.Unprotect(_config.Credentials.WorkBuddySession));
+            return new(true, null, cloud.Ok, cloud.Warning);
+        }
+        catch (Exception ex)
+        {
+            return new(false, "error", 0, ex.Message);
+        }
+    }
+
+    private ResidueSweepAgent SweepCursorResidue(bool vacuum, out CursorVacuum? vac)
+    {
+        vac = null;
+        if (Cursor.MissingReason is not null)
+            return new(false, "unavailable", 0, Cursor.MissingReason);
+        if (CursorProvider.CursorRunning())
+            return new(false, "running", 0, "还在运行，已跳过");
+        try
+        {
+            var shells = Cursor.CleanShells().Count(r => r.Ok);
+            var orphans = Cursor.CleanOrphans();
+            if (vacuum)
+            {
+                var v = Cursor.Vacuum();
+                vac = new CursorVacuum(v.Ok, v.Error);
+            }
+            var n = shells + orphans.DeletedRows;
+            var detail = orphans.Ok
+                ? $"空壳 {shells} · 孤儿 {orphans.DeletedRows} 行"
+                : orphans.Error ?? $"空壳 {shells} · 孤儿失败";
+            return new(true, orphans.Ok ? null : "error", n, detail);
+        }
+        catch (Exception ex)
+        {
+            return new(false, "error", 0, ex.Message);
+        }
     }
 
     public async Task<SessionPage> QueryPageAsync(

@@ -34,7 +34,25 @@ public sealed record SkillOperationResult(bool Ok, string Message, ManagedSkillI
 
 public sealed record LegacySkillStatus(int LinkCount, int StoreCount, bool CanClean, IReadOnlyList<string> Errors);
 
-public sealed record SkillBatchResult(int Updated, int Skipped, IReadOnlyList<string> Errors);
+public sealed record SkillBatchResult(
+    int Updated,
+    int Skipped,
+    IReadOnlyList<string> Errors,
+    bool AlreadyRunning = false);
+
+public sealed record SkillUpdateSnapshot(
+    bool Running,
+    int Total,
+    int Index,
+    int Ok,
+    int Failed,
+    int Skipped,
+    string? CurrentName,
+    string? Detail,
+    IReadOnlyList<string> Errors)
+{
+    public static SkillUpdateSnapshot Idle { get; } = new(false, 0, 0, 0, 0, 0, null, null, []);
+}
 
 internal sealed class SkillStateFile
 {

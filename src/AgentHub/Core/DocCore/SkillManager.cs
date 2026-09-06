@@ -23,10 +23,20 @@ public sealed class SkillManager
         WriteIndented = true,
     };
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _updateGate = new(1, 1);
+    private readonly object _updateLock = new();
+    private SkillUpdateSnapshot _update = SkillUpdateSnapshot.Idle;
     private readonly SkillsCliUpdater _cli;
     private readonly Action<string>? _log;
     private readonly string _userProfile;
     private readonly string _localDataRoot;
+
+    public SkillUpdateSnapshot UpdateProgress
+    {
+        get { lock (_updateLock) return _update; }
+    }
+
+    public int CountUpdateable() => List().Count(x => x.CanUpdate);
 
     public SkillManager(SkillsCliUpdater? cli = null, Action<string>? log = null,
         string? userProfile = null, string? localDataRoot = null)
@@ -244,24 +254,91 @@ public sealed class SkillManager
 
     public async Task<SkillBatchResult> UpdateAsync(IReadOnlyList<string>? names, CancellationToken cancellationToken)
     {
-        var available = List().Where(x => x.CanUpdate).ToList();
-        if (names is { Count: > 0 })
+        if (!await _updateGate.WaitAsync(0, cancellationToken))
+            return new(UpdateProgress.Ok, 0, UpdateProgress.Errors, AlreadyRunning: true);
+
+        try
         {
-            var wanted = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
-            available = available.Where(x => wanted.Contains(x.Name)).ToList();
+            var available = List().Where(x => x.CanUpdate).ToList();
+            if (names is { Count: > 0 })
+            {
+                var wanted = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+                available = available.Where(x => wanted.Contains(x.Name)).ToList();
+            }
+            var errors = new List<string>();
+            var notEligible = names is { Count: > 0 }
+                ? names.Count - available.Count
+                : List().Count(x => !x.CanUpdate);
+            if (available.Count == 0)
+            {
+                SetUpdate(new SkillUpdateSnapshot(false, 0, 0, 0, 0, notEligible, null, "没有需要检查的 Skill", []));
+                return new(0, notEligible, errors);
+            }
+
+            var before = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in available)
+                before[item.Name] = HashDirectory(Path.Combine(ActiveRoot, item.Name));
+
+            SetUpdate(new SkillUpdateSnapshot(true, available.Count, 0, 0, 0, 0, null, "正在对照远端，已是最新的会跳过", []));
+            var cliResult = await _cli.UpdateAsync(available.Select(x => x.Name).ToList(), cancellationToken, line =>
+            {
+                var current = TryParseUpdatingName(line);
+                PatchUpdate(p => p with
+                {
+                    Index = current is null ? p.Index : p.Index + 1,
+                    CurrentName = current ?? p.CurrentName,
+                    Detail = TrimDetail(line),
+                });
+            });
+            if (!cliResult.Ok)
+                errors.Add(TrimDetail(cliResult.Output));
+
+            var updated = 0;
+            var unchanged = 0;
+            foreach (var item in available)
+            {
+                try
+                {
+                    if (PersistIfChanged(item.Name, before[item.Name]))
+                    {
+                        updated++;
+                        PatchUpdate(p => p with { Ok = updated, CurrentName = item.Name, Detail = "已写入" });
+                    }
+                    else
+                    {
+                        unchanged++;
+                        PatchUpdate(p => p with { Skipped = unchanged, CurrentName = item.Name, Detail = "已是最新" });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{item.Name}：{ex.Message}");
+                    PatchUpdate(p => p with
+                    {
+                        Failed = p.Failed + 1,
+                        Detail = TrimDetail(ex.Message),
+                        Errors = errors.ToArray(),
+                    });
+                }
+            }
+
+            var skipped = notEligible + unchanged;
+            var detail = errors.Count > 0 && updated == 0
+                ? TrimDetail(errors[0])
+                : updated == 0
+                    ? "都已是最新"
+                    : $"完成：更新 {updated}，跳过 {unchanged}";
+            PatchUpdate(p => p with
+            {
+                Running = false,
+                CurrentName = null,
+                Skipped = unchanged,
+                Detail = detail,
+                Errors = errors.ToArray(),
+            });
+            return new(updated, skipped, errors);
         }
-        var updated = 0;
-        var skipped = 0;
-        var errors = new List<string>();
-        foreach (var item in available)
-        {
-            var result = await UpdateOneAsync(item.Name, cancellationToken);
-            if (result.Ok) updated++;
-            else errors.Add($"{item.Name}：{result.Message}");
-        }
-        if (names is { Count: > 0 }) skipped = names.Count - available.Count;
-        else skipped = List().Count(x => !x.CanUpdate);
-        return new(updated, skipped, errors);
+        finally { _updateGate.Release(); }
     }
 
     public void RecoverStaging()
@@ -279,46 +356,52 @@ public sealed class SkillManager
         }
     }
 
-    private async Task<SkillOperationResult> UpdateOneAsync(string name, CancellationToken cancellationToken)
+    private void SetUpdate(SkillUpdateSnapshot snapshot)
+    {
+        lock (_updateLock) _update = snapshot;
+    }
+
+    private void PatchUpdate(Func<SkillUpdateSnapshot, SkillUpdateSnapshot> edit)
+    {
+        lock (_updateLock) _update = edit(_update);
+    }
+
+    private static string TrimDetail(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return "";
+        var line = text.ReplaceLineEndings(" ").Trim();
+        return line.Length <= 160 ? line : line[..157] + "…";
+    }
+
+    private static string? TryParseUpdatingName(string line)
+    {
+        const string prefix = "Updating ";
+        var text = line.Trim();
+        if (!text.StartsWith(prefix, StringComparison.Ordinal)) return null;
+        var name = text[prefix.Length..].Trim().TrimEnd('…', '.', ' ');
+        return name.Length == 0 ? null : name;
+    }
+
+    /// <summary>CLI 已是最新时目录 hash 不变，不重写仓库、不算一次更新。</summary>
+    private bool PersistIfChanged(string name, string beforeHash)
     {
         GuardName(name);
-        var gate = _locks.GetOrAdd(name, _ => new SemaphoreSlim(1, 1));
-        if (!await gate.WaitAsync(0, cancellationToken)) return new(false, "该 Skill 正在执行其它操作");
-        try
+        var active = Path.Combine(ActiveRoot, name);
+        if (IsReparsePoint(active)) MaterializeLink(active);
+        EnsureRealSkill(active, "npm 更新后没有得到有效真实 Skill");
+        var hash = HashDirectory(active);
+        if (string.Equals(hash, beforeHash, StringComparison.Ordinal))
+            return false;
+        ReplaceDirectory(active, Path.Combine(StoreRoot, name), StagingRoot);
+        var state = LoadState();
+        state.Skills[name] = new SkillStateEntry
         {
-            var item = List().FirstOrDefault(x => x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (item?.CanUpdate != true) return new(false, "只有已启用且未修改的托管 Skill 可以更新");
-            var active = Path.Combine(ActiveRoot, name);
-            var store = Path.Combine(StoreRoot, name);
-            Directory.CreateDirectory(BackupRoot);
-            var backup = Path.Combine(BackupRoot, $"{name}-before-update-{DateTime.Now:yyyyMMddHHmmss}-{Guid.NewGuid():N}");
-            CopyIntoMissing(active, backup, StagingRoot);
-            var cliResult = await _cli.UpdateAsync(name, cancellationToken);
-            if (!cliResult.Ok)
-            {
-                if (IsReparsePoint(active)) ReplaceLinkWithDirectory(active, backup);
-                else ReplaceDirectory(backup, active, ActiveStagingRoot);
-                return new(false, cliResult.Output);
-            }
-            if (IsReparsePoint(active)) MaterializeLink(active);
-            EnsureRealSkill(active, "npm 更新后没有得到有效真实 Skill");
-            ReplaceDirectory(active, store, StagingRoot);
-            var hash = HashDirectory(active);
-            var state = LoadState();
-            state.Skills[name] = new SkillStateEntry
-            {
-                Enabled = true,
-                LastDeployedHash = hash,
-                LastUpdatedUtc = DateTime.UtcNow,
-            };
-            SaveState(state);
-            return Success(name, cliResult.Output);
-        }
-        catch (Exception ex)
-        {
-            return new(false, ex.Message);
-        }
-        finally { gate.Release(); }
+            Enabled = true,
+            LastDeployedHash = hash,
+            LastUpdatedUtc = DateTime.UtcNow,
+        };
+        SaveState(state);
+        return true;
     }
 
     private void MaterializeLink(string link)

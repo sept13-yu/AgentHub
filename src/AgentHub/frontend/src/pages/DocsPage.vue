@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { NButton, NIcon, NInput, NSwitch, useMessage } from 'naive-ui'
 import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, RefreshCw } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
@@ -50,8 +50,21 @@ interface DocsPayload {
   skillsHint: string | null
   libraryHint: string | null
   skillsCli: { available: boolean; message: string }
+  updateableCount?: number
+  skillsUpdate?: SkillsUpdate
   skills: SkillItem[]
   library: LibItem[]
+}
+interface SkillsUpdate {
+  running: boolean
+  total: number
+  index: number
+  ok: number
+  failed: number
+  skipped?: number
+  currentName: string | null
+  detail: string | null
+  errors: string[]
 }
 interface LegacyStatus { linkCount: number; storeCount: number; canClean: boolean; errors: string[] }
 
@@ -75,6 +88,11 @@ const sortedSkills = computed(() =>
   [...skills.value].sort((a, b) => Number(b.enabled) - Number(a.enabled)),
 )
 const toggling = ref(new Set<string>())
+const progress = ref<SkillsUpdate | null>(null)
+const updateableCount = computed(() => data.value?.updateableCount ?? 0)
+const updateRunning = computed(() => !!progress.value?.running)
+let pollTimer = 0
+let sawRunning = false
 const groups = computed(() => {
   const map = new Map<string, LibItem[]>()
   for (const item of library.value) {
@@ -121,7 +139,11 @@ async function load() {
         picked.value = still
       }
     }
-    if (kind.value === 'skills') legacy.value = await get<LegacyStatus>('/api/docs/skills/legacy')
+    if (kind.value === 'skills') {
+      legacy.value = await get<LegacyStatus>('/api/docs/skills/legacy')
+      if (data.value?.skillsUpdate) progress.value = data.value.skillsUpdate
+      if (data.value?.skillsUpdate?.running) startPoll()
+    }
   } catch (e) {
     message.error(e instanceof Error ? e.message : '读取失败')
   } finally {
@@ -163,23 +185,80 @@ async function toggleSkill(skill: SkillItem, on: boolean) {
   }
 }
 
-async function updateSkills() {
-  if (readonly || kind.value !== 'skills') return
-  setLoading(true)
+function stopPoll() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer)
+    pollTimer = 0
+  }
+}
+
+function toastFinish(p: SkillsUpdate) {
+  if (p.failed && p.errors[0]) message.error(p.errors[0])
+  else if (p.ok) message.success(`已更新 ${p.ok} 个${p.skipped ? `，跳过 ${p.skipped} 个已是最新` : ''}`)
+  else if ((p.skipped ?? 0) > 0 || p.total > 0) message.success('都已是最新')
+  else message.success('没有需要检查的 Skill')
+}
+
+function startPoll() {
+  if (pollTimer) return
+  pollTimer = window.setInterval(() => { void tickProgress() }, 1000)
+}
+
+async function tickProgress() {
   try {
-    const r = await post<{ updated: number; skipped: number; errors?: string[] }>('/api/docs/skills/update')
-    if (r.errors?.length)
-      message.error(r.errors[0])
-    else if (r.updated > 0)
-      message.success(`已更新 ${r.updated} 个`)
-    else
-      message.success('已是最新')
+    const p = await get<SkillsUpdate>('/api/docs/skills/update-progress')
+    progress.value = p
+    if (p.running) sawRunning = true
+    else if (sawRunning) {
+      sawRunning = false
+      stopPoll()
+      toastFinish(p)
+      await load()
+    }
+  } catch { /* 下一秒再问 */ }
+}
+
+async function beginUpdate(names?: string[]) {
+  if (readonly || kind.value !== 'skills' || updateRunning.value) return
+  progress.value = {
+    running: true,
+    total: names?.length ?? updateableCount.value,
+    index: 0,
+    ok: 0,
+    failed: 0,
+    currentName: names?.[0] ?? null,
+    detail: '开始更新…',
+    errors: [],
+  }
+  sawRunning = true
+  startPoll()
+  try {
+    const r = await post<{
+      updated: number
+      skipped: number
+      errors?: string[]
+      alreadyRunning?: boolean
+      progress?: SkillsUpdate
+    }>('/api/docs/skills/update', names ? { names } : {})
+    if (r.progress) progress.value = r.progress
+    if (r.alreadyRunning) return
+    sawRunning = false
+    stopPoll()
+    if (r.errors?.length) message.error(r.errors[0])
+    else if (r.updated > 0) message.success(`已更新 ${r.updated} 个${r.skipped ? `，跳过 ${r.skipped} 个已是最新` : ''}`)
+    else if (r.skipped > 0) message.success('都已是最新')
+    else message.success('没有需要检查的 Skill')
     await load()
   } catch (e) {
+    sawRunning = false
+    stopPoll()
+    if (progress.value) progress.value = { ...progress.value, running: false }
     message.error(e instanceof Error ? e.message : '更新失败')
-  } finally {
-    setLoading(false)
   }
+}
+
+async function updateSkills() {
+  await beginUpdate()
 }
 
 async function skillAction(path: string, body: unknown, success: string) {
@@ -202,7 +281,7 @@ function manageSkill(skill: SkillItem) {
 }
 
 function updateOne(skill: SkillItem) {
-  return skillAction('/api/docs/skills/update', { names: [skill.relPath] }, '更新完成')
+  return beginUpdate([skill.relPath])
 }
 
 function resolveSkill(skill: SkillItem, action: 'keepLocalAsStore' | 'restoreFromStore') {
@@ -295,6 +374,7 @@ watch(q, () => {
 })
 
 onMounted(() => { void load() })
+onUnmounted(() => { stopPoll() })
 </script>
 
 <template>
@@ -306,9 +386,15 @@ onMounted(() => { void load() })
   </teleport>
   <teleport defer to="#chrome-actions">
     <n-input v-model:value="q" class="docs-search" placeholder="搜索名称" clearable />
-    <n-button v-if="kind === 'skills'" :disabled="readonly || !data?.skillsCli.available" @click="updateSkills">
+    <n-button
+      v-if="kind === 'skills'"
+      :disabled="readonly || !data?.skillsCli.available || updateRunning || updateableCount === 0"
+      :loading="updateRunning"
+      @click="updateSkills"
+    >
       <template #icon><n-icon><CloudDownload :size="16" :stroke-width="1.8" /></n-icon></template>
-      更新全部
+      <template v-if="updateRunning && progress">检查中 {{ progress.index }}/{{ progress.total }}</template>
+      <template v-else>检查更新</template>
     </n-button>
     <n-button type="primary" @click="refresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
@@ -338,17 +424,32 @@ onMounted(() => { void load() })
           <template v-else-if="skills.length">
             <p v-if="data?.skillsHint" class="hint">{{ data.skillsHint }}</p>
             <p v-if="conflictSkills.length" class="hint">{{ conflictSkills.length }} 个 Skill 存在冲突，程序不会自动覆盖</p>
+            <div v-if="progress && (progress.running || progress.detail)" class="legacy-banner">
+              <span v-if="progress.running">
+                {{ progress.currentName ? `正在更新 ${progress.currentName}` : '正在对照远端' }}
+                （{{ progress.index }}/{{ progress.total }}，已更新 {{ progress.ok }}<template v-if="progress.skipped">，跳过 {{ progress.skipped }}</template><template v-if="progress.failed">，失败 {{ progress.failed }}</template>）
+                <template v-if="progress.detail"> · {{ progress.detail }}</template>
+              </span>
+              <span v-else>
+                {{ progress.detail || `上次更新 ${progress.ok}/${progress.total}` }}
+              </span>
+            </div>
             <section class="doc-sec">
               <h3>
                 全部 <span class="n">{{ skills.length }}</span>
                 <span class="doc-on-note">使用中 {{ onSkills.length }}</span>
+                <span v-if="updateRunning && progress" class="doc-on-note">检查中 {{ progress.index }}/{{ progress.total }}</span>
               </h3>
               <div class="docs-grid">
                 <div v-for="s in sortedSkills" :key="s.path" class="doc-cell">
                   <button
                     type="button"
                     class="doc-card"
-                    :class="{ 'is-off': !s.enabled, 'is-on': picked && picked.path === s.path }"
+                    :class="{
+                      'is-off': !s.enabled,
+                      'is-on': picked && picked.path === s.path,
+                      'is-updating': updateRunning && progress?.currentName === s.name,
+                    }"
                     @click="openPreview(s)"
                   >
                       <span class="doc-card-top">
@@ -434,9 +535,15 @@ onMounted(() => { void load() })
               <template #icon><n-icon><Archive :size="16" :stroke-width="1.8" /></n-icon></template>
               收进仓库
             </n-button>
-            <n-button v-if="(picked as SkillItem).canUpdate" type="primary" @click="updateOne(picked as SkillItem)">
+            <n-button
+              v-if="(picked as SkillItem).canUpdate"
+              type="primary"
+              :disabled="updateRunning"
+              :loading="updateRunning && progress?.currentName === (picked as SkillItem).name"
+              @click="updateOne(picked as SkillItem)"
+            >
               <template #icon><n-icon><CloudDownload :size="16" :stroke-width="1.8" /></n-icon></template>
-              更新
+              {{ updateRunning && progress?.currentName === (picked as SkillItem).name ? '检查中' : '检查更新' }}
             </n-button>
             <template v-if="(picked as SkillItem).state === 'modified'">
               <n-button @click="resolveSkill(picked as SkillItem, 'keepLocalAsStore')">保留本地版本</n-button>
@@ -535,6 +642,7 @@ onMounted(() => { void load() })
   border-color: var(--accent-line);
   background: var(--accent-soft);
 }
+.doc-card.is-updating { border-color: var(--accent-line); }
 .doc-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 44px; line-height: var(--h-control); }
 .doc-tag { font-size: var(--fs-caption); color: var(--warn); flex: none; line-height: 1; }
 .doc-cell { position: relative; min-width: 0; }

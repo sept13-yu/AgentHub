@@ -53,8 +53,17 @@ public sealed record DeleteItemResult
 /// <summary>某 Agent 下的项目空间（给会话页 chip 用）。</summary>
 public sealed record SessionProject(string Path, string Label, int Count);
 
-/// <summary>ZCode 产物 / 桌面引用 + WorkBuddy 云端残留标题的清理结果。</summary>
-public sealed record HostTitleSweepResult(int ZcodeRemoved, int WorkBuddyAttempted, int WorkBuddyOk, string? Warning);
+/// <summary>单家残留清理：谁在跑就跳过谁，不挡别家。</summary>
+public sealed record ResidueSweepAgent(bool Ran, string? Skipped, int Count, string? Detail);
+
+/// <summary>会话页「清理残留」：ZCode 侧栏 / WorkBuddy 云端 / Cursor 空壳与孤儿，可带 VACUUM。</summary>
+public sealed record ResidueSweepResult(
+    ResidueSweepAgent Zcode,
+    ResidueSweepAgent WorkBuddy,
+    ResidueSweepAgent Cursor,
+    CursorVacuum? Vacuum);
+
+public sealed record CursorVacuum(bool Ok, string? Error);
 
 /// <summary>会话列表分页（索引缓存上的切片）。</summary>
 public sealed record SessionPage

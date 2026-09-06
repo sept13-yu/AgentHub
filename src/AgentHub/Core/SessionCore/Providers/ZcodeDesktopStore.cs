@@ -3,12 +3,13 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using LevelDB;
+using Microsoft.Data.Sqlite;
 
 namespace AgentHub.Core.SessionCore.Providers;
 
-/// <summary>ZCode 桌面标题不在 SQLite 里：工作区上次会话写在 Electron Local Storage
-/// （<c>zcode-v4-last-session:v1:{workspace}</c>）。库行删了、这个 key 还在，
-/// 再开会按 ID 把标题栏拼回来，点开就是 sessionNotFound。</summary>
+/// <summary>ZCode 侧栏标题在 <c>~/.zcode/v2/tasks-index.sqlite</c>，
+/// 工作区上次会话还写在 Electron Local Storage。
+/// 只删 cli 会话库时，这两处都会把标题拼回来。</summary>
 internal static class ZcodeDesktopStore
 {
     private static readonly byte[] FileOriginPrefix =
@@ -21,6 +22,10 @@ internal static class ZcodeDesktopStore
     public static string ExecRoot => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".zcode", "cli", "exec");
+
+    public static string TasksIndexPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".zcode", "v2", "tasks-index.sqlite");
 
     public static IEnumerable<string> OrphanExecIds()
     {
@@ -48,8 +53,9 @@ internal static class ZcodeDesktopStore
         }
     }
 
-    /// <summary>keepListed=true 时 ids 是还活着的会话，只清指向已删 ID 的桌面引用。</summary>
-    public static bool ClearSessionRefs(HashSet<string> ids, bool keepListed)
+    /// <summary>keepListed=true 时 ids 是还活着的会话，只清指向已删 ID 的桌面引用。
+    /// liveWorkspaces 有值时，没有活会话的工作区 last-session 一并删掉，避免空页签把标题栏拼回来。</summary>
+    public static bool ClearSessionRefs(HashSet<string> ids, bool keepListed, IReadOnlySet<string>? liveWorkspaces = null)
     {
         if (!Directory.Exists(LocalStorageDir)) return false;
         try
@@ -63,7 +69,11 @@ internal static class ZcodeDesktopStore
                 if (name.StartsWith("zcode-v4-last-session:", StringComparison.Ordinal))
                 {
                     var sessionId = DecodeValue(kv.Value).Trim();
+                    var workspace = WorkspaceFromLastSessionKey(name);
                     if (sessionId.Length > 0 && ShouldDrop(sessionId, ids, keepListed))
+                        drop.Add(kv.Key.ToArray());
+                    else if (keepListed && liveWorkspaces is not null
+                        && !ContainsWorkspace(liveWorkspaces, workspace))
                         drop.Add(kv.Key.ToArray());
                     continue;
                 }
@@ -92,8 +102,106 @@ internal static class ZcodeDesktopStore
         }
     }
 
+    /// <summary>侧栏「项目」列表读 tasks-index，不读 cli 会话库。
+    /// keepListed=true 时把不在 live 里的可见任务标成已删除。</summary>
+    public static bool ClearTaskIndex(HashSet<string> ids, bool keepListed)
+    {
+        if (!File.Exists(TasksIndexPath)) return false;
+        try
+        {
+            var cs = new SqliteConnectionStringBuilder
+            {
+                DataSource = TasksIndexPath,
+                Mode = SqliteOpenMode.ReadWrite,
+                Pooling = false,
+            };
+            using var conn = new SqliteConnection(cs.ToString());
+            conn.Open();
+            using (var busy = conn.CreateCommand())
+            {
+                busy.CommandText = "PRAGMA busy_timeout=3000";
+                busy.ExecuteNonQuery();
+            }
+
+            var drop = new List<string>();
+            using (var list = conn.CreateCommand())
+            {
+                list.CommandText = "SELECT task_id FROM tasks WHERE deleted = 0 AND archived = 0";
+                using var r = list.ExecuteReader();
+                while (r.Read())
+                {
+                    var id = r.IsDBNull(0) ? "" : r.GetString(0);
+                    if (id.Length > 0 && ShouldDrop(id, ids, keepListed))
+                        drop.Add(id);
+                }
+            }
+            if (drop.Count == 0) return false;
+
+            var ms = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            using var tx = conn.BeginTransaction();
+            foreach (var id in drop)
+            {
+                using (var upd = conn.CreateCommand())
+                {
+                    upd.Transaction = tx;
+                    upd.CommandText = """
+                        UPDATE tasks
+                        SET deleted = 1, archived = 1, updated_at = $ms
+                        WHERE task_id = $id
+                        """;
+                    upd.Parameters.AddWithValue("$ms", ms);
+                    upd.Parameters.AddWithValue("$id", id);
+                    upd.ExecuteNonQuery();
+                }
+                using var ord = conn.CreateCommand();
+                ord.Transaction = tx;
+                ord.CommandText = "DELETE FROM task_group_view_node_orders WHERE node_key LIKE $like";
+                ord.Parameters.AddWithValue("$like", "%" + id + "%");
+                ord.ExecuteNonQuery();
+            }
+            tx.Commit();
+            using var ck = conn.CreateCommand();
+            ck.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)";
+            ck.ExecuteNonQuery();
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private static bool ShouldDrop(string value, HashSet<string> ids, bool keepListed) =>
         keepListed ? !ids.Contains(value) : ids.Contains(value);
+
+    internal static string NormalizeWorkspace(string path)
+    {
+        var text = path.Trim().TrimEnd('\\', '/');
+        if (text.Length == 0) return "";
+        try { return Path.GetFullPath(text); }
+        catch (Exception) { return text; }
+    }
+
+    internal static bool ContainsWorkspace(IReadOnlySet<string> live, string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var norm = NormalizeWorkspace(path);
+        if (live.Contains(norm)) return true;
+        foreach (var item in live)
+        {
+            if (item.Equals(norm, StringComparison.OrdinalIgnoreCase)
+                || item.Equals(path.Trim(), StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private static string WorkspaceFromLastSessionKey(string name)
+    {
+        const string mark = ":v1:";
+        var i = name.IndexOf(mark, StringComparison.Ordinal);
+        return i < 0 ? "" : name[(i + mark.Length)..];
+    }
 
     private static bool TryLocalStorageName(byte[] key, out string name)
     {
