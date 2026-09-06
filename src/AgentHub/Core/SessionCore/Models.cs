@@ -53,6 +53,9 @@ public sealed record DeleteItemResult
 /// <summary>某 Agent 下的项目空间（给会话页 chip 用）。</summary>
 public sealed record SessionProject(string Path, string Label, int Count);
 
+/// <summary>ZCode 产物 / 桌面引用 + WorkBuddy 云端残留标题的清理结果。</summary>
+public sealed record HostTitleSweepResult(int ZcodeRemoved, int WorkBuddyAttempted, int WorkBuddyOk, string? Warning);
+
 /// <summary>会话列表分页（索引缓存上的切片）。</summary>
 public sealed record SessionPage
 {

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AgentHub.Core.TokenCore;
 using Microsoft.Data.Sqlite;
 
@@ -8,12 +9,25 @@ namespace AgentHub.Core.SessionCore.Providers;
 
 /// <summary>ZCode 会话：~/.zcode/cli/db/db.sqlite 的 session / message / part。
 /// 读库拷三件套（与用量同一份）；改名写回 session.title；删除清该会话相关行。
-/// 侧栏标题活在正在跑的 ZCode 进程里，写库前必须先退出，否则点开残留标题会 sessionNotFound。</summary>
+/// 侧栏标题还写在 Electron last-session 里，写库前必须先退出，删完一并清桌面缓存。</summary>
 public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProvider
 {
     public string AgentId => "zcode";
 
-    public static bool ZcodeRunning() => Process.GetProcessesByName("ZCode").Length > 0;
+    public static bool ZcodeRunning()
+    {
+        try
+        {
+            foreach (var process in Process.GetProcesses())
+            {
+                using (process)
+                    if (process.ProcessName.Contains("zcode", StringComparison.OrdinalIgnoreCase))
+                        return true;
+            }
+        }
+        catch (Exception) { }
+        return false;
+    }
 
     private static void EnsureWritable(string what)
     {
@@ -173,7 +187,17 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
                     var size = SizeOf(conn, id);
                     if (!SessionExists(conn, id))
                     {
-                        results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = false, Error = "会话不存在（可能已被删除）" });
+                        var leftover = DeleteLeftovers(id);
+                        titles.Remove(AgentId, id);
+                        results.Add(new DeleteItemResult
+                        {
+                            AgentId = AgentId,
+                            Id = id,
+                            Ok = true,
+                            Note = leftover
+                                ? "库里已无此行，已清桌面残留标题。"
+                                : "库里已无此行。",
+                        });
                         continue;
                     }
                     DeleteSessionRows(conn, id);
@@ -211,6 +235,8 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
             if (results.Count == 0)
                 results.Add(new DeleteItemResult { AgentId = AgentId, Id = "", Ok = false, Error = ex.Message });
         }
+        if (results.Any(r => r.Ok))
+            SweepOrphanLeftovers();
         return results;
     });
 
@@ -437,18 +463,151 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
         drop.ExecuteNonQuery();
     }
 
-    /// <summary>库行删了之后，工具产物和 rollout 还在，ZCode 重启后可能拿它们把标题再拼回来。</summary>
-    private static void DeleteLeftovers(string id)
+    /// <summary>清已不在 session 表里的产物、rollout、exec，以及桌面 last-session / setting.json。</summary>
+    public static int SweepOrphanLeftovers()
     {
+        var live = LiveSessionIds();
+        var n = 0;
+        foreach (var id in OrphanArtifactIds())
+        {
+            if (live.Contains(id)) continue;
+            if (DeleteLeftovers(id, desktop: false)) n++;
+        }
+        if (ClearDesktopPersist(live)) n++;
+        if (ZcodeDesktopStore.ClearSessionRefs(live, keepListed: true)) n++;
+        return n;
+    }
+
+    /// <summary>库行删了之后，产物 / exec / last-session 还会把标题栏拼回来。</summary>
+    private static bool DeleteLeftovers(string id, bool desktop = true)
+    {
+        var changed = false;
         var cli = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zcode", "cli");
         var artifacts = Path.Combine(cli, "artifacts", id);
         if (Directory.Exists(artifacts))
-            try { Directory.Delete(artifacts, recursive: true); } catch (IOException) { }
+        {
+            try { Directory.Delete(artifacts, recursive: true); changed = true; }
+            catch (Exception) { }
+        }
         var rollout = Path.Combine(cli, "rollout", "model-io-" + id + ".jsonl");
         if (File.Exists(rollout))
-            try { File.Delete(rollout); } catch (IOException) { }
+        {
+            try { File.Delete(rollout); changed = true; }
+            catch (Exception) { }
+        }
+        if (ZcodeDesktopStore.DeleteExec(id)) changed = true;
+        if (desktop && ClearDesktopPersist(id)) changed = true;
+        if (desktop && ZcodeDesktopStore.ClearSessionRefs(
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }, keepListed: false))
+            changed = true;
+        return changed;
     }
+
+    private static HashSet<string> LiveSessionIds()
+    {
+        var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!ZcodeLocal.DbExists) return live;
+        try
+        {
+            using var conn = OpenRead(ZcodeLocal.DbPath);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT id FROM session";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var id = r.IsDBNull(0) ? "" : r.GetString(0);
+                if (id.Length > 0) live.Add(id);
+            }
+        }
+        catch (Exception) { }
+        return live;
+    }
+
+    private static IEnumerable<string> OrphanArtifactIds()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var cli = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zcode", "cli");
+        var artifacts = Path.Combine(cli, "artifacts");
+        if (Directory.Exists(artifacts))
+        {
+            foreach (var dir in Directory.EnumerateDirectories(artifacts))
+            {
+                var id = Path.GetFileName(dir);
+                if (id.StartsWith("sess_", StringComparison.OrdinalIgnoreCase) && seen.Add(id))
+                    yield return id;
+            }
+        }
+        var rollout = Path.Combine(cli, "rollout");
+        if (Directory.Exists(rollout))
+        {
+            foreach (var file in Directory.EnumerateFiles(rollout, "model-io-sess_*.jsonl"))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                var id = name.StartsWith("model-io-", StringComparison.OrdinalIgnoreCase)
+                    ? name["model-io-".Length..] : "";
+                if (id.Length > 0 && seen.Add(id))
+                    yield return id;
+            }
+        }
+        foreach (var id in ZcodeDesktopStore.OrphanExecIds())
+        {
+            if (seen.Add(id))
+                yield return id;
+        }
+    }
+
+    private static bool ClearDesktopPersist(string id) =>
+        ClearDesktopPersist(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }, keepListed: false);
+
+    /// <summary>清 setting.json 里的 initialTaskId / lastActiveTaskByWorkspace。
+    /// keepListed=true 时只清不在 live 集合里的引用。</summary>
+    private static bool ClearDesktopPersist(HashSet<string> ids, bool keepListed = true)
+    {
+        var path = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            ".zcode", "v2", "setting.json");
+        if (!File.Exists(path)) return false;
+        try
+        {
+            var node = JsonNode.Parse(File.ReadAllText(path));
+            if (node is not JsonObject root) return false;
+            var changed = false;
+            if (root["webRemoteControlLastEnabledContext"] is JsonObject ctx
+                && ctx["initialTaskId"]?.GetValue<string>() is { Length: > 0 } taskId
+                && ShouldDropPersist(taskId, ids, keepListed))
+            {
+                ctx.Remove("initialTaskId");
+                changed = true;
+            }
+            if (root["lastActiveTaskByWorkspace"] is JsonObject map)
+            {
+                var drop = new List<string>();
+                foreach (var kv in map)
+                {
+                    var value = kv.Value?.GetValue<string>();
+                    if (!string.IsNullOrEmpty(value) && ShouldDropPersist(value, ids, keepListed))
+                        drop.Add(kv.Key);
+                }
+                foreach (var key in drop)
+                {
+                    map.Remove(key);
+                    changed = true;
+                }
+            }
+            if (!changed) return false;
+            File.WriteAllText(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static bool ShouldDropPersist(string value, HashSet<string> ids, bool keepListed) =>
+        keepListed ? !ids.Contains(value) : ids.Contains(value);
 
     private static HashSet<string> TableColumns(SqliteConnection conn, string table)
     {

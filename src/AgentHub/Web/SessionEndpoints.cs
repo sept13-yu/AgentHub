@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using AgentHub.Core.SessionCore;
+using AgentHub.Core.SessionCore.Providers;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 
@@ -30,7 +31,9 @@ public static class SessionEndpoints
                 weekStart = weekStart.ToString("yyyy-MM-dd"),
                 cursorAvailable = sessions.Cursor.MissingReason is null,
                 cursorMissingReason = sessions.Cursor.MissingReason,
-                cursorRunning = CursorProviderRunning(),
+                cursorRunning = CursorProvider.CursorRunning(),
+                zcodeRunning = ZcodeProvider.ZcodeRunning(),
+                workbuddyRunning = WorkBuddyProvider.WorkBuddyRunning(),
                 sources = sessions.Sources().Select(s => new { id = s.Id, name = s.Name }).ToList(),
                 items = page.Items.Select(s => new
                 {
@@ -164,7 +167,7 @@ public static class SessionEndpoints
             object? vacuum = null;
             if (body.vacuum == true && body.items.Any(x => x.agent.Equals("cursor", StringComparison.OrdinalIgnoreCase)))
             {
-                if (CursorProviderRunning())
+                if (CursorProvider.CursorRunning())
                     vacuum = new { ok = false, error = "请先退出 Cursor" };
                 else
                     vacuum = sessions.Cursor.Vacuum();
@@ -192,7 +195,7 @@ public static class SessionEndpoints
                 object? vac = null;
                 if (vacuum)
                 {
-                    if (CursorProviderRunning())
+                    if (CursorProvider.CursorRunning())
                         vac = new { ok = false, error = "请先退出 Cursor" };
                     else
                         vac = sessions.Cursor.Vacuum();
@@ -274,7 +277,7 @@ public static class SessionEndpoints
                 object? vac = null;
                 if (vacuum)
                 {
-                    if (CursorProviderRunning())
+                    if (CursorProvider.CursorRunning())
                         vac = new { ok = false, error = "请先退出 Cursor" };
                     else
                         vac = sessions.Cursor.Vacuum();
@@ -293,10 +296,28 @@ public static class SessionEndpoints
                 return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
             }
         });
-    }
 
-    private static bool CursorProviderRunning() =>
-        AgentHub.Core.SessionCore.Providers.CursorProvider.CursorRunning();
+        app.MapPost("/api/sessions/host-title-clean", (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx)) return Forbidden();
+            try
+            {
+                var r = sessions.SweepHostTitles();
+                return Results.Json(new
+                {
+                    ok = true,
+                    zcodeRemoved = r.ZcodeRemoved,
+                    workbuddyAttempted = r.WorkBuddyAttempted,
+                    workbuddyOk = r.WorkBuddyOk,
+                    warning = r.Warning,
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+            }
+        });
+    }
 
     internal static string LocalIso(DateTime utc)
     {

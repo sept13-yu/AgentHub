@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AgentHub.Core.ProxyCore;
 using AgentHub.Core.TokenCore;
 
 namespace AgentHub.Core.SessionCore.Providers;
@@ -11,7 +12,7 @@ namespace AgentHub.Core.SessionCore.Providers;
 /// ~/.workbuddy/projects/&lt;项目&gt;/&lt;uuid&gt;.jsonl（+ 同名目录 subagents/ tool-results/）。
 /// 新版标题优先读 workbuddy.db sessions.custom_title/title；旧版回退最后一条 ai-title。
 /// 预览须剥 user 消息里的 system-reminder 段；~/.workbuddy/sessions/*.json 是心跳不当会话。</summary>
-public sealed class WorkBuddyProvider(TitleOverrideStore titles, Action<string>? log = null) : IConversationProvider
+public sealed class WorkBuddyProvider(TitleOverrideStore titles, Action<string>? log = null, AgentHubConfig? config = null) : IConversationProvider
 {
     private static readonly string ProjectsRoot = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".workbuddy", "projects");
@@ -177,7 +178,8 @@ public sealed class WorkBuddyProvider(TitleOverrideStore titles, Action<string>?
         if (WorkBuddyRunning())
             throw new InvalidOperationException("删除需要先完全退出 WorkBuddy 后重试——应用还在跑时侧栏标题不会消失。");
         var results = new List<DeleteItemResult>();
-        var auth = WorkBuddyAuth.Read();
+        var settingsSession = config is null ? null : Dpapi.Unprotect(config.Credentials.WorkBuddySession);
+        var auth = WorkBuddyAuth.Read(settingsSession);
         foreach (var id in ids)
         {
             CodexProvider.GuardId(id);
@@ -220,6 +222,17 @@ public sealed class WorkBuddyProvider(TitleOverrideStore titles, Action<string>?
             {
                 results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = false, Error = ex.Message });
             }
+        }
+        var sweep = WorkBuddySidebar.SweepCloudDeleted(settingsSession);
+        if (sweep.Warning is not null && results.Count > 0)
+        {
+            var last = results[^1];
+            results[^1] = last with
+            {
+                Warning = string.IsNullOrEmpty(last.Warning)
+                    ? sweep.Warning
+                    : last.Warning + "；" + sweep.Warning,
+            };
         }
         return results;
     });

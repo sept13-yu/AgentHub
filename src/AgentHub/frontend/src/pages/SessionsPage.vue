@@ -34,6 +34,8 @@ interface SessionPage {
   cursorAvailable: boolean
   cursorMissingReason: string | null
   cursorRunning: boolean
+  zcodeRunning: boolean
+  workbuddyRunning: boolean
   sources: Source[]
   items: SessionRow[]
 }
@@ -81,7 +83,7 @@ const titleEdit = ref('')
 let previewAc: AbortController | null = null
 const vacuum = ref(false)
 const confirmShow = ref(false)
-const confirmKind = ref<'delete' | 'shell' | 'orphan'>('delete')
+const confirmKind = ref<'delete' | 'shell' | 'orphan' | 'host'>('delete')
 const pendingRows = ref<SessionRow[]>([])
 
 const items = computed(() => page.value?.items ?? [])
@@ -107,6 +109,11 @@ const groups = computed(() => {
 })
 const cursorOk = computed(() => !!page.value?.cursorAvailable)
 const cursorRunning = computed(() => !!page.value?.cursorRunning)
+const zcodeRunning = computed(() => !!page.value?.zcodeRunning)
+const workbuddyRunning = computed(() => !!page.value?.workbuddyRunning)
+const hostTitleVisible = computed(() =>
+  sources.value.some((s) => s.id === 'zcode' || s.id === 'workbuddy'))
+const hostRunning = computed(() => zcodeRunning.value || workbuddyRunning.value)
 
 // Cursor agentKv 内容库占用 → 大时引导用户跑官方 GC 命令（AgentHub 不代删共享库）
 interface CursorStorage { mainDbBytes: number; agentKvBytes: number; agentKvCount: number }
@@ -177,8 +184,12 @@ const confirmText = computed(() => {
     if (!o) return '回收已无会话的缓存。不碰列表里的会话，也不碰 agentKv。'
     return `回收已无会话的缓存：行高 ${o.heightRows} · 部分 diff ${o.fateRows} · 内联 diff ${o.inlineDiffRows}（约 ${formatBytes(o.totalBytes)}）。不碰列表里的会话，也不碰 agentKv。`
   }
+  if (confirmKind.value === 'host')
+    return '清掉已不在列表里、但 ZCode / WorkBuddy 还挂着的标题。ZCode 会清桌面记住的上次会话。列表里还在的要单独删除。请先退出这两个应用（含托盘）。'
   const hostHint = pendingRows.value.some((r) => r.agent === 'zcode' || r.agent === 'workbuddy')
-    ? ' ZCode / WorkBuddy 需先退出，否则侧栏标题还在。'
+    ? (hostRunning.value
+      ? ' 请先完全退出 ZCode / WorkBuddy（含托盘）再删，否则标题栏还在。'
+      : ' 退出后再点一次删除，列表里还在的会话不会自己消失。')
     : ''
   return `删除 ${pendingRows.value.length} 条，已跳过 ${confirmSkip.value} 条锁定。${hostHint}`
 })
@@ -391,6 +402,14 @@ function askCleanOrphans() {
   confirmShow.value = true
 }
 
+function askCleanHostTitles() {
+  if (readonly || !hostTitleVisible.value) return
+  pendingRows.value = []
+  confirmKind.value = 'host'
+  vacuum.value = false
+  confirmShow.value = true
+}
+
 async function runDelete(rows: SessionRow[]) {
   setLoading(true)
   try {
@@ -455,6 +474,28 @@ async function runCleanShells() {
   }
 }
 
+async function runCleanHostTitles() {
+  setLoading(true)
+  try {
+    const r = await post<{
+      ok: boolean
+      error?: string
+      zcodeRemoved: number
+      workbuddyAttempted: number
+      workbuddyOk: number
+      warning?: string | null
+    }>('/api/sessions/host-title-clean', {})
+    if (r.ok === false && r.error) message.error(r.error)
+    else if (r.warning) message.warning(r.warning)
+    else message.success(`已清残留：ZCode ${r.zcodeRemoved} · WorkBuddy 云端 ${r.workbuddyOk}/${r.workbuddyAttempted}`)
+    await loadList()
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '清理失败')
+  } finally {
+    setLoading(false)
+  }
+}
+
 async function runCleanOrphans() {
   setLoading(true)
   try {
@@ -480,6 +521,7 @@ async function confirmOk() {
   confirmShow.value = false
   if (confirmKind.value === 'shell') await runCleanShells()
   else if (confirmKind.value === 'orphan') await runCleanOrphans()
+  else if (confirmKind.value === 'host') await runCleanHostTitles()
   else await runDelete(pendingRows.value)
 }
 
@@ -561,7 +603,20 @@ onMounted(() => { void load() })
               <template #icon><n-icon><FileMinus :size="16" :stroke-width="1.8" /></n-icon></template>
               回收孤儿 {{ cursorOrphans?.totalRows }}
             </n-button>
+            <n-button
+              v-if="hostTitleVisible"
+              quaternary
+              :disabled="readonly || hostRunning"
+              @click="askCleanHostTitles"
+            >
+              <template #icon><n-icon><Eraser :size="16" :stroke-width="1.8" /></n-icon></template>
+              清理残留标题
+            </n-button>
           </div>
+          <p v-if="hostRunning" class="hint">
+            <span v-if="zcodeRunning">ZCode 还在运行（含托盘），删会话或清残留请先退出。</span>
+            <span v-if="workbuddyRunning">WorkBuddy 还在运行，删会话或清残留请先退出。</span>
+          </p>
           <div v-if="gcHintVisible" class="gc-hint">
             <span class="gc-text">
               Cursor 内容共享库（agentKv，{{ formatBytes(cursorStorage!.agentKvBytes) }} / 库共

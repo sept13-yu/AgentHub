@@ -419,7 +419,7 @@ onUnmounted(() => {
         <div class="row row--fill">
           <div class="meta">
             <label class="lbl" for="s-wb">WorkBuddy Cookie</label>
-            <span class="hint">查积分，Cookie 名 session</span>
+            <span class="hint">查积分、清云端会话，Cookie 名 session</span>
           </div>
           <div class="ctrl ctrl--secret">
             <n-input

@@ -1,5 +1,6 @@
 using AgentHub.Core.ProxyCore;
 using AgentHub.Core.SessionCore.Providers;
+using AgentHub.Core.TokenCore;
 
 namespace AgentHub.Core.SessionCore;
 
@@ -26,7 +27,7 @@ public sealed class SessionService
             ["cursor"] = new CursorProvider(titles),
             ["codex"] = new CodexProvider(titles, log),
             ["dsh"] = new DshProvider(titles),
-            ["workbuddy"] = new WorkBuddyProvider(titles, log),
+            ["workbuddy"] = new WorkBuddyProvider(titles, log, config),
             ["zcode"] = new ZcodeProvider(titles),
         };
         _index.LoadFromDisk();
@@ -35,6 +36,17 @@ public sealed class SessionService
     public CursorProvider Cursor => (CursorProvider)_providers["cursor"];
     public int IndexedCount => _index.Count;
     public SessionLockStore Locks => _locks;
+
+    public HostTitleSweepResult SweepHostTitles()
+    {
+        if (ZcodeProvider.ZcodeRunning())
+            throw new InvalidOperationException("请先完全退出 ZCode（包括托盘）");
+        if (WorkBuddyProvider.WorkBuddyRunning())
+            throw new InvalidOperationException("请先完全退出 WorkBuddy");
+        var zcode = ZcodeProvider.SweepOrphanLeftovers();
+        var cloud = WorkBuddySidebar.SweepCloudDeleted(Dpapi.Unprotect(_config.Credentials.WorkBuddySession));
+        return new HostTitleSweepResult(zcode, cloud.Attempted, cloud.Ok, cloud.Warning);
+    }
 
     public async Task<SessionPage> QueryPageAsync(
         string? agent, string? q, string range, int offset, int limit, string? project = null)

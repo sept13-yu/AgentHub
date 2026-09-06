@@ -1,7 +1,5 @@
 using System.IO;
 using System.Net.Http;
-using System.Text;
-using System.Text.Json;
 using AgentHub.Core.TokenCore;
 using Microsoft.Data.Sqlite;
 
@@ -103,6 +101,24 @@ internal static class WorkBuddySidebar
         }
     }
 
+    /// <summary>本机已软删、映射库还挂着的会话，再打一遍云端删除。</summary>
+    public static (int Attempted, int Ok, string? Warning) SweepCloudDeleted(string? settingsSession = null)
+    {
+        var auth = WorkBuddyAuth.Read(settingsSession);
+        var ids = DeletedOrMappedIds();
+        var attempted = 0;
+        var ok = 0;
+        string? warning = null;
+        foreach (var id in ids)
+        {
+            attempted++;
+            var warn = TryCloudDelete(id, auth);
+            if (warn is null) ok++;
+            else warning ??= warn;
+        }
+        return (attempted, ok, warning);
+    }
+
     public static string? TryCloudDelete(string id, WorkBuddyAuth.Probe auth)
     {
         if (!auth.HasSession || string.IsNullOrEmpty(auth.Bearer))
@@ -113,12 +129,18 @@ internal static class WorkBuddySidebar
         {
             var url = "https://www.workbuddy.cn/console/as/conversations/" + Uri.EscapeDataString(conversationId) + "/delete";
             using var req = new HttpRequestMessage(HttpMethod.Post, url);
-            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Bearer);
+            req.Headers.TryAddWithoutValidation("accept", "application/json");
+            req.Headers.TryAddWithoutValidation("user-agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0");
+            req.Headers.TryAddWithoutValidation("x-client-platform", "web");
+            req.Headers.TryAddWithoutValidation("origin", "https://www.workbuddy.cn");
+            req.Headers.TryAddWithoutValidation("referer", "https://www.workbuddy.cn/");
+            req.Headers.TryAddWithoutValidation("cookie", "session=" + auth.Bearer);
+            if (auth.Bearer.StartsWith("eyJ", StringComparison.Ordinal) && auth.Bearer.Count(c => c == '.') >= 2)
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", auth.Bearer);
             if (!string.IsNullOrEmpty(auth.UserId))
                 req.Headers.TryAddWithoutValidation("X-User-Id", auth.UserId);
             req.Headers.TryAddWithoutValidation("X-Domain", "www.workbuddy.cn");
-            req.Content = new StringContent(
-                JsonSerializer.Serialize(new { id = conversationId }), Encoding.UTF8, "application/json");
             using var resp = Http.Send(req);
             var code = (int)resp.StatusCode;
             if (code is 200 or 204 or 404)
@@ -132,6 +154,53 @@ internal static class WorkBuddySidebar
         {
             return "云端列表可能还在，请在 WorkBuddy 里再删一次（" + ex.Message + "）";
         }
+    }
+
+    private static HashSet<string> DeletedOrMappedIds()
+    {
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (File.Exists(DbPath))
+        {
+            try
+            {
+                using var conn = OpenRead(DbPath);
+                if (SessionsSchemaOk(conn))
+                {
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = """
+                        SELECT id FROM sessions
+                        WHERE deleted_at IS NULL OR deleted_at = 0
+                        """;
+                    using var r = cmd.ExecuteReader();
+                    while (r.Read()) live.Add(r.GetString(0));
+                }
+            }
+            catch (Exception) { }
+        }
+        foreach (var path in MappingPaths)
+        {
+            if (!File.Exists(path)) continue;
+            try
+            {
+                using var conn = OpenRead(path);
+                if (!MappingSchemaOk(conn)) continue;
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT session_id, conversation_id FROM edge_sync_mapping";
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                {
+                    var sid = r.IsDBNull(0) ? "" : r.GetString(0);
+                    var cid = r.IsDBNull(1) ? "" : r.GetString(1);
+                    if (sid.Length > 0 && !live.Contains(sid)) ids.Add(sid);
+                    if (cid.Length > 0 && !cid.StartsWith("convmsg:", StringComparison.OrdinalIgnoreCase)
+                        && !live.Contains(cid))
+                        ids.Add(cid);
+                }
+            }
+            catch (Exception) { }
+        }
+        return ids;
     }
 
     private static string? LookupConversationId(string sessionId)

@@ -20,11 +20,17 @@ internal static class WorkBuddyAuth
         bool IsPro,
         string Reason);
 
-    public static Probe Read()
+    /// <summary>本机 Cookie 库 → 设置里的 session → JWT。额度与云端删除共用。</summary>
+    public static Probe Read(string? settingsSession = null)
     {
         var (plan, isPro, uid) = ReadAccount();
-        if (TryCookies(out var cookieBearer) && !string.IsNullOrEmpty(cookieBearer))
-            return new Probe(true, cookieBearer, uid, plan, isPro, "ok");
+        if (TryNamedCookie("session", out var cookie) && !string.IsNullOrEmpty(cookie))
+            return new Probe(true, cookie, uid, plan, isPro, "ok");
+        var fromSettings = CookieValue(settingsSession, "session");
+        if (!string.IsNullOrEmpty(fromSettings))
+            return new Probe(true, fromSettings, uid, plan, isPro, "ok");
+        if (TryCookies(out var jwt) && !string.IsNullOrEmpty(jwt))
+            return new Probe(true, jwt, uid, plan, isPro, "ok");
         if (TryElectronLocalStorage(out var lsBearer) && !string.IsNullOrEmpty(lsBearer))
             return new Probe(true, lsBearer, uid, plan, isPro, "ok");
         if (TrySafeStorage(out var safeBearer) && !string.IsNullOrEmpty(safeBearer))
@@ -34,15 +40,10 @@ internal static class WorkBuddyAuth
             "本机没读到登录态，可在设置里先藏掉这张卡");
     }
 
-    /// <summary>积分接口要的是网站 session Cookie：本机 Cookie 库 → 设置 → 本机 JWT。</summary>
+    /// <summary>积分接口要的是网站 session Cookie：与 <see cref="Read"/> 同一份。</summary>
     public static string? ResolveQuotaSession(string? settingsRaw)
     {
-        if (TryNamedCookie("session", out var local) && !string.IsNullOrEmpty(local))
-            return local;
-        var settings = CookieValue(settingsRaw, "session");
-        if (!string.IsNullOrEmpty(settings))
-            return settings;
-        var probe = Read();
+        var probe = Read(settingsRaw);
         return string.IsNullOrEmpty(probe.Bearer) ? null : probe.Bearer;
     }
 
