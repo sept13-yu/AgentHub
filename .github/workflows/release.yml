@@ -36,6 +36,14 @@ jobs:
         shell: pwsh
         run: dotnet tool install --global vpk --version 1.2.0
 
+      # 重发同版本时必须先删旧 Release，否则 download 会把本版当基线，旧 zip 也会留着。
+      - name: 清掉本 tag 的旧 Release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: gh release delete "${env:GITHUB_REF_NAME}" --yes
+
       - name: 拉取上一版（给增量包用，首发允许失败）
         continue-on-error: true
         shell: pwsh
@@ -51,16 +59,20 @@ jobs:
             -p dist/win-x64 -e AgentHub.exe --icon src/AgentHub/assets/agenthub.ico -o dist/Releases
           $setup = Join-Path dist/Releases 'AgentHub-win-Setup.exe'
           if (-not (Test-Path -LiteralPath $setup)) { throw "vpk 没有打出安装包: $setup" }
-          Copy-Item -LiteralPath $setup -Destination (Join-Path dist "AgentHub-Setup-$ver-win-x64.exe") -Force
+          $upload = 'dist/github-assets'
+          New-Item -ItemType Directory -Force $upload | Out-Null
+          Copy-Item -LiteralPath $setup -Destination (Join-Path $upload "AgentHub-Setup-$ver-win-x64.exe")
+          Get-ChildItem -LiteralPath dist/Releases -Filter "AgentHub-$ver-*.nupkg" |
+            Copy-Item -Destination $upload
+          foreach ($name in @('releases.win.json', 'assets.win.json', 'RELEASES')) {
+            $src = Join-Path dist/Releases $name
+            if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $upload }
+          }
+          Get-ChildItem -LiteralPath $upload | ForEach-Object { Write-Host $_.Name }
 
-      # 用户只下带版本号的安装包。nupkg / releases.win.json 给托盘增量更新，不是第二套安装包。
+      # 用户只下带版本号的安装包。nupkg / json 给托盘增量更新，不是第二套安装包。
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/AgentHub-Setup-*-win-x64.exe
-            dist/Releases/*.nupkg
-            dist/Releases/releases.win.json
-            dist/Releases/assets.win.json
-            dist/Releases/RELEASES
+          files: dist/github-assets/*
           generate_release_notes: true
