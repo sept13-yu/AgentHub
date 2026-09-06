@@ -117,6 +117,7 @@ public static class UsageEndpoints
                 autostartActual = AutostartManager.IsEnabled(),
                 petRunning = petIsRunning?.Invoke() ?? false,
                 configPath = AgentHubConfig.ConfigPath,
+                canUninstall = VelopackInstall.CanUninstall(),
             });
         });
 
@@ -138,6 +139,20 @@ public static class UsageEndpoints
             return selected is null
                 ? Results.Json(new { cancelled = true })
                 : Results.Json(new { path = DocsSettings.NormalizeLibraryRoot(selected) });
+        });
+
+        app.MapPost("/api/settings/uninstall", (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            if (!VelopackInstall.CanUninstall())
+                return Results.Json(new { error = "当前不是安装版，无法卸载" }, statusCode: 400);
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(400);
+                VelopackInstall.TryStartUninstall(out _);
+            });
+            return Results.Json(new { ok = true });
         });
 
         app.MapPost("/api/settings/open-config", (HttpContext ctx) =>

@@ -267,10 +267,66 @@ public sealed class AgentHubConfig
 
     public static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AgentHub");
-    public static string LocalDataDir => Path.Combine(
+    /// <summary>Velopack 安装根。Setup 只要看到这个目录非空就弹「已安装」。</summary>
+    public static string InstallDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentHub");
+    /// <summary>本机缓存/技能库。必须在安装目录外，否则卸完无法重装。</summary>
+    public static string LocalDataDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AgentHub.Local");
     public static string ConfigPath => Path.Combine(Dir, "config.json");
     public static string TokensDbPath => Path.Combine(Dir, "tokens.db");
+
+    private static readonly string[] InstallDirUserDataNames =
+    [
+        "WebView2",
+        "WebView2Pet",
+        "pet-placement.json",
+        "SkillStore",
+        "skills-state.json",
+        "SkillStaging",
+        "SkillBackups",
+        "AgentRuleBackups",
+        "agent-rules-state.json",
+        "agent-rules-transaction.json",
+    ];
+
+    /// <summary>把误写进安装目录的用户数据搬到 LocalDataDir，让卸载能删干净。</summary>
+    public static void RelocateLocalDataFromInstallDir()
+    {
+        var install = InstallDir;
+        var destRoot = LocalDataDir;
+        if (!Directory.Exists(install)) return;
+        if (string.Equals(
+                Path.GetFullPath(install).TrimEnd(Path.DirectorySeparatorChar),
+                Path.GetFullPath(destRoot).TrimEnd(Path.DirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase))
+            return;
+
+        foreach (var name in InstallDirUserDataNames)
+        {
+            var src = Path.Combine(install, name);
+            var dest = Path.Combine(destRoot, name);
+            try
+            {
+                if (Directory.Exists(src))
+                {
+                    if (Directory.Exists(dest) || File.Exists(dest)) continue;
+                    Directory.CreateDirectory(destRoot);
+                    Directory.Move(src, dest);
+                }
+                else if (File.Exists(src))
+                {
+                    if (File.Exists(dest) || Directory.Exists(dest)) continue;
+                    Directory.CreateDirectory(destRoot);
+                    File.Move(src, dest);
+                }
+            }
+            catch (Exception)
+            {
+                // 占用时下次启动再搬，不能挡启动
+            }
+        }
+    }
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {

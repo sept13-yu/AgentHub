@@ -47,6 +47,7 @@ interface SettingsPayload {
   }
   autostartActual: boolean
   configPath: string
+  canUninstall?: boolean
 }
 
 const loaded = ref(false)
@@ -55,6 +56,9 @@ const saving = ref(false)
 const activeSection = ref('general')
 const snapshot = ref('')
 const configPath = ref('')
+const canUninstall = ref(false)
+const uninstallShow = ref(false)
+const uninstalling = ref(false)
 
 const f = reactive({
   relayPanelBaseUrl: '',
@@ -138,6 +142,7 @@ function applyLoaded(s: SettingsPayload) {
   f.relayKeySet = s.credentials.relayKeySet
   f.workbuddySessionSet = !!s.credentials.workbuddySessionSet
   configPath.value = s.configPath
+  canUninstall.value = !!s.canUninstall
   snapshot.value = snapOf()
 }
 
@@ -253,6 +258,18 @@ async function openConfig() {
   }
 }
 
+async function uninstallApp() {
+  if (readonly || uninstalling.value) return
+  uninstallShow.value = false
+  uninstalling.value = true
+  try {
+    await post('/api/settings/uninstall')
+  } catch (e) {
+    uninstalling.value = false
+    message.error(e instanceof Error ? e.message : '卸载失败')
+  }
+}
+
 function discard() {
   if (!snapshot.value) return
   Object.assign(f, JSON.parse(snapshot.value) as typeof f)
@@ -361,6 +378,17 @@ onUnmounted(() => {
             <n-button type="button" :disabled="readonly" @click="openConfig">
               <template #icon><n-icon><FileCog :size="16" :stroke-width="1.8" /></n-icon></template>
               打开配置文件
+            </n-button>
+          </div>
+        </div>
+        <div v-if="canUninstall" class="row">
+          <div class="meta">
+            <span class="lbl">卸载</span>
+            <span class="hint">删除程序文件；配置和缓存仍留在本机用户目录</span>
+          </div>
+          <div class="ctrl">
+            <n-button type="button" :disabled="readonly || uninstalling" @click="uninstallShow = true">
+              卸载 AgentHub
             </n-button>
           </div>
         </div>
@@ -543,6 +571,13 @@ onUnmounted(() => {
     ok-text="离开"
     @update:show="(on: boolean) => { if (!on) leaveCancel(); else leaveShow = true }"
     @confirm="leaveOk"
+  />
+  <AhConfirm
+    :show="uninstallShow"
+    text="确定卸载 AgentHub？程序文件会删掉，配置和缓存仍留在本机用户目录。"
+    ok-text="卸载"
+    @update:show="(on: boolean) => { uninstallShow = on }"
+    @confirm="uninstallApp"
   />
 </template>
 

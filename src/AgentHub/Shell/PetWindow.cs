@@ -200,9 +200,7 @@ internal sealed class PetWindow : Window
         if (_coreReady) return;
         try
         {
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "AgentHub", "WebView2Pet");
+            var userDataFolder = Path.Combine(AgentHubConfig.LocalDataDir, "WebView2Pet");
             Directory.CreateDirectory(userDataFolder);
             Environment.SetEnvironmentVariable("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "0");
 
@@ -464,8 +462,7 @@ internal sealed class PetWindow : Window
     }
 
     private static readonly string PlacementPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "AgentHub", "pet-placement.json");
+        AgentHubConfig.LocalDataDir, "pet-placement.json");
 
     private void RestorePlacement()
     {

@@ -47,10 +47,7 @@ public partial class MainWindow : Window
         {
             await _web.Ready;   // 先等服务监听就绪，避免 WebView2 首帧吃到连接拒绝
 
-            // 用户数据固定放 %LOCALAPPDATA%\AgentHub，不在仓库目录旁生成缓存
-            var dataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "AgentHub", "WebView2");
+            var dataFolder = Path.Combine(AgentHubConfig.LocalDataDir, "WebView2");
             var env = await CoreWebView2Environment.CreateAsync(null, dataFolder);
             await Web.EnsureCoreWebView2Async(env);
 

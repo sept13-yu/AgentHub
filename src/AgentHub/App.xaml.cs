@@ -91,6 +91,7 @@ public partial class App : Application
         }
         _guard.Activated += () => Dispatcher.Invoke(ShowMainWindow);
 
+        AgentHubConfig.RelocateLocalDataFromInstallDir();
         _config = AgentHubConfig.Load();
         PriceSyncService.TryLoadCache();
         PriceSyncService.OnBaselineChanged = () => Dispatcher.BeginInvoke(RequestDashboardRefresh);
@@ -157,6 +158,7 @@ public partial class App : Application
         SyncNow = SyncNow,
         CheckUpdates = () => System.Threading.Tasks.Task.Run(() => CheckForUpdatesAsync(promptIfNone: true)),
         DownloadAndRestart = () => System.Threading.Tasks.Task.Run(DownloadAndRestartAsync),
+        Uninstall = RequestUninstall,
     };
 
     /// <summary>托盘 / 宠物「立即同步」：走同一把 ScanAll，扫完推宠物并派发页面刷新。</summary>
@@ -273,6 +275,24 @@ public partial class App : Application
         {
             _ = Dispatcher.BeginInvoke(() => _tray?.Notify("更新失败：" + ex.Message));
         }
+    }
+
+    private void RequestUninstall()
+    {
+        if (!VelopackInstall.CanUninstall())
+        {
+            MessageBox.Show(
+                "当前不是安装版，没有卸载程序。调试运行请直接关掉进程。",
+                "AgentHub", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var ok = MessageBox.Show(
+            "确定卸载 AgentHub？程序文件会删掉，配置和缓存仍留在本机用户目录。",
+            "卸载 AgentHub", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (ok != MessageBoxResult.Yes) return;
+        if (!VelopackInstall.TryStartUninstall(out var error))
+            MessageBox.Show(error ?? "卸载失败。", "AgentHub", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     /// <summary>WebView 初始化失败时真正退出，避免空窗藏进托盘后互斥锁把二次启动静默吃掉。</summary>
