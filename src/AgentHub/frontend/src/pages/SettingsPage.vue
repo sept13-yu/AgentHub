@@ -351,13 +351,13 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div class="row row--fill">
+        <div class="row">
           <div class="meta">
             <span class="lbl">程序配置</span>
             <span class="hint">高级选项可直接编辑，修改后重启 AgentHub 生效</span>
             <span class="hint path-text" :title="configPath">{{ configPath }}</span>
           </div>
-          <div class="inline-actions">
+          <div class="ctrl">
             <n-button type="button" :disabled="readonly" @click="openConfig">
               <template #icon><n-icon><FileCog :size="16" :stroke-width="1.8" /></n-icon></template>
               打开配置文件
@@ -443,7 +443,7 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <label class="lbl" for="s-cost">成本估算</label>
-            <span class="hint">开启后，仪表盘总量旁显示估算金额；价格表需自行维护</span>
+            <span class="hint">开启后，仪表盘总量旁显示估算金额；价格表统一维护</span>
           </div>
           <div class="ctrl"><n-switch id="s-cost" :disabled="readonly" v-model:value="f.costEstimate" /></div>
         </div>
@@ -605,7 +605,7 @@ onUnmounted(() => {
 
 .row {
   display: grid;
-  grid-template-columns: minmax(168px, 240px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--sp-3) var(--sp-6);
   align-items: center;
   min-height: var(--h-row);
@@ -656,7 +656,6 @@ onUnmounted(() => {
 .ctrl--field { grid-template-columns: minmax(0, 1fr); }
 .ctrl--secret { grid-template-columns: minmax(0, 1fr) auto; }
 .row--fill :deep(.n-input) { width: 100%; }
-.inline-actions { display: flex; justify-content: flex-start; }
 .path-text {
   min-width: 0;
   overflow: hidden;
