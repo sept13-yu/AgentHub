@@ -52,6 +52,27 @@ public static class PriceSyncService
     /// <summary>Baseline 实际变化后通知壳层补刷仪表盘。Core 不引用 App，由 App 挂回调。</summary>
     public static Action? OnBaselineChanged;
 
+    private static string _source = "builtin";
+    private static bool? _lastFetchOk;
+    private static DateTimeOffset? _lastFetchAt;
+    private static string? _lastFetchError;
+
+    public static object Status()
+    {
+        lock (Gate)
+        {
+            return new
+            {
+                source = _source,
+                lastFetchOk = _lastFetchOk,
+                lastFetchAt = _lastFetchAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm"),
+                lastFetchError = _lastFetchError,
+                hasDiskCache = File.Exists(CachePath),
+                cachePath = CachePath,
+            };
+        }
+    }
+
     private static HttpClient CreateHttp()
     {
         var http = new HttpClient(new HttpClientHandler { UseProxy = true })
@@ -70,6 +91,7 @@ public static class PriceSyncService
             var json = File.ReadAllText(CachePath);
             if (!TryParse(json, out var rows)) return;
             Baseline = rows;
+            lock (Gate) _source = "cache";
         }
         catch (Exception)
         {
@@ -82,7 +104,7 @@ public static class PriceSyncService
         _ = Task.Run(async () =>
         {
             try { await RefreshAsync().ConfigureAwait(false); }
-            catch (Exception) { /* 静默：不阻塞刷新、不弹错 */ }
+            catch (Exception ex) { MarkFetch(false, ex.GetType().Name); }
         });
     }
 
@@ -103,16 +125,37 @@ public static class PriceSyncService
     private static async Task RefreshAsync()
     {
         using var resp = await Http.GetAsync(RemoteUrl).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode) return;
+        if (!resp.IsSuccessStatusCode)
+        {
+            MarkFetch(false, "HTTP " + (int)resp.StatusCode);
+            return;
+        }
         var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
-        if (!TryParse(json, out var rows)) return;
+        if (!TryParse(json, out var rows))
+        {
+            MarkFetch(false, "价格表无法解析");
+            return;
+        }
 
-        var previous = Baseline;
-        if (SameTable(previous, rows)) return;
-        Baseline = rows;
         WriteCache(json);
+        var previous = Baseline;
+        var changed = !SameTable(previous, rows);
+        if (changed) Baseline = rows;
+        MarkFetch(true, null, "remote");
+        if (!changed) return;
         try { OnBaselineChanged?.Invoke(); }
         catch (Exception) { /* 壳层回调失败不影响缓存 */ }
+    }
+
+    private static void MarkFetch(bool ok, string? error, string? source = null)
+    {
+        lock (Gate)
+        {
+            _lastFetchOk = ok;
+            _lastFetchAt = DateTimeOffset.Now;
+            _lastFetchError = error;
+            if (source is not null) _source = source;
+        }
     }
 
     private static bool TryParse(string json, out IReadOnlyList<PriceRow> rows)

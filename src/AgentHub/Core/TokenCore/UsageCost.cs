@@ -40,7 +40,7 @@ public static class UsageCost
             }
             sum += row.Input / 1_000_000d * unitIn + row.Output / 1_000_000d * unitOut;
         }
-        if (!any) return (null, null, null);
+        if (!any) return missed ? (null, true, "USD") : (null, null, null);
         // 结果统一折成 USD：前端只认 $ / ¥ 两个符号
         return (sum, missed, "USD");
     }

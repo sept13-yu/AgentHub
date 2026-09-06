@@ -20,6 +20,15 @@ const message = useMessage()
 const pageLoading = inject<Ref<boolean>>('page-loading')
 const readonly = !WRITABLE
 
+interface PriceSyncInfo {
+  source?: string
+  lastFetchOk?: boolean | null
+  lastFetchAt?: string | null
+  lastFetchError?: string | null
+  hasDiskCache?: boolean
+  cachePath?: string
+}
+
 interface SettingsPayload {
   app: {
     petEnabled: boolean
@@ -27,6 +36,7 @@ interface SettingsPayload {
   }
   dashboard: {
     costEstimate: boolean
+    priceSync?: PriceSyncInfo
     tokenUnit?: string
     scanIntervalMinutes: number
     showQuotaDeepSeek: boolean
@@ -57,6 +67,7 @@ const activeSection = ref('general')
 const snapshot = ref('')
 const configPath = ref('')
 const canUninstall = ref(false)
+const priceSync = ref<PriceSyncInfo | null>(null)
 const uninstallShow = ref(false)
 const uninstalling = ref(false)
 
@@ -143,7 +154,22 @@ function applyLoaded(s: SettingsPayload) {
   f.workbuddySessionSet = !!s.credentials.workbuddySessionSet
   configPath.value = s.configPath
   canUninstall.value = !!s.canUninstall
+  priceSync.value = s.dashboard.priceSync ?? null
   snapshot.value = snapOf()
+}
+
+function priceSyncHint(): string {
+  const s = priceSync.value
+  if (!s) return '启动后会拉 GitHub 仓库根的价格表；失败则用内置表'
+  if (s.source === 'remote')
+    return s.lastFetchAt ? `已从 GitHub 拉取 · ${s.lastFetchAt}` : '已从 GitHub 拉取'
+  if (s.source === 'cache')
+    return s.lastFetchAt
+      ? `用上次拉到的本地副本 · 上次拉取 ${s.lastFetchAt}`
+      : '用上次拉到的本地副本'
+  if (s.lastFetchOk === false)
+    return s.lastFetchError ? `用内置表 · 拉取失败：${s.lastFetchError}` : '用内置表 · 拉取失败'
+  return '用内置表 · 尚未拉到 GitHub'
 }
 
 async function load() {
@@ -471,7 +497,7 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <label class="lbl" for="s-cost">成本估算</label>
-            <span class="hint">开启后，仪表盘总量旁显示估算金额；价格表统一维护</span>
+            <span class="hint">只算输入/输出，不算缓存。{{ priceSyncHint() }}</span>
           </div>
           <div class="ctrl"><n-switch id="s-cost" :disabled="readonly" v-model:value="f.costEstimate" /></div>
         </div>

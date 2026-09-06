@@ -159,11 +159,15 @@ function readDelta(tokens: number, prevRaw: unknown, vs: string): UsageView['del
 }
 
 function readCost(total: Record<string, unknown>): UsageView['cost'] {
-  if (total.cost == null) return null
+  if (total.cost == null)
+    return total.costPartial === true ? { text: '无报价' } : null
   const cost = num(total.cost)
   const currency = str(total.currency) || 'CNY'
   const symbol = currency === 'USD' ? '$' : '¥'
-  return { text: symbol + cost.toFixed(2) }
+  if (cost === 0 && num(total.tokens) > 0)
+    return { text: symbol + '0.00（缓存不计价）' }
+  const text = symbol + cost.toFixed(2)
+  return { text: total.costPartial === true ? text + ' · 部分无报价' : text }
 }
 
 function pctShares(values: number[]): number[] {

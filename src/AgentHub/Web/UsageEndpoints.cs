@@ -99,6 +99,7 @@ public static class UsageEndpoints
                     quotaOrder = config.Dashboard.DeriveQuotaOrder(),
                     costCurrency = DashboardSettings.NormalizeCurrency(config.Dashboard.CostCurrency),
                     prices = PriceSyncService.Resolve(config.Dashboard.PriceOverrides),
+                    priceSync = PriceSyncService.Status(),
                 },
                 credentials = new
                 {
