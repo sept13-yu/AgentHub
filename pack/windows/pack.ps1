@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$IsccPath,
-    [switch]$ZipOnly
+    [switch]$ZipOnly,
+    [switch]$PublishOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +40,10 @@ finally { Pop-Location }
 dotnet publish $projectPath -c Release -r win-x64 --self-contained true `
     -p:PublishSingleFile=false -p:SkipFrontendBuild=true -o $publishPath
 if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
+if ($PublishOnly) {
+    Write-Host "Published: $publishPath"
+    return
+}
 
 $zipPath = Join-Path $distPath "AgentHub-$version-win-x64.zip"
 if (Test-Path -LiteralPath $zipPath) { Remove-Item -LiteralPath $zipPath -Force }
