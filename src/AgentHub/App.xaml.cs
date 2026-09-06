@@ -10,9 +10,6 @@ using AgentHub.Core.TokenCore;
 using AgentHub.Shell;
 using AgentHub.Web;
 using Microsoft.Web.WebView2.Core;
-using Velopack;
-using Velopack.Exceptions;
-using Velopack.Sources;
 // UseWindowsForms 会引入 System.Windows.Forms 全局 using，用别名消解与 WPF 的同名冲突
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
@@ -148,7 +145,6 @@ public partial class App : Application
                 Log("[tokencore] 首扫失败: " + ex.GetType().Name + ": " + ex.Message);
             }
         });
-        System.Threading.Tasks.Task.Run(() => CheckForUpdatesAsync(promptIfNone: false));
     }
 
     private TrayShellActions BuildTrayActions() => new()
@@ -156,9 +152,6 @@ public partial class App : Application
         ShowMain = ShowMainWindow,
         Exit = ExitApp,
         SyncNow = SyncNow,
-        CheckUpdates = () => System.Threading.Tasks.Task.Run(() => CheckForUpdatesAsync(promptIfNone: true)),
-        DownloadAndRestart = () => System.Threading.Tasks.Task.Run(DownloadAndRestartAsync),
-        Uninstall = RequestUninstall,
     };
 
     /// <summary>托盘 / 宠物「立即同步」：走同一把 ScanAll，扫完推宠物并派发页面刷新。</summary>
@@ -221,78 +214,6 @@ public partial class App : Application
         {
             return false;
         }
-    }
-
-    private static UpdateManager CreateUpdateManager() =>
-        new(new GithubSource("https://github.com/sept13-yu/AgentHub", accessToken: null, prerelease: false));
-
-    private async Task CheckForUpdatesAsync(bool promptIfNone)
-    {
-        try
-        {
-            var upd = await CreateUpdateManager().CheckForUpdatesAsync().ConfigureAwait(false);
-            _ = Dispatcher.BeginInvoke(() =>
-            {
-                if (upd is null)
-                {
-                    if (promptIfNone) _tray?.Notify("已是最新版本。");
-                    return;
-                }
-                _tray?.Notify($"发现新版本 {upd.TargetFullRelease.Version}。右键选「下载并重启更新」。");
-            });
-        }
-        catch (NotInstalledException)
-        {
-            if (promptIfNone)
-                _ = Dispatcher.BeginInvoke(() => _tray?.Notify("当前不是 Velopack 安装，无法在线更新。"));
-        }
-        catch (Exception)
-        {
-            if (promptIfNone)
-                _ = Dispatcher.BeginInvoke(() => _tray?.Notify("检查更新失败。"));
-        }
-    }
-
-    private async Task DownloadAndRestartAsync()
-    {
-        try
-        {
-            var mgr = CreateUpdateManager();
-            var upd = await mgr.CheckForUpdatesAsync().ConfigureAwait(false);
-            if (upd is null)
-            {
-                _ = Dispatcher.BeginInvoke(() => _tray?.Notify("已是最新版本。"));
-                return;
-            }
-            await mgr.DownloadUpdatesAsync(upd).ConfigureAwait(false);
-            mgr.ApplyUpdatesAndRestart(upd);
-        }
-        catch (NotInstalledException)
-        {
-            _ = Dispatcher.BeginInvoke(() => _tray?.Notify("当前不是 Velopack 安装，无法在线更新。"));
-        }
-        catch (Exception ex)
-        {
-            _ = Dispatcher.BeginInvoke(() => _tray?.Notify("更新失败：" + ex.Message));
-        }
-    }
-
-    private void RequestUninstall()
-    {
-        if (!VelopackInstall.CanUninstall())
-        {
-            MessageBox.Show(
-                "当前不是安装版，没有卸载程序。调试运行请直接关掉进程。",
-                "AgentHub", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        var ok = MessageBox.Show(
-            "确定卸载 AgentHub？程序文件会删掉，配置和缓存仍留在本机用户目录。",
-            "卸载 AgentHub", MessageBoxButton.YesNo, MessageBoxImage.Question);
-        if (ok != MessageBoxResult.Yes) return;
-        if (!VelopackInstall.TryStartUninstall(out var error))
-            MessageBox.Show(error ?? "卸载失败。", "AgentHub", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     /// <summary>WebView 初始化失败时真正退出，避免空窗藏进托盘后互斥锁把二次启动静默吃掉。</summary>

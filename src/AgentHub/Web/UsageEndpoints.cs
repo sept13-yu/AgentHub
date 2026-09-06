@@ -70,6 +70,7 @@ public static class UsageEndpoints
             var relayRefresh = Dpapi.Unprotect(config.Credentials.RelayPanelRefreshToken);
             var workbuddySession = Dpapi.Unprotect(config.Credentials.WorkBuddySession);
             var traeSession = Dpapi.Unprotect(config.Credentials.TraeSession);
+            var update = AppUpdate.Snapshot();
             return Results.Json(new
             {
                 app = new
@@ -118,7 +119,8 @@ public static class UsageEndpoints
                 autostartActual = AutostartManager.IsEnabled(),
                 petRunning = petIsRunning?.Invoke() ?? false,
                 configPath = AgentHubConfig.ConfigPath,
-                canUninstall = VelopackInstall.CanUninstall(),
+                appVersion = update.current,
+                updateInstalled = update.installed,
             });
         });
 
@@ -142,16 +144,32 @@ public static class UsageEndpoints
                 : Results.Json(new { path = DocsSettings.NormalizeLibraryRoot(selected) });
         });
 
-        app.MapPost("/api/settings/uninstall", (HttpContext ctx) =>
+        app.MapGet("/api/update", async () => Results.Json(await AppUpdate.CheckAsync()));
+
+        app.MapPost("/api/settings/apply-update", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx))
                 return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
-            if (!VelopackInstall.CanUninstall())
-                return Results.Json(new { error = "当前不是安装版，无法卸载" }, statusCode: 400);
-            _ = Task.Run(async () =>
+            return Results.Json(await AppUpdate.ApplyAsync());
+        });
+
+        app.MapPost("/api/settings/open-release", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            var url = GithubApiUpdateSource.RepoUrl + "/releases/latest";
+            try
             {
-                await Task.Delay(400);
-                VelopackInstall.TryStartUninstall(out _);
+                using var body = await JsonDocument.ParseAsync(ctx.Request.Body);
+                if (body.RootElement.TryGetProperty("url", out var p) && p.ValueKind == JsonValueKind.String)
+                    url = p.GetString() ?? url;
+            }
+            catch (JsonException) { }
+            if (!AppUpdate.IsReleasePage(url))
+                return Results.Json(new { error = "链接无效" }, statusCode: 400);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url)
+            {
+                UseShellExecute = true,
             });
             return Results.Json(new { ok = true });
         });

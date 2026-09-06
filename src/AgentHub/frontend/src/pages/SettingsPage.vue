@@ -57,7 +57,20 @@ interface SettingsPayload {
   }
   autostartActual: boolean
   configPath: string
-  canUninstall?: boolean
+  appVersion?: string
+  updateInstalled?: boolean
+}
+
+interface AppUpdateStatus {
+  installed?: boolean
+  busy?: boolean
+  canApply?: boolean
+  needsInstaller?: boolean
+  current?: string
+  latest?: string
+  releaseUrl?: string
+  error?: string
+  message?: string
 }
 
 const loaded = ref(false)
@@ -66,10 +79,16 @@ const saving = ref(false)
 const activeSection = ref('general')
 const snapshot = ref('')
 const configPath = ref('')
-const canUninstall = ref(false)
+const appVersion = ref('')
+const updateInstalled = ref(false)
+const updateLatest = ref('')
+const updateHint = ref('')
+const updateBusy = ref(false)
+const updateCanApply = ref(false)
+const releaseUrl = ref('')
+const applyShow = ref(false)
+const downloadShow = ref(false)
 const priceSync = ref<PriceSyncInfo | null>(null)
-const uninstallShow = ref(false)
-const uninstalling = ref(false)
 
 const f = reactive({
   relayPanelBaseUrl: '',
@@ -153,7 +172,8 @@ function applyLoaded(s: SettingsPayload) {
   f.relayKeySet = s.credentials.relayKeySet
   f.workbuddySessionSet = !!s.credentials.workbuddySessionSet
   configPath.value = s.configPath
-  canUninstall.value = !!s.canUninstall
+  appVersion.value = s.appVersion || ''
+  updateInstalled.value = !!s.updateInstalled
   priceSync.value = s.dashboard.priceSync ?? null
   snapshot.value = snapOf()
 }
@@ -284,15 +304,68 @@ async function openConfig() {
   }
 }
 
-async function uninstallApp() {
-  if (readonly || uninstalling.value) return
-  uninstallShow.value = false
-  uninstalling.value = true
+function applyUpdateStatus(r: AppUpdateStatus) {
+  if (r.current) appVersion.value = r.current
+  if (r.installed != null) updateInstalled.value = r.installed
+  updateLatest.value = r.latest || ''
+  updateCanApply.value = !!r.canApply
+  releaseUrl.value = r.releaseUrl || ''
+  const text = r.error || r.message || ''
+  updateHint.value = text
+  return text
+}
+
+async function checkUpdate() {
+  if (updateBusy.value) return
+  updateBusy.value = true
+  updateHint.value = '正在检查…'
   try {
-    await post('/api/settings/uninstall')
+    const r = await get<AppUpdateStatus>('/api/update')
+    const text = applyUpdateStatus(r)
+    if (r.error) {
+      message.error(text || '检查更新失败')
+      return
+    }
+    if (r.needsInstaller && r.latest) downloadShow.value = true
   } catch (e) {
-    uninstalling.value = false
-    message.error(e instanceof Error ? e.message : '卸载失败')
+    const text = e instanceof Error ? e.message : '检查更新失败'
+    updateHint.value = text
+    message.error(text)
+  } finally {
+    updateBusy.value = false
+  }
+}
+
+async function openReleasePage() {
+  downloadShow.value = false
+  const url = releaseUrl.value || 'https://github.com/sept13-yu/AgentHub/releases/latest'
+  try {
+    if (WRITABLE) await post('/api/settings/open-release', { url })
+    else window.open(url, '_blank', 'noopener')
+  } catch {
+    window.open(url, '_blank', 'noopener')
+  }
+}
+
+async function applyUpdate() {
+  if (readonly || updateBusy.value) return
+  applyShow.value = false
+  updateBusy.value = true
+  updateHint.value = '正在下载…'
+  try {
+    const r = await post<AppUpdateStatus>('/api/settings/apply-update')
+    const text = applyUpdateStatus(r)
+    if (r.needsInstaller && r.latest) {
+      downloadShow.value = true
+      return
+    }
+    if (r.error) message.error(text || '更新失败')
+    else message.success(text || '正在重启')
+  } catch {
+    updateHint.value = '正在重启以完成更新'
+    message.success('正在重启以完成更新')
+  } finally {
+    updateBusy.value = false
   }
 }
 
@@ -407,14 +480,17 @@ onUnmounted(() => {
             </n-button>
           </div>
         </div>
-        <div v-if="canUninstall" class="row">
+        <div class="row">
           <div class="meta">
-            <span class="lbl">卸载</span>
-            <span class="hint">删除程序文件；配置和缓存仍留在本机用户目录</span>
+            <span class="lbl">版本与更新</span>
+            <span class="hint">{{ updateHint || (appVersion ? `当前 ${appVersion}` : '检查 GitHub 上的最新版本') }}</span>
           </div>
-          <div class="ctrl">
-            <n-button type="button" :disabled="readonly || uninstalling" @click="uninstallShow = true">
-              卸载 AgentHub
+          <div class="ctrl ctrl--actions">
+            <n-button type="button" :disabled="updateBusy" @click="checkUpdate">
+              检查更新
+            </n-button>
+            <n-button type="button" :disabled="readonly || updateBusy || !updateInstalled || (updateLatest !== '' && !updateCanApply)" @click="applyShow = true">
+              立即更新并重启
             </n-button>
           </div>
         </div>
@@ -599,11 +675,20 @@ onUnmounted(() => {
     @confirm="leaveOk"
   />
   <AhConfirm
-    :show="uninstallShow"
-    text="确定卸载 AgentHub？程序文件会删掉，配置和缓存仍留在本机用户目录。"
-    ok-text="卸载"
-    @update:show="(on: boolean) => { uninstallShow = on }"
-    @confirm="uninstallApp"
+    :show="applyShow"
+    :text="updateLatest ? `下载 ${updateLatest} 并重启？` : '下载新版本并重启？'"
+    ok-text="下载并重启"
+    @update:show="(on: boolean) => { applyShow = on }"
+    @confirm="applyUpdate"
+  />
+  <AhConfirm
+    :show="downloadShow"
+    :text="updateLatest
+      ? `当前不是安装版，无法在应用内更新。最新版本 ${updateLatest}，是否打开版本页下载？`
+      : '当前不是安装版，无法在应用内更新。是否打开版本页下载？'"
+    ok-text="打开版本页"
+    @update:show="(on: boolean) => { downloadShow = on }"
+    @confirm="openReleasePage"
   />
 </template>
 
@@ -706,6 +791,7 @@ onUnmounted(() => {
   justify-content: flex-end;
   min-width: 0;
 }
+.ctrl--actions { gap: var(--sp-2); }
 .ctrl--field,
 .ctrl--secret {
   display: grid;

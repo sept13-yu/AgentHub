@@ -27,6 +27,8 @@ jobs:
           $pg = $p.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1
           $v = [string]$pg.Version
           if ($tag -ne $v) { throw "tag v$tag 与 csproj Version $v 不一致" }
+          $latest = Get-Content -Raw latest.json | ConvertFrom-Json
+          if ([string]$latest.version -ne $v) { throw "latest.json $($latest.version) 与 csproj Version $v 不一致" }
 
       - name: 发布 win-x64
         shell: pwsh
