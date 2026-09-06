@@ -36,28 +36,12 @@ jobs:
         shell: pwsh
         run: pack/windows/pack.ps1
 
-      - name: 安装 vpk
-        shell: pwsh
-        run: dotnet tool install --global vpk --version 1.2.0
-
-      - name: 拉取上一版（首发允许失败）
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          vpk download github --repoUrl https://github.com/sept13-yu/AgentHub `
-            --token ${{ secrets.GITHUB_TOKEN }} -o dist/Releases
-
-      - name: vpk pack（full + 对基 delta）
-        shell: pwsh
-        run: |
-          vpk pack -u AgentHub -v (("${env:GITHUB_REF_NAME}") -replace '^v','') `
-            -p dist/win-x64 -e AgentHub.exe --icon src/AgentHub/assets/agenthub.ico -o dist/Releases
-
+      # 只挂用户下载项：带版本号的安装包和便携 zip。
+      # Velopack 的 nupkg / Portable / Setup / RELEASES 会再变出一套同名文件，不再上传。
       - name: 发布 Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/AgentHub-*-win-x64.zip
             dist/AgentHub-Setup-*-win-x64.exe
-            dist/Releases/**
           generate_release_notes: true
