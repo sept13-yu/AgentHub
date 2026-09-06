@@ -55,33 +55,37 @@ Filename: "{tmp}\AgentHub-win-Setup.exe"; Parameters: "--silent --installto ""{a
 
 [Code]
 const
-  WebView2ClientId = '{F3017226-FE2A-4295-8F39-EF6D7A0C0F03}';
+  WebView2ClientId = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
 
-function HasWebView2In(RootKey: Integer; KeyPrefix: String): Boolean;
+function HasWebView2Pv(RootKey: Integer; KeyPath: String): Boolean;
 var
   Version: String;
 begin
-  Result := RegQueryStringValue(RootKey,
-    KeyPrefix + '\Microsoft\EdgeUpdate\Clients\' + WebView2ClientId,
-    'pv', Version) and (Version <> '') and (Version <> '0.0.0.0');
+  Result := RegQueryStringValue(RootKey, KeyPath, 'pv', Version)
+    and (Version <> '') and (Version <> '0.0.0.0');
 end;
 
 function HasWebView2: Boolean;
+var
+  Id: String;
 begin
-  Result := HasWebView2In(HKLM32, 'Software') or
-            HasWebView2In(HKLM64, 'Software') or
-            HasWebView2In(HKCU, 'Software');
+  Id := WebView2ClientId;
+  Result :=
+    HasWebView2Pv(HKLM32, 'Software\Microsoft\EdgeUpdate\Clients\' + Id) or
+    HasWebView2Pv(HKLM64, 'Software\Microsoft\EdgeUpdate\Clients\' + Id) or
+    HasWebView2Pv(HKCU, 'Software\Microsoft\EdgeUpdate\Clients\' + Id) or
+    HasWebView2Pv(HKLM32, 'Software\Microsoft\EdgeUpdate\ClientState\' + Id) or
+    HasWebView2Pv(HKLM64, 'Software\Microsoft\EdgeUpdate\ClientState\' + Id) or
+    HasWebView2Pv(HKCU, 'Software\Microsoft\EdgeUpdate\ClientState\' + Id) or
+    DirExists(ExpandConstant('{pf32}\Microsoft\EdgeWebView\Application')) or
+    DirExists(ExpandConstant('{localappdata}\Microsoft\EdgeWebView\Application'));
 end;
 
 function InitializeSetup: Boolean;
-var
-  ErrorCode: Integer;
 begin
-  Result := HasWebView2;
-  if not Result then
-  begin
-    MsgBox('AgentHub 需要 Microsoft Edge WebView2 Runtime。安装程序将打开官方下载页，安装完成后请重新运行本安装包。',
-      mbError, MB_OK);
-    ShellExec('open', 'https://developer.microsoft.com/microsoft-edge/webview2/', '', '', SW_SHOWNORMAL, ewNoWait, ErrorCode);
-  end;
+  Result := True;
+  if not HasWebView2 then
+    Result := MsgBox(
+      '没检测到 Microsoft Edge WebView2 Runtime。若你确定已经装过，选「是」继续安装即可。',
+      mbConfirmation, MB_YESNO) = IDYES;
 end;
