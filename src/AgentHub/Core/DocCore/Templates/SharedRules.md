@@ -1,6 +1,7 @@
-# 各家共用的规则
+<!-- AgentHub 管理的共用规则母本：本文件是各家 Agent 共用规则的唯一母本，正文与尾部 extra 差异块由 AgentHub 渲染进各家本机规则文件；改规则改这里，再到 AgentHub 规则页点「更新」。 -->
+- 当前 `<Agent>` 是 `{{slug}}`
 
-各家自己的规则文件只写一句：打开并遵守这份。改这里一处，所有 Agent 都生效。
+# 全局共用规则（各家 Agent 共用）
 
 `%USERPROFILE%` 就是你的用户目录。Skill 原文在 `%USERPROFILE%\.agents\skills\`，不要改 Skill 正文。凡 Skill 写死的仓库相对路径，只当「写哪类文档」，最终目录以本文件为准。
 
@@ -54,3 +55,10 @@
 - `doc` / `pdf` / `spreadsheet` 交付物：同上项目目录；中间文件放系统临时目录，用完即删。
 - `playwright` 的 `$CODEX_HOME/skills/playwright/…` → `%USERPROFILE%\.agents\skills\playwright\scripts\playwright_cli.sh`
 - 未安装的 `superpowers:*`、`executing-plans`、`using-git-worktrees`、`/tdd`：跳过引用，本会话按步骤做。
+
+<!-- extra:cursor -->
+- 展示计划用 Canvas（其余各家用普通 Markdown）
+<!-- extra:trae -->
+- 产品名 TraeWork CN / TRAE SOLO CN，落盘目录写 `Trae`
+<!-- extra:workbuddy -->
+- 自动生成的记忆文件夹 `.workbuddy`（含 memory/）只允许放在 `{{libraryRoot}}\SandBox\WorkBuddy` 下，不落在业务仓库

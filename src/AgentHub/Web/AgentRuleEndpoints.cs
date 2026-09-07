@@ -60,57 +60,6 @@ public static class AgentRuleEndpoints
             }
         });
 
-        app.MapGet("/api/agent-rules/pointer-template", () =>
-            Results.Json(ToPointerPayload(service.ReadPointerTemplate())));
-
-        app.MapPut("/api/agent-rules/pointer-template", async (HttpContext ctx) =>
-        {
-            if (!writeAuth(ctx))
-                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
-            try
-            {
-                using var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
-                var content = doc.RootElement.TryGetProperty("content", out var el)
-                    && el.ValueKind == JsonValueKind.String
-                    ? el.GetString() ?? ""
-                    : throw new ArgumentException("缺少 content");
-                return Results.Json(ToPointerPayload(service.WritePointerTemplate(content)));
-            }
-            catch (Exception ex)
-            {
-                return Results.Json(new { error = ex.Message }, statusCode: 400);
-            }
-        });
-
-        app.MapPost("/api/agent-rules/pointer-template/reset", (HttpContext ctx) =>
-        {
-            if (!writeAuth(ctx))
-                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
-            try
-            {
-                return Results.Json(ToPointerPayload(service.ResetPointerTemplate()));
-            }
-            catch (Exception ex)
-            {
-                return Results.Json(new { error = ex.Message }, statusCode: 400);
-            }
-        });
-
-        app.MapPost("/api/agent-rules/open-pointer-template", (HttpContext ctx) =>
-        {
-            if (!writeAuth(ctx))
-                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
-            try
-            {
-                service.OpenPointerTemplate();
-                return Results.Json(new { ok = true });
-            }
-            catch (Exception ex)
-            {
-                return Results.Json(new { error = ex.Message }, statusCode: 400);
-            }
-        });
-
         app.MapPost("/api/agent-rules/open-agent", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx))
@@ -169,16 +118,6 @@ public static class AgentRuleEndpoints
         }
     }
 
-    private static object ToPointerPayload(AgentRulesPointerTemplate tpl) => new
-    {
-        path = tpl.Path,
-        exists = tpl.Exists,
-        customized = tpl.Customized,
-        valid = tpl.Valid,
-        warnings = tpl.Warnings,
-        content = tpl.Content,
-    };
-
     private static object ToPayload(AgentRulesStatus status) => new
     {
         status.LibraryRoot,
@@ -198,12 +137,12 @@ public static class AgentRuleEndpoints
         status.HasChanges,
         status.HasConflicts,
         status.Enabled,
-        pointerTemplate = new
+        source = new
         {
-            path = status.PointerTemplate.Path,
-            customized = status.PointerTemplate.Customized,
-            valid = status.PointerTemplate.Valid,
-            warnings = status.PointerTemplate.Warnings,
+            status.Source.Exists,
+            status.Source.Valid,
+            status.Source.WillMigrate,
+            status.Source.Warnings,
         },
     };
 

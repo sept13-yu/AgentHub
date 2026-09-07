@@ -21,10 +21,11 @@ public sealed record AgentRuleItem(
     string Message,
     bool CanWrite);
 
-public sealed record PointerTemplateInfo(
-    string Path,
-    bool Customized,
+/// <summary>母本（~/.agents/AGENTS.md）源状态：WillMigrate=旧版格式待迁移；Valid=false 时各家按内置种子渲染。</summary>
+public sealed record SharedSourceInfo(
+    bool Exists,
     bool Valid,
+    bool WillMigrate,
     IReadOnlyList<string> Warnings);
 
 public sealed record AgentRulesStatus(
@@ -36,17 +37,9 @@ public sealed record AgentRulesStatus(
     bool HasChanges,
     bool HasConflicts,
     bool Enabled,
-    PointerTemplateInfo PointerTemplate);
+    SharedSourceInfo Source);
 
 public sealed record AgentRulesHub(string Path, bool Exists, bool Enabled, string Content);
-
-public sealed record AgentRulesPointerTemplate(
-    string Path,
-    bool Exists,
-    bool Customized,
-    bool Valid,
-    IReadOnlyList<string> Warnings,
-    string Content);
 
 public sealed record AgentRulesLibraryResult(string Path, bool Moved, IReadOnlyList<string> Notes);
 
