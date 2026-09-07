@@ -38,6 +38,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Core\DocCore\Templates\SharedRules.md" />
+    <EmbeddedResource Include="Core\DocCore\Templates\Pointer.md" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,10 +2,11 @@
 import { computed, inject, onMounted, onUnmounted, ref, type Ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { NButton, NIcon, NInput, NSwitch, useMessage } from 'naive-ui'
-import { ExternalLink, FolderOpen, RefreshCw, Save, X } from 'lucide-vue-next'
+import { ExternalLink, FolderOpen, RefreshCw, RotateCcw, Save, X } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import AgentMark from '../components/AgentMark.vue'
 import { get, post, put, WRITABLE } from '../api'
+import { usePageHotkeys } from '../hotkeys'
 
 const message = useMessage()
 const pageLoading = inject<Ref<boolean>>('page-loading')
@@ -21,6 +22,12 @@ interface AgentRuleItem {
   message: string
   canWrite: boolean
 }
+interface PointerTemplate {
+  path: string
+  customized: boolean
+  valid: boolean
+  warnings: string[]
+}
 interface AgentRulesStatus {
   libraryRoot: string
   libraryRootExists: boolean
@@ -28,36 +35,65 @@ interface AgentRulesStatus {
   agents: AgentRuleItem[]
   hasChanges: boolean
   enabled: boolean
+  pointerTemplate: PointerTemplate
 }
 interface HubPayload { path: string; exists: boolean; enabled: boolean; content: string }
+interface PointerPayload {
+  path: string
+  exists: boolean
+  customized: boolean
+  valid: boolean
+  warnings: string[]
+  content: string
+}
 interface ApplyResult { ok: boolean; items: { ok: boolean; message: string }[] }
 
 const loaded = ref(false)
 const loadError = ref('')
 const busy = ref(false)
+const pane = ref<'hub' | 'tpl'>('hub')
 const status = ref<AgentRulesStatus | null>(null)
 const hubPath = ref('')
 const draft = ref('')
 const snapshot = ref('')
+const tplPath = ref('')
+const tplDraft = ref('')
+const tplSnapshot = ref('')
+const tplExists = ref(false)
 const libDraft = ref('')
 const libSaved = ref('')
-const confirmKind = ref<'enable' | 'disable' | 'move' | 'leave' | 'reload' | ''>('')
+const confirmKind = ref<'enable' | 'disable' | 'move' | 'leave' | 'reload' | 'resetTpl' | ''>('')
 const pendingLib = ref('')
 let leaveResolve: ((ok: boolean) => void) | null = null
 let ignoreFocusUntil = 0
 
 const enabled = computed(() => !!status.value?.enabled)
 const dirty = computed(() => loaded.value && draft.value !== snapshot.value)
+const tplDirty = computed(() => loaded.value && tplDraft.value !== tplSnapshot.value)
+const pageDirty = computed(() => dirty.value || tplDirty.value)
 const libDirty = computed(() => loaded.value && normalizePath(libDraft.value) !== normalizePath(libSaved.value))
 const canEdit = computed(() => enabled.value && !readonly)
 const updateDisabled = computed(() => readonly || !enabled.value || busy.value || !status.value?.hasChanges)
+const pointerTemplateLabel = computed(() => {
+  const t = status.value?.pointerTemplate
+  if (!t) return ''
+  if (!t.customized) return '正在用嵌入默认，保存后写成自定义'
+  if (t.valid) return '自定义（pointer-template.md）'
+  return '自定义无效，已回退默认'
+})
+const pointerWarnings = computed(() => status.value?.pointerTemplate?.warnings ?? [])
+const pointerInvalid = computed(() => {
+  const t = status.value?.pointerTemplate
+  return !!t?.customized && !t.valid
+})
 
 const confirmText = computed(() => ({
   enable: '打开后会改各家规则，写成去读左边这份。\n\n没有共用规则就先建一份。各家文件整份覆盖，先备份。',
   disable: '关掉后删掉各家指向这份规则的内容。共用规则文件还在，各家不再自动读它。',
   move: '资料目录要改位置。把旧的 Plans、SandBox 搬过去吗？同名文件跳过，不覆盖。',
-  leave: '这份规则有未保存的修改。确定离开吗？未保存的修改将丢失。',
-  reload: '共用规则在外面改过。放弃这里的修改，按磁盘上的重读？',
+  leave: '有未保存的修改。确定离开吗？未保存的修改将丢失。',
+  reload: '文件在外面改过。放弃这里的修改，按磁盘上的重读？',
+  resetTpl: '删掉自定义注入模板，各家按嵌入默认判等。已写进各家的要再点更新。',
   '': '',
 }[confirmKind.value]))
 
@@ -67,6 +103,7 @@ const confirmOk = computed(() => ({
   move: '搬过去',
   leave: '离开',
   reload: '重读',
+  resetTpl: '恢复默认',
   '': '确定',
 }[confirmKind.value]))
 
@@ -91,22 +128,32 @@ function applyHub(hub: HubPayload) {
   snapshot.value = hub.content
 }
 
-function applyStatus(s: AgentRulesStatus) {
+function applyTpl(tpl: PointerPayload) {
+  tplPath.value = tpl.path
+  tplDraft.value = tpl.content
+  tplSnapshot.value = tpl.content
+  tplExists.value = tpl.exists
+}
+
+function applyStatus(s: AgentRulesStatus, keepLibDraft = false) {
+  const keep = keepLibDraft && libDirty.value
   status.value = s
-  libDraft.value = s.libraryRoot
   libSaved.value = s.libraryRoot
+  if (!keep) libDraft.value = s.libraryRoot
 }
 
 async function load() {
   loadError.value = ''
   setLoading(true)
   try {
-    const [st, hub] = await Promise.all([
+    const [st, hub, tpl] = await Promise.all([
       get<AgentRulesStatus>('/api/agent-rules/status'),
       get<HubPayload>('/api/agent-rules/hub'),
+      get<PointerPayload>('/api/agent-rules/pointer-template'),
     ])
     applyStatus(st)
     applyHub(hub)
+    applyTpl(tpl)
     loaded.value = true
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
@@ -188,10 +235,77 @@ function discardHub() {
   draft.value = snapshot.value
 }
 
+async function saveTpl() {
+  if (!canEdit.value || !tplDirty.value || busy.value) return
+  busy.value = true
+  try {
+    const tpl = await put<PointerPayload>('/api/agent-rules/pointer-template', { content: tplDraft.value })
+    applyTpl(tpl)
+    const st = await get<AgentRulesStatus>('/api/agent-rules/status')
+    applyStatus(st, true)
+    message.success('已保存')
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '保存失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+function discardTpl() {
+  tplDraft.value = tplSnapshot.value
+}
+
+async function runResetTpl() {
+  confirmKind.value = ''
+  busy.value = true
+  try {
+    const tpl = await post<PointerPayload>('/api/agent-rules/pointer-template/reset')
+    applyTpl(tpl)
+    const st = await get<AgentRulesStatus>('/api/agent-rules/status')
+    applyStatus(st, true)
+    message.success('已恢复默认')
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '恢复失败')
+  } finally {
+    busy.value = false
+  }
+}
+
 async function openHub() {
   if (readonly) return
   try {
     await post('/api/agent-rules/open-hub')
+    ignoreFocusUntil = Date.now() + 800
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '打开失败')
+  }
+}
+
+async function openTpl() {
+  if (readonly) return
+  try {
+    await post('/api/agent-rules/open-pointer-template')
+    ignoreFocusUntil = Date.now() + 800
+    const [st, tpl] = await Promise.all([
+      get<AgentRulesStatus>('/api/agent-rules/status'),
+      get<PointerPayload>('/api/agent-rules/pointer-template'),
+    ])
+    applyStatus(st, true)
+    if (!tplDirty.value) applyTpl(tpl)
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '打开失败')
+  }
+}
+
+function canPreview(a: AgentRuleItem) {
+  return !!a.rulePath && a.detected
+    && a.status !== 'notDetected' && a.status !== 'missing' && a.status !== 'needsFirstLaunch'
+}
+
+async function openAgent(a: AgentRuleItem) {
+  if (readonly || !canPreview(a)) return
+  try {
+    await post('/api/agent-rules/open-agent', { agentId: a.agentId })
     ignoreFocusUntil = Date.now() + 800
   } catch (e) {
     message.error(e instanceof Error ? e.message : '打开失败')
@@ -229,13 +343,16 @@ async function saveLibrary(move: boolean) {
     libDraft.value = r.path
     if (r.notes?.length) message.warning(r.notes[0])
     else message.success('资料目录已保存')
-    const [st, hub] = await Promise.all([
+    const [st, hub, tpl] = await Promise.all([
       get<AgentRulesStatus>('/api/agent-rules/status'),
       get<HubPayload>('/api/agent-rules/hub'),
+      get<PointerPayload>('/api/agent-rules/pointer-template'),
     ])
     status.value = st
     if (!dirty.value) applyHub(hub)
     else hubPath.value = hub.path
+    if (!tplDirty.value) applyTpl(tpl)
+    else tplPath.value = tpl.path
   } catch (e) {
     message.error(e instanceof Error ? e.message : '保存资料目录失败')
     libDraft.value = libSaved.value
@@ -264,6 +381,7 @@ function onConfirm() {
     confirmKind.value = ''
     void load()
   }
+  if (confirmKind.value === 'resetTpl') return void runResetTpl()
 }
 
 function onAlt() {
@@ -281,13 +399,13 @@ function onConfirmClose(show: boolean) {
 }
 
 onBeforeRouteLeave(() => {
-  if (!dirty.value) return true
+  if (!pageDirty.value) return true
   confirmKind.value = 'leave'
   return new Promise<boolean>((resolve) => { leaveResolve = resolve })
 })
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
-  if (readonly || !dirty.value) return
+  if (readonly || !pageDirty.value) return
   e.preventDefault()
   e.returnValue = ''
 }
@@ -296,15 +414,32 @@ async function onWindowFocus() {
   if (Date.now() < ignoreFocusUntil) return
   if (!loaded.value || busy.value || confirmKind.value) return
   try {
-    const hub = await get<HubPayload>('/api/agent-rules/hub')
-    if (hub.content === snapshot.value && hub.content === draft.value) return
-    if (dirty.value && hub.content !== snapshot.value) {
+    const [st, hub, tpl] = await Promise.all([
+      get<AgentRulesStatus>('/api/agent-rules/status'),
+      get<HubPayload>('/api/agent-rules/hub'),
+      get<PointerPayload>('/api/agent-rules/pointer-template'),
+    ])
+    applyStatus(st, true)
+    const hubChanged = hub.content !== snapshot.value
+    const tplChanged = tpl.content !== tplSnapshot.value
+    if ((dirty.value && hubChanged) || (tplDirty.value && tplChanged)) {
       confirmKind.value = 'reload'
       return
     }
     if (!dirty.value) applyHub(hub)
+    if (!tplDirty.value) applyTpl(tpl)
   } catch { /* 回页读盘失败保持现状 */ }
 }
+
+usePageHotkeys({
+  refresh: () => {
+    if (pageDirty.value) {
+      message.warning('有未保存的修改，先保存或放弃')
+      return
+    }
+    void load()
+  },
+})
 
 onMounted(async () => {
   await load()
@@ -318,6 +453,12 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <teleport defer to="#chrome-tabs">
+    <div class="ah-seg" role="group" aria-label="编辑内容">
+      <button type="button" :aria-pressed="pane === 'hub' ? 'true' : 'false'" @click="pane = 'hub'">共用规则</button>
+      <button type="button" :aria-pressed="pane === 'tpl' ? 'true' : 'false'" @click="pane = 'tpl'">注入模板</button>
+    </div>
+  </teleport>
   <teleport defer to="#chrome-extra">
     <label class="chrome-sw">
       <span>统一管理</span>
@@ -359,8 +500,11 @@ onUnmounted(() => {
 
     <div class="stage">
       <section class="card hub-card">
-        <div class="card-head">这份规则 <span class="hint">保存后各家都按这份</span></div>
-        <div class="card-body hub-body">
+        <div class="card-head">
+          {{ pane === 'hub' ? '这份规则' : '注入模板' }}
+          <span class="hint">{{ pane === 'hub' ? '保存后各家都按这份' : '改各家指针正文和差异行' }}</span>
+        </div>
+        <div v-show="pane === 'hub'" class="card-body hub-body">
           <p class="file-path">{{ hubPath }}</p>
           <textarea
             class="editor"
@@ -383,10 +527,39 @@ onUnmounted(() => {
             </n-button>
           </div>
         </div>
+        <div v-show="pane === 'tpl'" class="card-body hub-body">
+          <p class="file-path" :title="tplPath">{{ tplPath }}</p>
+          <p class="tpl-state" :class="{ 'is-bad': pointerInvalid }">{{ pointerTemplateLabel }}</p>
+          <p v-for="w in pointerWarnings" :key="w" class="tpl-warn">{{ w }}</p>
+          <textarea
+            class="editor"
+            spellcheck="false"
+            :disabled="!canEdit || busy"
+            v-model="tplDraft"
+          />
+          <div class="hub-acts">
+            <n-button v-if="tplExists" :disabled="!canEdit || busy" @click="confirmKind = 'resetTpl'">
+              <template #icon><n-icon><RotateCcw :size="16" :stroke-width="1.8" /></n-icon></template>
+              恢复默认
+            </n-button>
+            <n-button :disabled="readonly || busy" @click="openTpl">
+              <template #icon><n-icon><ExternalLink :size="16" :stroke-width="1.8" /></n-icon></template>
+              打开
+            </n-button>
+            <n-button v-if="tplDirty" :disabled="readonly || busy" @click="discardTpl">
+              <template #icon><n-icon><X :size="16" :stroke-width="1.8" /></n-icon></template>
+              放弃修改
+            </n-button>
+            <n-button v-if="tplDirty" type="primary" :disabled="!canEdit || busy" @click="saveTpl">
+              <template #icon><n-icon><Save :size="16" :stroke-width="1.8" /></n-icon></template>
+              保存
+            </n-button>
+          </div>
+        </div>
       </section>
 
       <section class="card list-card">
-        <div class="card-head">各家规则 <span class="hint">只指向左边这份</span></div>
+        <div class="card-head">各家规则 <span class="hint">改模板后点更新才写入</span></div>
         <div class="card-body">
           <div
             v-for="a in status?.agents"
@@ -399,6 +572,15 @@ onUnmounted(() => {
               {{ a.displayName }}
             </span>
             <span class="rule-path" :title="a.rulePath || a.message">{{ a.rulePath || a.message }}</span>
+            <button
+              type="button"
+              class="icon-quiet"
+              :disabled="readonly || !canPreview(a)"
+              :title="a.rulePath ? '用默认编辑器打开对照' : '还没有这家的规则文件'"
+              @click="openAgent(a)"
+            >
+              <n-icon :size="16" :stroke-width="1.8"><ExternalLink /></n-icon>
+            </button>
             <span class="rule-state" :class="'is-' + a.status">{{ ruleStateText(a.status) }}</span>
           </div>
           <p v-if="!enabled" class="off-note">关掉后不能改各家</p>
@@ -493,6 +675,33 @@ onUnmounted(() => {
   min-height: 0;
   overflow: auto;
 }
+.ah-seg {
+  display: inline-flex;
+  align-items: center;
+  height: var(--h-control);
+  padding: 2px;
+  background: var(--wash);
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--r-in);
+}
+.ah-seg button {
+  height: 26px;
+  min-width: 88px;
+  padding: 0 var(--sp-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+}
+.ah-seg button:hover { color: var(--text); background: var(--seg-on-bg); }
+.ah-seg button[aria-pressed='true'] {
+  color: var(--accent-solid);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
 .hub-body {
   display: flex;
   flex-direction: column;
@@ -505,6 +714,17 @@ onUnmounted(() => {
   font-size: var(--fs-caption);
   color: var(--faint);
   font-family: var(--mono);
+}
+.tpl-state {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--faint);
+}
+.tpl-state.is-bad { color: var(--warn); }
+.tpl-warn {
+  margin: 0;
+  font-size: var(--fs-caption);
+  color: var(--warn);
 }
 .editor {
   flex: 1;
@@ -524,12 +744,26 @@ onUnmounted(() => {
 .hub-acts { display: flex; justify-content: flex-end; gap: var(--sp-2); }
 .rule-line {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) 64px;
+  grid-template-columns: 120px minmax(0, 1fr) var(--h-icon-btn) 64px;
   gap: var(--sp-2);
   align-items: center;
   min-height: var(--h-row);
   box-shadow: var(--rule-hi);
 }
+.icon-quiet {
+  width: var(--h-icon-btn);
+  height: var(--h-icon-btn);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  border-radius: var(--r-in);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+}
+.icon-quiet:hover:not(:disabled) { color: var(--text); background: var(--wash); }
+.icon-quiet:disabled { color: var(--disabled-fg); cursor: not-allowed; }
 .rule-line.is-muted { opacity: .55; }
 .rule-agent { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .rule-path {

@@ -40,12 +40,17 @@ public sealed class AgentRuleBootstrapService
     public AgentRulesStatus Inspect()
     {
         var libraryRoot = NormalizeLibraryRoot();
+        var userTemplate = ReadUserPointerTemplate();
+        var pointer = AgentRuleTemplates.InspectPointerTemplate(
+            AgentRuleTemplates.PointerTemplatePath(_home), userTemplate);
+        if (pointer.Customized && !pointer.Valid)
+            _log?.Invoke("注入模板无效，已回退默认：" + pointer.Path);
         var shared = File.Exists(SharedRulesPath) ? AgentRuleStatus.Current : AgentRuleStatus.Missing;
-        var agents = Descriptors().Select(d => InspectAgent(d, libraryRoot)).ToList();
+        var agents = Descriptors().Select(d => InspectAgent(d, libraryRoot, userTemplate)).ToList();
         var hasChanges = agents.Any(x => x.CanWrite && x.Status is AgentRuleStatus.Missing or AgentRuleStatus.NeedsSync);
         var hasConflicts = agents.Any(x => x.Status == AgentRuleStatus.Conflict);
         return new(libraryRoot, Directory.Exists(libraryRoot), SharedRulesPath, shared, agents,
-            hasChanges, hasConflicts, Enabled);
+            hasChanges, hasConflicts, Enabled, pointer);
     }
 
     public AgentRulesHub ReadHub()
@@ -133,6 +138,84 @@ public sealed class AgentRuleBootstrapService
         Process.Start(new ProcessStartInfo(SharedRulesPath) { UseShellExecute = true });
     }
 
+    public AgentRulesPointerTemplate ReadPointerTemplate()
+    {
+        var path = AgentRuleTemplates.PointerTemplatePath(_home);
+        var user = ReadUserPointerTemplate();
+        var info = AgentRuleTemplates.InspectPointerTemplate(path, user);
+        return new(path, user is not null, info.Customized, info.Valid, info.Warnings,
+            user ?? AgentRuleTemplates.ReadDefaultPointer());
+    }
+
+    public AgentRulesPointerTemplate WritePointerTemplate(string content)
+    {
+        if (!Enabled) throw new InvalidOperationException("关掉统一管理时不能改注入模板");
+        if (!_applyGate.Wait(0)) throw new InvalidOperationException("正在执行");
+        try
+        {
+            if (!AgentRuleTemplates.IsValidPointerTemplate(content))
+                throw new ArgumentException("模板必须包含「打开并遵守」和共用规则路径");
+            var path = AgentRuleTemplates.PointerTemplatePath(_home);
+            var write = TextWrite("shared", path, content);
+            ValidateTarget(write);
+            BackupPointer();
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            AtomicWrite(write);
+            return ReadPointerTemplate();
+        }
+        finally { _applyGate.Release(); }
+    }
+
+    public AgentRulesPointerTemplate ResetPointerTemplate()
+    {
+        if (!Enabled) throw new InvalidOperationException("关掉统一管理时不能改注入模板");
+        if (!_applyGate.Wait(0)) throw new InvalidOperationException("正在执行");
+        try
+        {
+            var path = AgentRuleTemplates.PointerTemplatePath(_home);
+            if (File.Exists(path))
+            {
+                var write = DeleteWrite("shared", path);
+                ValidateTarget(write);
+                BackupPointer();
+                DeleteTarget(write);
+            }
+            return ReadPointerTemplate();
+        }
+        finally { _applyGate.Release(); }
+    }
+
+    public void OpenPointerTemplate()
+    {
+        var path = AgentRuleTemplates.PointerTemplatePath(_home);
+        if (!File.Exists(path))
+        {
+            if (!Enabled) throw new FileNotFoundException("还没有注入模板文件", path);
+            WritePointerTemplate(AgentRuleTemplates.ReadDefaultPointer());
+        }
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
+    public void OpenAgent(string agentId)
+    {
+        var id = (agentId ?? "").Trim();
+        var descriptor = Descriptors().FirstOrDefault(x => x.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ArgumentException("未知的 Agent");
+        if (!Directory.Exists(descriptor.Root))
+            throw new FileNotFoundException("未发现这家", descriptor.Root);
+        var item = InspectAgent(descriptor, NormalizeLibraryRoot(), ReadUserPointerTemplate());
+        var path = item.RulePath;
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            throw new FileNotFoundException("还没有这家的规则文件", path);
+        var root = Path.GetFullPath(descriptor.Root)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var target = Path.GetFullPath(path);
+        if (!target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("打开目标超出白名单目录：" + target);
+        Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
     public AgentRulesLibraryResult SetLibrary(string path, bool move)
     {
         if (!_applyGate.Wait(0))
@@ -205,12 +288,13 @@ public sealed class AgentRuleBootstrapService
     {
         var writes = new List<PlannedWrite>();
         var skips = new List<string>();
+        var userTemplate = ReadUserPointerTemplate();
         if (createSharedIfMissing && !File.Exists(SharedRulesPath))
             writes.Add(TextWrite("shared", SharedRulesPath, AgentRuleTemplates.RenderShared(libraryRoot)));
 
         foreach (var descriptor in Descriptors())
         {
-            var inspected = InspectAgent(descriptor, libraryRoot);
+            var inspected = InspectAgent(descriptor, libraryRoot, userTemplate);
             if (!inspected.Detected)
             {
                 skips.Add($"{inspected.DisplayName}：{inspected.Message}");
@@ -224,7 +308,7 @@ public sealed class AgentRuleBootstrapService
             }
             try
             {
-                var write = PlanAgentWrite(descriptor, inspected, libraryRoot);
+                var write = PlanAgentWrite(descriptor, inspected, libraryRoot, userTemplate);
                 if (write is not null) writes.Add(write);
                 writes.AddRange(PlanStaleDeletes(descriptor, write?.Path));
             }
@@ -238,9 +322,10 @@ public sealed class AgentRuleBootstrapService
         var writes = new List<PlannedWrite>();
         var skips = new List<string>();
         var libraryRoot = NormalizeLibraryRoot();
+        var userTemplate = ReadUserPointerTemplate();
         foreach (var descriptor in Descriptors())
         {
-            var inspected = InspectAgent(descriptor, libraryRoot);
+            var inspected = InspectAgent(descriptor, libraryRoot, userTemplate);
             if (!inspected.Detected)
             {
                 skips.Add($"{inspected.DisplayName}：{inspected.Message}");
@@ -269,17 +354,18 @@ public sealed class AgentRuleBootstrapService
         return new(writes, skips);
     }
 
-    private PlannedWrite? PlanAgentWrite(Descriptor descriptor, AgentRuleItem item, string libraryRoot)
+    private PlannedWrite? PlanAgentWrite(Descriptor descriptor, AgentRuleItem item, string libraryRoot,
+        string? userTemplate)
     {
         if (descriptor.Kind == RuleKind.WorkBuddy)
         {
             var path = Path.Combine(descriptor.Root, "app", "app-config.json");
-            return WorkBuddyWrite(path, AgentRuleTemplates.RenderReference("workbuddy", libraryRoot));
+            return WorkBuddyWrite(path, AgentRuleTemplates.RenderReference("workbuddy", libraryRoot, userTemplate));
         }
         var pathWrite = CanonicalPath(descriptor);
         var body = descriptor.Kind == RuleKind.Cursor
-            ? AgentRuleTemplates.RenderCursor(libraryRoot)
-            : AgentRuleTemplates.RenderReference(descriptor.Id, libraryRoot);
+            ? AgentRuleTemplates.RenderCursor(libraryRoot, userTemplate)
+            : AgentRuleTemplates.RenderReference(descriptor.Id, libraryRoot, userTemplate);
         return TextWrite(descriptor.Id, pathWrite, body);
     }
 
@@ -320,18 +406,18 @@ public sealed class AgentRuleBootstrapService
         }
     }
 
-    private AgentRuleItem InspectAgent(Descriptor descriptor, string libraryRoot)
+    private AgentRuleItem InspectAgent(Descriptor descriptor, string libraryRoot, string? userTemplate)
     {
         if (!Directory.Exists(descriptor.Root))
             return Item(descriptor, false, AgentRuleStatus.NotDetected, null, "未发现", false);
         return descriptor.Kind switch
         {
-            RuleKind.WorkBuddy => InspectWorkBuddy(descriptor, libraryRoot),
-            _ => InspectPointerFile(descriptor, libraryRoot),
+            RuleKind.WorkBuddy => InspectWorkBuddy(descriptor, libraryRoot, userTemplate),
+            _ => InspectPointerFile(descriptor, libraryRoot, userTemplate),
         };
     }
 
-    private AgentRuleItem InspectPointerFile(Descriptor descriptor, string libraryRoot)
+    private AgentRuleItem InspectPointerFile(Descriptor descriptor, string libraryRoot, string? userTemplate)
     {
         var canonical = CanonicalPath(descriptor);
         List<string> pointers;
@@ -349,14 +435,14 @@ public sealed class AgentRuleBootstrapService
         if (!File.Exists(path))
             return Item(descriptor, true, AgentRuleStatus.Missing, path, "待更新", true);
         var expected = descriptor.Kind == RuleKind.Cursor
-            ? AgentRuleTemplates.RenderCursor(libraryRoot)
-            : AgentRuleTemplates.RenderReference(descriptor.Id, libraryRoot);
+            ? AgentRuleTemplates.RenderCursor(libraryRoot, userTemplate)
+            : AgentRuleTemplates.RenderReference(descriptor.Id, libraryRoot, userTemplate);
         return AgentRuleTemplates.SameText(ReadText(path), expected)
             ? Item(descriptor, true, AgentRuleStatus.Current, path, "已对齐", false)
             : Item(descriptor, true, AgentRuleStatus.NeedsSync, path, "待更新", true);
     }
 
-    private AgentRuleItem InspectWorkBuddy(Descriptor descriptor, string libraryRoot)
+    private AgentRuleItem InspectWorkBuddy(Descriptor descriptor, string libraryRoot, string? userTemplate)
     {
         var path = Path.Combine(descriptor.Root, "app", "app-config.json");
         if (!File.Exists(path))
@@ -367,7 +453,7 @@ public sealed class AgentRuleBootstrapService
         {
             var root = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
             var prompt = root?["personalization"]?["customPrompt"]?.GetValue<string>() ?? "";
-            var expected = AgentRuleTemplates.RenderReference("workbuddy", libraryRoot);
+            var expected = AgentRuleTemplates.RenderReference("workbuddy", libraryRoot, userTemplate);
             if (prompt.Length == 0)
                 return Item(descriptor, true, AgentRuleStatus.Missing, path, "待更新", true);
             return AgentRuleTemplates.SameText(prompt, expected)
@@ -396,6 +482,15 @@ public sealed class AgentRuleBootstrapService
         var dir = Path.Combine(BackupRoot, "hub-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ"));
         Directory.CreateDirectory(dir);
         File.Copy(SharedRulesPath, Path.Combine(dir, "AGENTS.md"), overwrite: true);
+    }
+
+    private void BackupPointer()
+    {
+        var path = AgentRuleTemplates.PointerTemplatePath(_home);
+        if (!File.Exists(path)) return;
+        var dir = Path.Combine(BackupRoot, "pointer-" + DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ"));
+        Directory.CreateDirectory(dir);
+        File.Copy(path, Path.Combine(dir, AgentRuleTemplates.PointerFileName), overwrite: true);
     }
 
     private void UpdateHubLibraryLine(string libraryRoot)
@@ -502,6 +597,12 @@ public sealed class AgentRuleBootstrapService
     };
 
     private string NormalizeLibraryRoot() => DocsSettings.NormalizeLibraryRoot(_config.Docs.LibraryRoot);
+
+    private string? ReadUserPointerTemplate()
+    {
+        var path = AgentRuleTemplates.PointerTemplatePath(_home);
+        return File.Exists(path) ? File.ReadAllText(path, Utf8) : null;
+    }
 
     private IEnumerable<Descriptor> Descriptors()
     {

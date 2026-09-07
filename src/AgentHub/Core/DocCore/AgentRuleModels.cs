@@ -21,6 +21,12 @@ public sealed record AgentRuleItem(
     string Message,
     bool CanWrite);
 
+public sealed record PointerTemplateInfo(
+    string Path,
+    bool Customized,
+    bool Valid,
+    IReadOnlyList<string> Warnings);
+
 public sealed record AgentRulesStatus(
     string LibraryRoot,
     bool LibraryRootExists,
@@ -29,9 +35,18 @@ public sealed record AgentRulesStatus(
     IReadOnlyList<AgentRuleItem> Agents,
     bool HasChanges,
     bool HasConflicts,
-    bool Enabled);
+    bool Enabled,
+    PointerTemplateInfo PointerTemplate);
 
 public sealed record AgentRulesHub(string Path, bool Exists, bool Enabled, string Content);
+
+public sealed record AgentRulesPointerTemplate(
+    string Path,
+    bool Exists,
+    bool Customized,
+    bool Valid,
+    IReadOnlyList<string> Warnings,
+    string Content);
 
 public sealed record AgentRulesLibraryResult(string Path, bool Moved, IReadOnlyList<string> Notes);
 
