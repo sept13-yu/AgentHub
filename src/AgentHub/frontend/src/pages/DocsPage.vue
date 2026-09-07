@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
-import { NButton, NIcon, NInput, NSwitch, useMessage } from 'naive-ui'
-import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, RefreshCw } from 'lucide-vue-next'
+import { NButton, NCheckbox, NIcon, NInput, NModal, NSwitch, useMessage } from 'naive-ui'
+import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, ListChecks, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
 import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
@@ -29,6 +29,7 @@ interface SkillItem {
   canDisable: boolean
   canManage: boolean
   canUpdate: boolean
+  canDelete: boolean
 }
 interface LibItem {
   kind: 'library'
@@ -78,6 +79,11 @@ const legacy = ref<LegacyStatus | null>(null)
 const confirmShow = ref(false)
 const confirmText = ref('')
 let confirmAction: (() => Promise<void>) | null = null
+const installShow = ref(false)
+const installSource = ref('')
+const selected = ref(new Set<string>())
+const selecting = ref(false)
+const jobKind = ref<'update' | 'install'>('update')
 
 const skills = computed(() => data.value?.skills ?? [])
 const library = computed(() => data.value?.library ?? [])
@@ -87,6 +93,21 @@ const conflictSkills = computed(() => skills.value.filter((s) => s.conflict))
 const sortedSkills = computed(() =>
   [...skills.value].sort((a, b) => Number(b.enabled) - Number(a.enabled)),
 )
+const deletableSkills = computed(() => skills.value.filter((s) => s.canDelete))
+const selectedSkills = computed(() => skills.value.filter((s) => selected.value.has(s.relPath) && s.canDelete))
+const selectedLibrary = computed(() => library.value.filter((s) => selected.value.has(s.path)))
+const selectedCount = computed(() =>
+  kind.value === 'skills' ? selectedSkills.value.length : selectedLibrary.value.length,
+)
+const selectedUpdateable = computed(() => skills.value.filter((s) => selected.value.has(s.relPath) && s.canUpdate))
+const allDeletableOn = computed(() =>
+  deletableSkills.value.length > 0 && deletableSkills.value.every((s) => selected.value.has(s.relPath)),
+)
+const someDeletableOn = computed(() => deletableSkills.value.some((s) => selected.value.has(s.relPath)))
+const allLibraryOn = computed(() =>
+  library.value.length > 0 && library.value.every((s) => selected.value.has(s.path)),
+)
+const someLibraryOn = computed(() => library.value.some((s) => selected.value.has(s.path)))
 const toggling = ref(new Set<string>())
 const progress = ref<SkillsUpdate | null>(null)
 const updateableCount = computed(() => data.value?.updateableCount ?? 0)
@@ -140,9 +161,14 @@ async function load() {
       }
     }
     if (kind.value === 'skills') {
+      const names = new Set(skills.value.map((s) => s.relPath))
+      selected.value = new Set([...selected.value].filter((name) => names.has(name)))
       legacy.value = await get<LegacyStatus>('/api/docs/skills/legacy')
       if (data.value?.skillsUpdate) progress.value = data.value.skillsUpdate
       if (data.value?.skillsUpdate?.running) startPoll()
+    } else {
+      const paths = new Set(library.value.map((s) => s.path))
+      selected.value = new Set([...selected.value].filter((path) => paths.has(path)))
     }
   } catch (e) {
     message.error(e instanceof Error ? e.message : '读取失败')
@@ -193,6 +219,12 @@ function stopPoll() {
 }
 
 function toastFinish(p: SkillsUpdate) {
+  if (jobKind.value === 'install') {
+    if (p.failed && p.errors[0]) message.error(p.errors[0])
+    else if (p.ok) message.success(`已安装 ${p.ok} 个`)
+    else message.success(p.detail || '没有安装到新的 Skill')
+    return
+  }
   if (p.failed && p.errors[0]) message.error(p.errors[0])
   else if (p.ok) message.success(`已更新 ${p.ok} 个${p.skipped ? `，跳过 ${p.skipped} 个已是最新` : ''}`)
   else if ((p.skipped ?? 0) > 0 || p.total > 0) message.success('都已是最新')
@@ -220,6 +252,7 @@ async function tickProgress() {
 
 async function beginUpdate(names?: string[]) {
   if (readonly || kind.value !== 'skills' || updateRunning.value) return
+  jobKind.value = 'update'
   progress.value = {
     running: true,
     total: names?.length ?? updateableCount.value,
@@ -257,8 +290,9 @@ async function beginUpdate(names?: string[]) {
   }
 }
 
-async function updateSkills() {
-  await beginUpdate()
+function updateSkills() {
+  if (selectedUpdateable.value.length === 0) return
+  return beginUpdate(selectedUpdateable.value.map((s) => s.relPath))
 }
 
 async function skillAction(path: string, body: unknown, success: string) {
@@ -280,8 +314,130 @@ function manageSkill(skill: SkillItem) {
   return skillAction('/api/docs/skills/manage', { name: skill.relPath }, '已收进仓库')
 }
 
-function updateOne(skill: SkillItem) {
-  return beginUpdate([skill.relPath])
+function openInstall() {
+  if (readonly || kind.value !== 'skills' || updateRunning.value || !data.value?.skillsCli.available) return
+  installSource.value = installSource.value.trim()
+  installShow.value = true
+}
+
+async function runInstall() {
+  const source = installSource.value.trim()
+  if (!source) {
+    message.error('请填写仓库或 Skill 地址')
+    return
+  }
+  if (readonly || updateRunning.value) return
+  installShow.value = false
+  jobKind.value = 'install'
+  progress.value = {
+    running: true,
+    total: 1,
+    index: 0,
+    ok: 0,
+    failed: 0,
+    currentName: source,
+    detail: '开始安装…',
+    errors: [],
+  }
+  sawRunning = true
+  startPoll()
+  try {
+    const r = await post<{
+      updated: number
+      skipped: number
+      errors?: string[]
+      alreadyRunning?: boolean
+      progress?: SkillsUpdate
+    }>('/api/docs/skills/install', { source })
+    if (r.progress) progress.value = r.progress
+    if (r.alreadyRunning) return
+    sawRunning = false
+    stopPoll()
+    if (r.errors?.length) message.error(r.errors[0])
+    else if (r.updated > 0) message.success(`已安装 ${r.updated} 个`)
+    else message.success('没有安装到新的 Skill')
+    await load()
+  } catch (e) {
+    sawRunning = false
+    stopPoll()
+    if (progress.value) progress.value = { ...progress.value, running: false }
+    message.error(e instanceof Error ? e.message : '安装失败')
+  }
+}
+
+function toggleSelect(name: string, on: boolean) {
+  const next = new Set(selected.value)
+  if (on) next.add(name)
+  else next.delete(name)
+  selected.value = next
+}
+
+function toggleAllDeletable(on: boolean) {
+  selected.value = on ? new Set(deletableSkills.value.map((s) => s.relPath)) : new Set()
+}
+
+function toggleAllLibrary(on: boolean) {
+  selected.value = on ? new Set(library.value.map((s) => s.path)) : new Set()
+}
+
+function toggleSelecting() {
+  selecting.value = !selecting.value
+  if (!selecting.value) selected.value = new Set()
+}
+
+function askDeleteSelected() {
+  if (readonly || selectedCount.value === 0 || updateRunning.value) return
+  if (kind.value === 'skills') {
+    const names = selectedSkills.value.map((s) => s.name)
+    const shown = names.slice(0, 5).join('、')
+    const extra = names.length > 5 ? ` 等 ${names.length} 个` : ''
+    askConfirm(
+      `将删除已选的 ${names.length} 个技能（${shown}${extra}）。冲突或旧联接不会删。`,
+      deleteSelectedNow,
+    )
+    return
+  }
+  const names = selectedLibrary.value.map((s) => s.name)
+  const shown = names.slice(0, 5).join('、')
+  const extra = names.length > 5 ? ` 等 ${names.length} 篇` : ''
+  askConfirm(`将删除已选的 ${names.length} 篇方案（${shown}${extra}）。`, deleteSelectedNow)
+}
+
+async function deleteSelectedNow() {
+  if (readonly) return
+  if (kind.value === 'skills') {
+    const names = selectedSkills.value.map((s) => s.relPath)
+    let ok = 0
+    const errors: string[] = []
+    for (const name of names) {
+      try {
+        await post('/api/docs/skills/delete', { name })
+        ok++
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : name)
+      }
+    }
+    selected.value = new Set()
+    if (errors.length) message.error(ok ? `已删除 ${ok} 个，失败：${errors[0]}` : errors[0])
+    else message.success(`已删除 ${ok} 个`)
+    await load()
+    return
+  }
+  const paths = selectedLibrary.value.map((s) => s.path)
+  let ok = 0
+  const errors: string[] = []
+  for (const path of paths) {
+    try {
+      await post('/api/docs/library/delete', { path })
+      ok++
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : path)
+    }
+  }
+  selected.value = new Set()
+  if (errors.length) message.error(ok ? `已删除 ${ok} 篇，失败：${errors[0]}` : errors[0])
+  else message.success(`已删除 ${ok} 篇`)
+  await load()
 }
 
 function resolveSkill(skill: SkillItem, action: 'keepLocalAsStore' | 'restoreFromStore') {
@@ -364,6 +520,8 @@ function pickKind(id: Kind) {
   kind.value = id
   picked.value = null
   preview.value = null
+  selecting.value = false
+  selected.value = new Set()
 }
 
 watch(kind, () => { void load() })
@@ -387,14 +545,31 @@ onUnmounted(() => { stopPoll() })
   <teleport defer to="#chrome-actions">
     <n-input v-model:value="q" class="docs-search" placeholder="搜索名称" clearable />
     <n-button
+      v-if="selectedCount"
+      type="error"
+      :disabled="readonly || updateRunning"
+      @click="askDeleteSelected"
+    >
+      <template #icon><n-icon><Trash2 :size="16" :stroke-width="1.8" /></n-icon></template>
+      删除 {{ selectedCount }}
+    </n-button>
+    <n-button
       v-if="kind === 'skills'"
-      :disabled="readonly || !data?.skillsCli.available || updateRunning || updateableCount === 0"
-      :loading="updateRunning"
+      :disabled="readonly || !data?.skillsCli.available || updateRunning"
+      @click="openInstall"
+    >
+      <template #icon><n-icon><Plus :size="16" :stroke-width="1.8" /></n-icon></template>
+      安装
+    </n-button>
+    <n-button
+      v-if="kind === 'skills' && selectedUpdateable.length"
+      :disabled="readonly || !data?.skillsCli.available || updateRunning"
+      :loading="updateRunning && jobKind === 'update'"
       @click="updateSkills"
     >
       <template #icon><n-icon><CloudDownload :size="16" :stroke-width="1.8" /></n-icon></template>
-      <template v-if="updateRunning && progress">检查中 {{ progress.index }}/{{ progress.total }}</template>
-      <template v-else>检查更新</template>
+      <template v-if="updateRunning && progress && jobKind === 'update'">检查中 {{ progress.index }}/{{ progress.total }}</template>
+      <template v-else>检查更新 {{ selectedUpdateable.length }}</template>
     </n-button>
     <n-button type="primary" @click="refresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
@@ -403,7 +578,7 @@ onUnmounted(() => { stopPoll() })
   </teleport>
 
   <div class="card docs is-split">
-    <div class="docs-split">
+    <div class="docs-split" :class="{ 'has-preview': !!(picked && preview) }">
       <div class="docs-list">
         <template v-if="kind === 'skills'">
           <div v-if="legacy?.linkCount" class="legacy-banner">
@@ -420,34 +595,65 @@ onUnmounted(() => { stopPoll() })
               清理旧仓
             </n-button>
           </div>
-          <p v-if="data && !data.skillsRootExists" class="docs-empty">技能目录不存在</p>
-          <template v-else-if="skills.length">
+          <div v-if="progress && (progress.running || progress.detail)" class="legacy-banner">
+            <span v-if="progress.running">
+              {{ progress.currentName
+                ? (jobKind === 'install' ? `正在安装 ${progress.currentName}` : `正在更新 ${progress.currentName}`)
+                : (jobKind === 'install' ? '正在下载' : '正在对照远端') }}
+              （{{ progress.index }}/{{ progress.total }}，已{{ jobKind === 'install' ? '安装' : '更新' }} {{ progress.ok }}<template v-if="progress.skipped">，跳过 {{ progress.skipped }}</template><template v-if="progress.failed">，失败 {{ progress.failed }}</template>）
+              <template v-if="progress.detail"> · {{ progress.detail }}</template>
+            </span>
+            <span v-else>
+              {{ progress.detail || `上次更新 ${progress.ok}/${progress.total}` }}
+            </span>
+          </div>
+          <template v-if="skills.length">
             <p v-if="data?.skillsHint" class="hint">{{ data.skillsHint }}</p>
             <p v-if="conflictSkills.length" class="hint">{{ conflictSkills.length }} 个 Skill 存在冲突，程序不会自动覆盖</p>
-            <div v-if="progress && (progress.running || progress.detail)" class="legacy-banner">
-              <span v-if="progress.running">
-                {{ progress.currentName ? `正在更新 ${progress.currentName}` : '正在对照远端' }}
-                （{{ progress.index }}/{{ progress.total }}，已更新 {{ progress.ok }}<template v-if="progress.skipped">，跳过 {{ progress.skipped }}</template><template v-if="progress.failed">，失败 {{ progress.failed }}</template>）
-                <template v-if="progress.detail"> · {{ progress.detail }}</template>
-              </span>
-              <span v-else>
-                {{ progress.detail || `上次更新 ${progress.ok}/${progress.total}` }}
-              </span>
-            </div>
             <section class="doc-sec">
               <h3>
                 全部 <span class="n">{{ skills.length }}</span>
                 <span class="doc-on-note">使用中 {{ onSkills.length }}</span>
-                <span v-if="updateRunning && progress" class="doc-on-note">检查中 {{ progress.index }}/{{ progress.total }}</span>
+                <span v-if="updateRunning && progress" class="doc-on-note">{{ jobKind === 'install' ? '安装中' : '检查中' }} {{ progress.index }}/{{ progress.total }}</span>
+                <span v-if="!readonly" class="doc-pick">
+                  <n-checkbox
+                    v-if="selecting && deletableSkills.length"
+                    class="doc-all"
+                    :checked="allDeletableOn"
+                    :indeterminate="someDeletableOn && !allDeletableOn"
+                    :disabled="updateRunning"
+                    @update:checked="toggleAllDeletable"
+                  >全选</n-checkbox>
+                  <button
+                    type="button"
+                    class="doc-select"
+                    :aria-pressed="selecting ? 'true' : 'false'"
+                    aria-label="点选"
+                    :disabled="updateRunning"
+                    @click="toggleSelecting"
+                  >
+                    <ListChecks :size="16" :stroke-width="1.8" />
+                  </button>
+                </span>
               </h3>
               <div class="docs-grid">
-                <div v-for="s in sortedSkills" :key="s.path" class="doc-cell">
+                <div v-for="s in sortedSkills" :key="s.path" class="doc-cell" :class="{ 'has-check': selecting && !readonly }">
+                  <n-checkbox
+                    v-if="selecting && !readonly"
+                    class="doc-check"
+                    :checked="selected.has(s.relPath)"
+                    :disabled="!s.canDelete || updateRunning"
+                    :aria-label="'选择 ' + s.name"
+                    @click.stop
+                    @update:checked="(on: boolean) => toggleSelect(s.relPath, on)"
+                  />
                   <button
                     type="button"
                     class="doc-card"
                     :class="{
                       'is-off': !s.enabled,
                       'is-on': picked && picked.path === s.path,
+                      'is-picked': selected.has(s.relPath),
                       'is-updating': updateRunning && progress?.currentName === s.name,
                     }"
                     @click="openPreview(s)"
@@ -472,43 +678,73 @@ onUnmounted(() => { stopPoll() })
               </div>
             </section>
           </template>
-          <p v-else class="docs-empty">没有技能</p>
+          <p v-else class="docs-empty">{{ q.trim() ? '没有匹配的技能' : '还没有技能，可以从 GitHub 安装' }}</p>
         </template>
         <template v-else>
           <p v-if="data && !data.libraryRootExists" class="docs-empty">资料目录不存在</p>
           <template v-else-if="library.length">
             <p v-if="data?.libraryHint" class="hint">{{ data.libraryHint }}</p>
-            <table class="docs-table">
-              <colgroup>
-                <col class="docs-col-name" /><col class="docs-col-when" />
-              </colgroup>
-              <thead><tr><th>名称</th><th>改过</th></tr></thead>
-              <tbody v-for="g in groups" :key="g.name" :class="{ 'is-fold': folded.has(g.name) }">
-                <tr class="doc-ghead">
-                  <td colspan="2">
-                    <button type="button" class="doc-gbtn" @click="toggleFold(g.name)">
-                      <ChevronDown class="ico" :size="14" :stroke-width="1.8" />
-                      {{ g.name }} <span class="n">{{ g.items.length }}</span>
-                    </button>
-                  </td>
-                </tr>
-                <tr
-                  v-for="item in g.items"
-                  :key="item.path"
-                  data-plan
-                  :class="{ 'is-on': picked && picked.path === item.path }"
-                  @click="openPreview(item)"
-                >
-                  <td>
-                    <span class="docs-name">
-                      <AgentMark v-if="item.agentId" :id="item.agentId" />
-                      <b>{{ item.name }}</b>
-                    </span>
-                  </td>
-                  <td class="docs-when">{{ formatMonthDay(item.modifiedUtc) }}</td>
-                </tr>
-              </tbody>
-            </table>
+            <section class="doc-sec">
+              <h3>
+                全部 <span class="n">{{ library.length }}</span>
+                <span v-if="!readonly" class="doc-pick">
+                  <n-checkbox
+                    v-if="selecting"
+                    class="doc-all"
+                    :checked="allLibraryOn"
+                    :indeterminate="someLibraryOn && !allLibraryOn"
+                    @update:checked="toggleAllLibrary"
+                  >全选</n-checkbox>
+                  <button
+                    type="button"
+                    class="doc-select"
+                    :aria-pressed="selecting ? 'true' : 'false'"
+                    aria-label="点选"
+                    @click="toggleSelecting"
+                  >
+                    <ListChecks :size="16" :stroke-width="1.8" />
+                  </button>
+                </span>
+              </h3>
+              <table class="docs-table">
+                <colgroup>
+                  <col class="docs-col-name" /><col class="docs-col-when" />
+                </colgroup>
+                <thead><tr><th>名称</th><th>改过</th></tr></thead>
+                <tbody v-for="g in groups" :key="g.name" :class="{ 'is-fold': folded.has(g.name) }">
+                  <tr class="doc-ghead">
+                    <td colspan="2">
+                      <button type="button" class="doc-gbtn" @click="toggleFold(g.name)">
+                        <ChevronDown class="ico" :size="14" :stroke-width="1.8" />
+                        {{ g.name }} <span class="n">{{ g.items.length }}</span>
+                      </button>
+                    </td>
+                  </tr>
+                  <tr
+                    v-for="item in g.items"
+                    :key="item.path"
+                    data-plan
+                    :class="{ 'is-on': picked && picked.path === item.path, 'is-picked': selected.has(item.path) }"
+                    @click="openPreview(item)"
+                  >
+                    <td>
+                      <span class="docs-name">
+                        <n-checkbox
+                          v-if="selecting && !readonly"
+                          :checked="selected.has(item.path)"
+                          :aria-label="'选择 ' + item.name"
+                          @click.stop
+                          @update:checked="(on: boolean) => toggleSelect(item.path, on)"
+                        />
+                        <AgentMark v-if="item.agentId" :id="item.agentId" />
+                        <b>{{ item.name }}</b>
+                      </span>
+                    </td>
+                    <td class="docs-when">{{ formatMonthDay(item.modifiedUtc) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
           </template>
           <p v-else class="docs-empty">没有方案</p>
         </template>
@@ -527,36 +763,25 @@ onUnmounted(() => { stopPoll() })
             </span>
             <span>{{ picked.path }}</span>
             <span>{{ formatWhen(picked.modifiedUtc) }}</span>
-            <span v-if="picked.kind === 'skill' && (picked as SkillItem).description">{{ (picked as SkillItem).description }}</span>
             <span v-if="picked.kind === 'skill' && (picked as SkillItem).conflict">目录冲突，程序未修改任何一侧</span>
           </div>
-          <div v-if="picked.kind === 'skill' && !readonly" class="skill-actions">
-            <n-button v-if="(picked as SkillItem).canManage" type="primary" @click="manageSkill(picked as SkillItem)">
+          <div v-if="!readonly" class="skill-actions">
+            <n-button v-if="picked.kind === 'skill' && (picked as SkillItem).canManage" type="primary" @click="manageSkill(picked as SkillItem)">
               <template #icon><n-icon><Archive :size="16" :stroke-width="1.8" /></n-icon></template>
               收进仓库
             </n-button>
-            <n-button
-              v-if="(picked as SkillItem).canUpdate"
-              type="primary"
-              :disabled="updateRunning"
-              :loading="updateRunning && progress?.currentName === (picked as SkillItem).name"
-              @click="updateOne(picked as SkillItem)"
-            >
-              <template #icon><n-icon><CloudDownload :size="16" :stroke-width="1.8" /></n-icon></template>
-              {{ updateRunning && progress?.currentName === (picked as SkillItem).name ? '检查中' : '检查更新' }}
-            </n-button>
-            <template v-if="(picked as SkillItem).state === 'modified'">
+            <template v-if="picked.kind === 'skill' && (picked as SkillItem).state === 'modified'">
               <n-button @click="resolveSkill(picked as SkillItem, 'keepLocalAsStore')">保留本地版本</n-button>
               <n-button @click="resolveSkill(picked as SkillItem, 'restoreFromStore')">恢复仓库版本</n-button>
             </template>
+            <n-button @click="openFile">
+              <template #icon><n-icon><ExternalLink :size="16" :stroke-width="1.8" /></n-icon></template>
+              打开
+            </n-button>
           </div>
-          <n-button v-if="!readonly" class="docs-open" @click="openFile">
-            <template #icon><n-icon><ExternalLink :size="16" :stroke-width="1.8" /></n-icon></template>
-            打开
-          </n-button>
           <pre class="docs-body">{{ preview.content }}</pre>
         </template>
-        <p v-else class="docs-empty">{{ kind === 'skills' ? '点一张看正文' : '点一行看正文' }}</p>
+        <p v-else class="docs-empty">{{ kind === 'skills' ? '打不开这篇正文' : '打不开这篇方案' }}</p>
       </div>
     </div>
     <div v-if="data" class="docs-roots">
@@ -571,10 +796,45 @@ onUnmounted(() => { stopPoll() })
     @update:show="confirmShow = $event"
     @confirm="runConfirmed"
   />
+  <n-modal :show="installShow" :mask-closable="true" @update:show="installShow = $event">
+    <div class="install-box" role="dialog" aria-modal="true" aria-label="安装技能">
+      <p>从 GitHub 安装到启用目录，并收进持久仓。只写入 <code>~/.agents/skills</code>。</p>
+      <n-input
+        v-model:value="installSource"
+        placeholder="owner/repo、owner/repo@skill 或 https://github.com/…"
+        :disabled="updateRunning"
+        @keydown.enter="runInstall"
+      />
+      <div class="install-acts">
+        <n-button @click="installShow = false">取消</n-button>
+        <n-button type="primary" :disabled="updateRunning || !installSource.trim()" @click="runInstall">安装</n-button>
+      </div>
+    </div>
+  </n-modal>
 </template>
 
 <style scoped>
 .docs-search { width: 200px; }
+.install-box {
+  width: min(440px, calc(100vw - 48px));
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+}
+.install-box p {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-body);
+  color: var(--text);
+  line-height: 1.55;
+}
+.install-box code { font-family: var(--mono); font-size: var(--fs-small); }
+.install-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
 .legacy-banner {
   display: flex;
   align-items: center;
@@ -597,9 +857,12 @@ onUnmounted(() => { stopPoll() })
 }
 .docs-split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 36%);
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+}
+.docs-split.has-preview {
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 36%);
 }
 .docs-list {
   min-width: 0;
@@ -607,17 +870,23 @@ onUnmounted(() => { stopPoll() })
   overflow: auto;
   padding: var(--sp-4);
   background: var(--bg-sunken);
+  border-radius: var(--r-card) var(--r-card) 0 0;
+}
+.docs-split.has-preview .docs-list {
   border-right: 1px solid var(--stroke);
-  border-radius: var(--r-card) 0 0 var(--r-card);
+  border-radius: var(--r-card) 0 0 0;
 }
 .docs-preview {
+  display: none;
   min-width: 0;
   min-height: 0;
   overflow: auto;
   padding: var(--sp-4);
-  display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+}
+.docs-split.has-preview .docs-preview {
+  display: flex;
 }
 .docs-grid {
   display: grid;
@@ -644,16 +913,45 @@ onUnmounted(() => { stopPoll() })
 }
 .doc-card.is-updating { border-color: var(--accent-line); }
 .doc-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 44px; line-height: var(--h-control); }
+.has-check .doc-card-top { padding-left: 28px; }
 .doc-tag { font-size: var(--fs-caption); color: var(--warn); flex: none; line-height: 1; }
 .doc-cell { position: relative; min-width: 0; }
+.doc-check {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+}
 .doc-switch {
   position: absolute;
   top: 10px;
   right: 10px;
   z-index: 1;
 }
+.doc-card.is-picked { border-color: var(--stroke-strong); }
 .doc-on-note { margin-left: 8px; font-weight: 400; color: var(--faint); }
-.docs-open { align-self: flex-start; }
+.doc-pick {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.doc-all { font-weight: 400; color: var(--dim); }
+.doc-select {
+  width: var(--h-icon-btn);
+  height: var(--h-icon-btn);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  border-radius: var(--r-in);
+  cursor: pointer;
+  display: inline-grid;
+  place-items: center;
+}
+.doc-select:hover:not(:disabled) { color: var(--text); background: var(--wash); }
+.doc-select:disabled { color: var(--disabled-fg); cursor: not-allowed; }
+.doc-select[aria-pressed='true'] { color: var(--text); background: var(--wash); }
 .skill-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .docs-roots {
   display: flex;
@@ -698,7 +996,16 @@ onUnmounted(() => { stopPoll() })
 }
 .doc-card time { font-size: var(--fs-caption); color: var(--faint); margin-top: auto; }
 .doc-sec { margin: 0 0 var(--sp-5); }
-.doc-sec h3 { font-size: var(--fs-caption); font-weight: 500; color: var(--dim); margin: 0 0 var(--sp-3); }
+.doc-sec h3 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  color: var(--dim);
+  margin: 0 0 var(--sp-3);
+}
 .doc-sec h3 .n { font-variant-numeric: tabular-nums; }
 .docs-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
 .docs-table col.docs-col-when { width: 56px; }
@@ -716,6 +1023,7 @@ onUnmounted(() => { stopPoll() })
 .docs-table tr.is-on td { background: var(--surface-hi); }
 .docs-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .docs-name b { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.docs-table tr.is-picked td { background: var(--surface-hi); }
 .doc-ghead td { padding: var(--sp-3) 0 0; border-bottom: 0; background: transparent; }
 .doc-ghead:first-child td { padding-top: 0; }
 .docs-table tbody.is-fold > tr:not(.doc-ghead) { display: none; }
@@ -737,8 +1045,13 @@ onUnmounted(() => { stopPoll() })
 .docs-empty { color: var(--empty-fg); font-size: var(--fs-small); padding: var(--sp-6) 0; }
 .hint { font-size: var(--fs-caption); color: var(--faint); margin: 0 0 var(--sp-3); }
 @media (max-width: 1279px) {
-  .docs-split { grid-template-columns: 1fr; }
-  .docs-list { border-right: 0; border-radius: var(--r-card) var(--r-card) 0 0; }
+  .docs-split.has-preview { grid-template-columns: 1fr; }
+  .docs-split.has-preview .docs-list {
+    border-right: 0;
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    border-bottom: 1px solid var(--stroke);
+  }
+  .docs-split.has-preview .docs-preview { padding-top: 0; }
   .docs-roots { flex-wrap: wrap; padding-block: var(--sp-2); }
   .docs-roots button { max-width: 100%; width: 100%; }
 }

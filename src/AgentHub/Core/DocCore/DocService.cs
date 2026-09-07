@@ -27,7 +27,7 @@ public sealed record DocItem
 }
 
 /// <summary>DocCore（方案 §6）：skills + 方案文档两条根路径只从配置读；
-/// 只读预览 + 用系统默认程序打开；不写源文件。</summary>
+/// 预览、用系统默认程序打开，以及删除方案文稿。</summary>
 public sealed class DocService
 {
     private readonly AgentHubConfig _config;
@@ -263,5 +263,47 @@ public sealed class DocService
         if (!IsAllowedPath(path)) throw new UnauthorizedAccessException("路径不在资料中心根目录内");
         if (!File.Exists(path)) throw new FileNotFoundException("文件不存在", path);
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
+    }
+
+    /// <summary>删除资料目录里 Plans / Sandbox 下的一篇 .md 文稿。</summary>
+    public void DeleteLibrary(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            throw new ArgumentException("路径为空");
+        if (!TryResolveLibraryMarkdown(path, out var full))
+            throw new UnauthorizedAccessException("路径不在方案目录内");
+        if (!File.Exists(full))
+            throw new FileNotFoundException("文件不存在", full);
+        File.Delete(full);
+    }
+
+    private bool TryResolveLibraryMarkdown(string path, out string full)
+    {
+        full = "";
+        try { full = Path.GetFullPath(path); }
+        catch (Exception) { return false; }
+
+        var root = ResolvedLibraryRoot();
+        if (string.IsNullOrEmpty(root)) return false;
+        string rootFull;
+        try { rootFull = Path.GetFullPath(root); }
+        catch (Exception) { return false; }
+
+        var relative = Path.GetRelativePath(rootFull, full);
+        if (relative == "." || Path.IsPathRooted(relative)
+            || relative == ".."
+            || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+            || relative.StartsWith(".." + Path.AltDirectorySeparatorChar, StringComparison.Ordinal))
+            return false;
+
+        var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (!parts[0].Equals("Plans", StringComparison.OrdinalIgnoreCase)
+            && !parts[0].Equals("Sandbox", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var exclude = new HashSet<string>(_config.Docs.Exclude, StringComparer.OrdinalIgnoreCase);
+        if (parts.Any(exclude.Contains)) return false;
+        if (!full.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) return false;
+        return !HasReparsePoint(rootFull, full);
     }
 }

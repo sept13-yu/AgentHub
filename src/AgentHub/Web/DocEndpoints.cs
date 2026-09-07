@@ -58,6 +58,7 @@ public static class DocEndpoints
                     s.CanDisable,
                     s.CanManage,
                     s.CanUpdate,
+                    s.CanDelete,
                 }).ToList(),
                 library = libraryAll.Take(libCap).Select(s => new
                 {
@@ -103,6 +104,31 @@ public static class DocEndpoints
             }
         });
 
+        app.MapPost("/api/docs/library/delete", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx)) return Forbidden();
+            try
+            {
+                var body = await ctx.Request.ReadFromJsonAsync<OpenBody>();
+                if (string.IsNullOrWhiteSpace(body?.path))
+                    return Results.Json(new { error = "body 须为 {path}" }, statusCode: 400);
+                docs.DeleteLibrary(body.path);
+                return Results.Json(new { ok = true });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+            }
+            catch (FileNotFoundException ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 404);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+            }
+        });
+
         app.MapPost("/api/docs/skills/disable", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx)) return Forbidden();
@@ -111,8 +137,7 @@ public static class DocEndpoints
                 return Results.Json(new { error = "body 须为 {name}" }, statusCode: 400);
             try
             {
-                var result = docs.Skills.Disable(body.name.Trim());
-                return Results.Json(result, statusCode: result.Ok ? 200 : 400);
+                return SkillJson(docs.Skills.Disable(body.name.Trim()));
             }
             catch (Exception ex)
             {
@@ -128,8 +153,7 @@ public static class DocEndpoints
                 return Results.Json(new { error = "body 须为 {name}" }, statusCode: 400);
             try
             {
-                var result = docs.Skills.Enable(body.name.Trim());
-                return Results.Json(result, statusCode: result.Ok ? 200 : 400);
+                return SkillJson(docs.Skills.Enable(body.name.Trim()));
             }
             catch (Exception ex)
             {
@@ -169,14 +193,54 @@ public static class DocEndpoints
         app.MapGet("/api/docs/skills/update-progress", () =>
             Results.Json(SkillUpdateJson(docs.Skills.UpdateProgress)));
 
+        app.MapPost("/api/docs/skills/install", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx)) return Forbidden();
+            var body = await ctx.Request.ReadFromJsonAsync<SourceBody>();
+            if (string.IsNullOrWhiteSpace(body?.source))
+                return Results.Json(new { error = "body 须为 {source}" }, statusCode: 400);
+            try
+            {
+                var r = await docs.Skills.InstallAsync(body.source.Trim(), ctx.RequestAborted);
+                return Results.Json(new
+                {
+                    ok = r.Errors.Count == 0,
+                    updated = r.Updated,
+                    skipped = r.Skipped,
+                    errors = r.Errors,
+                    alreadyRunning = r.AlreadyRunning,
+                    progress = SkillUpdateJson(docs.Skills.UpdateProgress),
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+            }
+        });
+
+        app.MapPost("/api/docs/skills/delete", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx)) return Forbidden();
+            var body = await ctx.Request.ReadFromJsonAsync<NameBody>();
+            if (string.IsNullOrWhiteSpace(body?.name))
+                return Results.Json(new { error = "body 须为 {name}" }, statusCode: 400);
+            try
+            {
+                return SkillJson(await docs.Skills.DeleteAsync(body.name.Trim(), ctx.RequestAborted));
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+            }
+        });
+
         app.MapPost("/api/docs/skills/manage", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx)) return Forbidden();
             var body = await ctx.Request.ReadFromJsonAsync<NameBody>();
             if (string.IsNullOrWhiteSpace(body?.name))
                 return Results.Json(new { error = "body 须为 {name}" }, statusCode: 400);
-            var result = docs.Skills.Manage(body.name.Trim());
-            return Results.Json(result, statusCode: result.Ok ? 200 : 400);
+            return SkillJson(docs.Skills.Manage(body.name.Trim()));
         });
 
         app.MapPost("/api/docs/skills/resolve", async (HttpContext ctx) =>
@@ -186,8 +250,7 @@ public static class DocEndpoints
             if (string.IsNullOrWhiteSpace(body?.name)
                 || !Enum.TryParse<ModifiedResolution>(body.action, ignoreCase: true, out var action))
                 return Results.Json(new { error = "body 须为 {name, action: keepLocalAsStore|restoreFromStore}" }, statusCode: 400);
-            var result = docs.Skills.ResolveModified(body.name.Trim(), action);
-            return Results.Json(result, statusCode: result.Ok ? 200 : 400);
+            return SkillJson(docs.Skills.ResolveModified(body.name.Trim(), action));
         });
 
         app.MapGet("/api/docs/skills/legacy", () => Results.Json(docs.Skills.InspectLegacy()));
@@ -244,6 +307,15 @@ public static class DocEndpoints
         });
     }
 
+    private static IResult SkillJson(SkillOperationResult result) =>
+        Results.Json(new
+        {
+            ok = result.Ok,
+            message = result.Message,
+            error = result.Ok ? null : result.Message,
+            item = result.Item,
+        }, statusCode: result.Ok ? 200 : 400);
+
     private static object SkillUpdateJson(SkillUpdateSnapshot p) => new
     {
         running = p.Running,
@@ -260,6 +332,7 @@ public static class DocEndpoints
     private sealed record OpenBody(string path);
     private sealed record OpenSessionBody(string agent, string id);
     private sealed record NameBody(string name);
+    private sealed record SourceBody(string source);
     private sealed record UpdateBody(string[]? names);
     private sealed record ResolveBody(string name, string action);
     private sealed record RootBody(string kind);

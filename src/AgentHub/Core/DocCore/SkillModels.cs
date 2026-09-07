@@ -28,7 +28,8 @@ public sealed record ManagedSkillItem(
     bool CanEnable,
     bool CanDisable,
     bool CanManage,
-    bool CanUpdate);
+    bool CanUpdate,
+    bool CanDelete);
 
 public sealed record SkillOperationResult(bool Ok, string Message, ManagedSkillItem? Item = null);
 

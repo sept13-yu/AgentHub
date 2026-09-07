@@ -12,7 +12,8 @@ export async function api<T = unknown>(path: string, opts: RequestInit = {}): Pr
   const ct = resp.headers.get('content-type') || ''
   const body = ct.includes('json') ? await resp.json().catch(() => ({})) : await resp.text()
   if (!resp.ok) {
-    const err: ApiError = new Error((body && (body as { error?: string }).error) || `HTTP ${resp.status}`)
+    const payload = body && typeof body === 'object' ? body as { error?: string; message?: string } : null
+    const err: ApiError = new Error(payload?.error || payload?.message || `HTTP ${resp.status}`)
     err.status = resp.status
     throw err
   }

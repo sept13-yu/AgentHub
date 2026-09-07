@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -87,6 +88,11 @@ public sealed class SkillManager
     public SkillOperationResult Manage(string name) => Locked(name, () =>
     {
         GuardName(name);
+        return ManageUnlocked(name);
+    });
+
+    private SkillOperationResult ManageUnlocked(string name)
+    {
         var active = Path.Combine(ActiveRoot, name);
         var store = Path.Combine(StoreRoot, name);
         EnsureRealSkill(active, "启用目录里没有可收进仓库的技能");
@@ -109,7 +115,7 @@ public sealed class SkillManager
         };
         SaveState(state);
         return Success(name, "已收进仓库");
-    });
+    }
 
     public SkillOperationResult Enable(string name) => Locked(name, () =>
     {
@@ -143,6 +149,108 @@ public sealed class SkillManager
         SaveState(state);
         return Success(name, "已停用，持久仓仍保留");
     });
+
+    public async Task<SkillBatchResult> InstallAsync(string source, CancellationToken cancellationToken)
+    {
+        if (!SkillsCliUpdater.TryNormalizeSource(source, out var normalized, out var invalid))
+            return new(0, 0, [invalid]);
+        if (!await _updateGate.WaitAsync(0, cancellationToken))
+            return new(UpdateProgress.Ok, 0, UpdateProgress.Errors, AlreadyRunning: true);
+
+        try
+        {
+            var beforeHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in List())
+            {
+                if (item.ActivePath is null || IsReparsePoint(item.ActivePath)) continue;
+                try { beforeHashes[item.Name] = HashDirectory(item.ActivePath); }
+                catch (Exception) { }
+            }
+
+            SetUpdate(new SkillUpdateSnapshot(true, 1, 0, 0, 0, 0, null, "正在下载并安装", []));
+            var cliResult = await _cli.AddAsync(normalized, cancellationToken, line =>
+                PatchUpdate(p => p with { Detail = TrimDetail(line) }));
+            if (!cliResult.Ok)
+            {
+                var msg = string.IsNullOrWhiteSpace(cliResult.Output) ? "安装失败" : TrimDetail(cliResult.Output);
+                SetUpdate(new SkillUpdateSnapshot(false, 1, 1, 0, 1, 0, null, msg, [msg]));
+                return new(0, 0, [msg]);
+            }
+
+            var installed = 0;
+            var errors = new List<string>();
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddSkillDirs(ActiveRoot, names);
+            foreach (var name in names)
+            {
+                try
+                {
+                    var result = PersistInstalled(name, beforeHashes.GetValueOrDefault(name));
+                    if (!result.Ok)
+                    {
+                        errors.Add($"{name}：{result.Message}");
+                        continue;
+                    }
+                    if (result.Message != "已是最新") installed++;
+                }
+                catch (Exception ex) { errors.Add($"{name}：{ex.Message}"); }
+            }
+
+            if (installed == 0 && errors.Count == 0)
+            {
+                const string none = "没有安装到新的 Skill（可能已存在且没有变化）";
+                SetUpdate(new SkillUpdateSnapshot(false, 1, 1, 0, 0, 1, null, none, []));
+                return new(0, 1, []);
+            }
+
+            var detail = errors.Count > 0 && installed == 0
+                ? TrimDetail(errors[0])
+                : $"已安装 {installed} 个";
+            SetUpdate(new SkillUpdateSnapshot(false, names.Count, names.Count, installed, errors.Count, 0, null, detail, errors.ToArray()));
+            return new(installed, 0, errors);
+        }
+        finally { _updateGate.Release(); }
+    }
+
+    public async Task<SkillOperationResult> DeleteAsync(string name, CancellationToken cancellationToken)
+    {
+        GuardName(name);
+        var gate = _locks.GetOrAdd(name, _ => new SemaphoreSlim(1, 1));
+        if (!await gate.WaitAsync(0, cancellationToken))
+            return new(false, "该 Skill 正在执行其它操作");
+        try
+        {
+            if (UpdateProgress.Running)
+                return new(false, "正在安装或更新");
+            var state = LoadState();
+            var item = InspectOne(name, state);
+            if (item is null) return new(false, "没有这个 Skill");
+            if (!item.CanDelete)
+                return new(false, item.State == ManagedSkillState.LegacyLink
+                    ? "请先迁移旧联接再删除"
+                    : "存在冲突，请先处理后再删除");
+
+            if (CliStatus.Available)
+            {
+                var cli = await _cli.RemoveAsync(name, cancellationToken);
+                if (!cli.Ok)
+                    _log?.Invoke($"[skills] 清理 lock 未完成：{TrimDetail(cli.Output)}");
+            }
+
+            var active = Path.Combine(ActiveRoot, name);
+            var store = Path.Combine(StoreRoot, name);
+            if (IsReparsePoint(active) || IsReparsePoint(store))
+                return new(false, "启用目录或持久仓仍是联接，未继续删除");
+            if (IsRealSkill(active)) Directory.Delete(active, recursive: true);
+            if (IsRealSkill(store)) Directory.Delete(store, recursive: true);
+
+            state.Skills.Remove(name);
+            SaveState(state);
+            return new(true, "已删除");
+        }
+        catch (Exception ex) { return new(false, ex.Message); }
+        finally { gate.Release(); }
+    }
 
     public SkillOperationResult ResolveModified(string name, ModifiedResolution resolution) => Locked(name, () =>
     {
@@ -382,6 +490,37 @@ public sealed class SkillManager
         return name.Length == 0 ? null : name;
     }
 
+    private SkillOperationResult PersistInstalled(string name, string? beforeHash) => Locked(name, () =>
+    {
+        GuardName(name);
+        var active = Path.Combine(ActiveRoot, name);
+        if (IsReparsePoint(active)) MaterializeLink(active);
+        EnsureRealSkill(active, "安装后没有得到有效真实 Skill");
+        var store = Path.Combine(StoreRoot, name);
+        if (!PathExists(store))
+            return ManageUnlocked(name);
+
+        if (beforeHash is not null)
+            return PersistIfChanged(name, beforeHash)
+                ? Success(name, "已写入")
+                : new(true, "已是最新", InspectOne(name, LoadState()));
+
+        var state = LoadState();
+        state.Skills[name] = new SkillStateEntry
+        {
+            Enabled = true,
+            LastDeployedHash = HashDirectory(store),
+        };
+        SaveState(state);
+        return Success(name, "已启用");
+    });
+
+    private static bool IsRealSkill([NotNullWhen(true)] string? path) =>
+        path is not null
+        && Directory.Exists(path)
+        && !IsReparsePoint(path)
+        && File.Exists(Path.Combine(path, "SKILL.md"));
+
     /// <summary>CLI 已是最新时目录 hash 不变，不重写仓库、不算一次更新。</summary>
     private bool PersistIfChanged(string name, string beforeHash)
     {
@@ -510,7 +649,9 @@ public sealed class SkillManager
             status == ManagedSkillState.Disabled,
             status == ManagedSkillState.Enabled,
             canManage,
-            status == ManagedSkillState.Enabled && cliAvailable);
+            status == ManagedSkillState.Enabled && cliAvailable,
+            status is ManagedSkillState.Enabled or ManagedSkillState.Disabled
+                or ManagedSkillState.External or ManagedSkillState.Modified);
     }
 
     private static int StateOrder(ManagedSkillState state) => state switch
