@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.IO;
 using AgentHub.Core.ProxyCore;
 using AgentHub.Core.SessionCore.Providers;
 using AgentHub.Core.TokenCore;
@@ -256,6 +258,26 @@ public sealed class SessionService
 
     public bool CanOpen(string agent) =>
         !agent.Equals("cursor", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>打开会话里出现过的项目目录。不接受索引外的任意路径。</summary>
+    public async Task OpenProjectAsync(string path)
+    {
+        await EnsureIndexAsync();
+        string full;
+        try { full = Path.GetFullPath(path.Trim()); }
+        catch (Exception) { throw new ArgumentException("路径无效"); }
+        if (!Directory.Exists(full))
+            throw new DirectoryNotFoundException("项目目录不存在");
+        var want = SessionIndex.NormalizeProjectPath(full);
+        if (want.Length == 0)
+            throw new ArgumentException("路径无效");
+        var known = _index.ListProjects(null).Any(p =>
+            p.Path.Length > 0
+            && string.Equals(SessionIndex.NormalizeProjectPath(p.Path), want, StringComparison.OrdinalIgnoreCase));
+        if (!known)
+            throw new UnauthorizedAccessException("路径不是已知会话项目");
+        Process.Start(new ProcessStartInfo(full) { UseShellExecute = true });
+    }
 
     public async Task RenameAsync(string agent, string id, string title)
     {

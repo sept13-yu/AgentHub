@@ -65,6 +65,25 @@ public static class SessionEndpoints
             return Results.Json(new { ok = true });
         });
 
+        app.MapPost("/api/sessions/open-project", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx)) return Forbidden();
+            OpenProjectBody? body;
+            try { body = await ctx.Request.ReadFromJsonAsync<OpenProjectBody>(); }
+            catch (JsonException) { body = null; }
+            if (body is null || string.IsNullOrWhiteSpace(body.path))
+                return Results.Json(new { error = "body 须为 {path}" }, statusCode: 400);
+            try
+            {
+                await sessions.OpenProjectAsync(body.path);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 400);
+            }
+        });
+
         app.MapGet("/api/sessions/detail", async (string agent, string id) =>
         {
             try
@@ -342,4 +361,5 @@ public static class SessionEndpoints
     private sealed record DeleteItemBody(string agent, string id);
     private sealed record DeleteBody(DeleteItemBody[] items, bool? vacuum);
     private sealed record ResidueBody(bool? vacuum);
+    private sealed record OpenProjectBody(string path);
 }

@@ -91,7 +91,8 @@ public static class DocEndpoints
             {
                 var body = await ctx.Request.ReadFromJsonAsync<OpenBody>();
                 if (body?.path is null) return Results.Json(new { error = "body 须为 {path}" }, statusCode: 400);
-                docs.Open(body.path);
+                if (body.reveal == true) docs.Reveal(body.path);
+                else docs.Open(body.path);
                 return Results.Json(new { ok = true });
             }
             catch (UnauthorizedAccessException ex)
@@ -329,7 +330,7 @@ public static class DocEndpoints
         errors = p.Errors,
     };
 
-    private sealed record OpenBody(string path);
+    private sealed record OpenBody(string path, bool? reveal);
     private sealed record OpenSessionBody(string agent, string id);
     private sealed record NameBody(string name);
     private sealed record SourceBody(string source);

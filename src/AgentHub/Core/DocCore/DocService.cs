@@ -265,6 +265,18 @@ public sealed class DocService
         Process.Start(new ProcessStartInfo(path) { UseShellExecute = true });
     }
 
+    /// <summary>资源管理器定位到该文件。路径校验与 <see cref="Open"/> 相同。</summary>
+    public void Reveal(string path)
+    {
+        if (!IsAllowedPath(path)) throw new UnauthorizedAccessException("路径不在资料中心根目录内");
+        string full;
+        try { full = Path.GetFullPath(path); }
+        catch (Exception) { throw new FileNotFoundException("文件不存在", path); }
+        if (!File.Exists(full) && !Directory.Exists(full))
+            throw new FileNotFoundException("文件不存在", path);
+        Process.Start(new ProcessStartInfo("explorer.exe", "/select,\"" + full + "\"") { UseShellExecute = true });
+    }
+
     /// <summary>删除资料目录里 Plans / Sandbox 下的一篇 .md 文稿。</summary>
     public void DeleteLibrary(string path)
     {
