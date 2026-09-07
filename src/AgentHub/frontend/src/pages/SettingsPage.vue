@@ -2,9 +2,10 @@
 import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, type Ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { NButton, NIcon, NInput, NInputNumber, NSwitch, useMessage } from 'naive-ui'
-import { ChevronDown, ChevronUp, FileCog, Lock } from 'lucide-vue-next'
+import { FileCog, Lock } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import { get, post, put, WRITABLE } from '../api'
+import { usePageHotkeys } from '../hotkeys'
 import AgentMark from '../components/AgentMark.vue'
 import {
   normalizeAgentOrder,
@@ -242,16 +243,6 @@ function setAgentOn(id: AgentId, on: boolean) {
   f[agentMeta(id).show as AgentShowKey] = on
 }
 
-function moveAgent(index: number, dir: -1 | 1) {
-  const next = index + dir
-  if (next < 0 || next >= f.agentOrder.length) return
-  const copy = f.agentOrder.slice()
-  const tmp = copy[index]
-  copy[index] = copy[next]
-  copy[next] = tmp
-  f.agentOrder = copy
-}
-
 async function save() {
   if (readonly || saving.value) return
   saving.value = true
@@ -412,6 +403,16 @@ function onBeforeUnload(e: BeforeUnloadEvent) {
   e.preventDefault()
   e.returnValue = ''
 }
+
+usePageHotkeys({
+  refresh: () => {
+    if (dirty.value) {
+      message.warning('有未保存的修改，先保存或放弃')
+      return
+    }
+    void load()
+  },
+})
 
 onMounted(async () => {
   await load()
@@ -629,37 +630,29 @@ onUnmounted(() => {
         <div class="block">
           <div class="meta">
             <span class="lbl">Agent</span>
-            <span class="hint">一家一个开关：额度、用量、会话一起关</span>
+            <span class="hint">一家一个开关：额度、用量、会话一起关。顺序在首页拖额度砖</span>
           </div>
           <div class="order-grid order-head" aria-hidden="true">
-            <span>Agent</span><span>窗口</span><span>显示</span><span class="order-ops">顺序</span>
+            <span>Agent</span><span>窗口</span><span>显示</span>
           </div>
           <ol class="order">
             <li
-              v-for="(id, i) in f.agentOrder"
-              :key="id"
+              v-for="a in SET_AGENTS"
+              :key="a.id"
               class="order-grid"
-              :class="{ 'is-off': !agentOn(id) }"
+              :class="{ 'is-off': !agentOn(a.id) }"
             >
               <span class="order-who">
-                <AgentMark :id="id" />
-                <span class="order-name">{{ agentMeta(id).name }}</span>
+                <AgentMark :id="a.id" />
+                <span class="order-name">{{ a.name }}</span>
               </span>
-              <span class="order-parts">{{ agentMeta(id).windows }}</span>
+              <span class="order-parts">{{ a.windows }}</span>
               <n-switch
                 :disabled="readonly"
-                :value="agentOn(id)"
-                :aria-label="agentMeta(id).name + ' 显示'"
-                @update:value="(on: boolean) => setAgentOn(id, on)"
+                :value="agentOn(a.id)"
+                :aria-label="a.name + ' 显示'"
+                @update:value="(on: boolean) => setAgentOn(a.id, on)"
               />
-              <span class="order-ops">
-                <n-button quaternary :disabled="readonly || i === 0" aria-label="上移" @click="moveAgent(i, -1)">
-                  <template #icon><n-icon :size="16"><ChevronUp :stroke-width="1.8" /></n-icon></template>
-                </n-button>
-                <n-button quaternary :disabled="readonly || i === f.agentOrder.length - 1" aria-label="下移" @click="moveAgent(i, 1)">
-                  <template #icon><n-icon :size="16"><ChevronDown :stroke-width="1.8" /></n-icon></template>
-                </n-button>
-              </span>
             </li>
           </ol>
         </div>
@@ -890,7 +883,7 @@ onUnmounted(() => {
 .paygo button:disabled { cursor: not-allowed; color: var(--disabled-fg); }
 .order-grid {
   display: grid;
-  grid-template-columns: 148px minmax(120px, 1fr) 56px 72px;
+  grid-template-columns: 148px minmax(120px, 1fr) 56px;
   gap: var(--sp-3);
   align-items: center;
 }
@@ -899,7 +892,6 @@ onUnmounted(() => {
   font-size: var(--fs-caption);
   color: var(--faint);
 }
-.order-head .order-ops { justify-self: end; }
 .order {
   list-style: none;
   margin: 0;
@@ -927,17 +919,11 @@ onUnmounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.order-ops {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0;
-}
-
 @media (max-width: 1279px) {
   .row { grid-template-columns: 1fr; }
   .ctrl { justify-content: flex-start; }
   .ctrl--secret { grid-template-columns: minmax(0, 1fr); }
   .lock { justify-self: start; }
-  .order-grid { grid-template-columns: minmax(96px, 1fr) minmax(80px, 1.2fr) 44px 64px; }
+  .order-grid { grid-template-columns: minmax(96px, 1fr) minmax(80px, 1.2fr) 44px; }
 }
 </style>

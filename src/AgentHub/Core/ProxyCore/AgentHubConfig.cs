@@ -176,6 +176,10 @@ public sealed class DashboardSettings
     public List<string> ResolvedAgentOrder() =>
         NormalizeAgentOrder(AgentOrder.Count > 0 ? AgentOrder : null, QuotaOrder);
 
+    /// <summary>已手调过用 QuotaOrder；否则 DeepSeek/中转在前，再跟 Agent 表。</summary>
+    public List<string> ResolvedQuotaOrder() =>
+        QuotaOrder.Count > 0 ? NormalizeQuotaOrder(QuotaOrder) : DeriveQuotaOrder();
+
     public List<string> DeriveQuotaOrder()
     {
         var q = new List<string>();
@@ -187,6 +191,31 @@ public sealed class DashboardSettings
             q.Add(id);
         }
         return q;
+    }
+
+    /// <summary>设置里改 Agent 顺序时，只重排额度砖里的 Agent，DeepSeek/中转位置不动。</summary>
+    public static List<string> MergeQuotaOrder(IEnumerable<string>? quotaOrder, IEnumerable<string>? agentOrder)
+    {
+        var quota = NormalizeQuotaOrder(quotaOrder);
+        var agents = NormalizeAgentOrder(agentOrder)
+            .Where(id => !string.Equals(id, "dsh", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var agentSet = new HashSet<string>(agents, StringComparer.Ordinal);
+        var qi = 0;
+        var result = new List<string>(quota.Count);
+        foreach (var id in quota)
+        {
+            if (agentSet.Contains(id))
+            {
+                if (qi < agents.Count)
+                    result.Add(agents[qi++]);
+            }
+            else
+                result.Add(id);
+        }
+        while (qi < agents.Count)
+            result.Add(agents[qi++]);
+        return NormalizeQuotaOrder(result);
     }
 
     public bool AgentEnabled(string id) => id.ToLowerInvariant() switch

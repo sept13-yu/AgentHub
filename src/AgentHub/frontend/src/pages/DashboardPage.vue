@@ -4,9 +4,11 @@ import { NButton, NIcon, NPopover, useMessage } from 'naive-ui'
 import { ArrowDownRight, ArrowUpRight, CircleAlert, RefreshCw } from 'lucide-vue-next'
 import AgentMark from '../components/AgentMark.vue'
 import UsageHeatmap from '../components/UsageHeatmap.vue'
-import { get, post } from '../api'
+import { get, post, put, WRITABLE } from '../api'
+import { moveItem } from '../settingsModel'
 import { toQuotaTiles, type QuotaTile } from '../quotaView'
 import { dashCache } from '../dashCache'
+import { usePageHotkeys } from '../hotkeys'
 import {
   formatTokens,
   RANGES,
@@ -27,6 +29,32 @@ const usage = ref(dashCache.usage)
 const quotasReady = ref(dashCache.quotasReady)
 const tiles = ref<QuotaTile[]>(dashCache.tiles)
 const due = reactive<Record<string, { ready: boolean; loading: boolean; error: string; text: string }>>({})
+const gridEl = ref<HTMLElement | null>(null)
+const press = ref<{ id: string; x: number; y: number; el: HTMLElement; pointerId: number } | null>(null)
+const drag = ref<{
+  id: string
+  offX: number
+  offY: number
+  x: number
+  y: number
+  w: number
+  h: number
+  html: string
+  span2: boolean
+  settling: boolean
+} | null>(null)
+const savedOrder = ref(dashCache.tiles.map((t) => t.id).join('\n'))
+const canSort = computed(() => WRITABLE && tiles.value.length > 1)
+const ghostStyle = computed(() => {
+  const d = drag.value
+  if (!d) return {}
+  return {
+    left: `${d.x}px`,
+    top: `${d.y}px`,
+    width: `${d.w}px`,
+    height: `${d.h}px`,
+  }
+})
 const modelsEl = ref<HTMLElement | null>(null)
 const modelsOverflow = ref(false)
 
@@ -151,7 +179,16 @@ async function loadUsage() {
 async function loadQuotas(force = false) {
   try {
     const raw = (await get(force ? '/api/quotas?force=true' : '/api/quotas')) as { stale?: boolean }
-    tiles.value = toQuotaTiles(raw)
+    const next = toQuotaTiles(raw)
+    if (drag.value) {
+      const map = new Map(next.map((t) => [t.id, t]))
+      const keep = tiles.value.map((t) => map.get(t.id) ?? t)
+      const seen = new Set(keep.map((t) => t.id))
+      tiles.value = keep.concat(next.filter((t) => !seen.has(t.id)))
+    } else {
+      tiles.value = next
+      savedOrder.value = tileOrderKey(next)
+    }
     quotasReady.value = true
     persist()
     for (const id of Object.keys(due)) delete due[id]
@@ -239,6 +276,210 @@ function onResize() {
   void measureModels()
 }
 
+function tileOrderKey(list: QuotaTile[] = tiles.value): string {
+  return list.map((t) => t.id).join('\n')
+}
+
+function sortEase(): number {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 260
+}
+
+type SlotBox = { id: string; x: number; y: number; w: number; h: number }
+let slots: SlotBox[] = []
+let lockId: string | null = null
+let hitRaf = 0
+let hitAt: { x: number; y: number } | null = null
+
+function readSlots() {
+  const grid = gridEl.value
+  if (!grid) {
+    slots = []
+    return
+  }
+  slots = []
+  for (const el of grid.querySelectorAll<HTMLElement>('[data-qid]')) {
+    const id = el.dataset.qid
+    if (!id) continue
+    slots.push({ id, x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight })
+  }
+}
+
+function slotHit(cx: number, cy: number): string | null {
+  const grid = gridEl.value
+  if (!grid || !slots.length) return null
+  const g = grid.getBoundingClientRect()
+  for (const s of slots) {
+    const left = g.left + s.x
+    const top = g.top + s.y
+    if (cx >= left && cx < left + s.w && cy >= top && cy < top + s.h) return s.id
+  }
+  return null
+}
+
+function layoutPoint(el: HTMLElement): { left: number; top: number } {
+  const grid = gridEl.value
+  if (!grid) {
+    const r = el.getBoundingClientRect()
+    return { left: r.left, top: r.top }
+  }
+  const g = grid.getBoundingClientRect()
+  return { left: g.left + el.offsetLeft, top: g.top + el.offsetTop }
+}
+
+function onTilePointerDown(id: string, e: PointerEvent) {
+  if (!canSort.value || e.button !== 0) return
+  if (e.target instanceof Element && e.target.closest('button, a, input, textarea')) return
+  const el = e.currentTarget as HTMLElement
+  press.value = { id, x: e.clientX, y: e.clientY, el, pointerId: e.pointerId }
+  el.setPointerCapture(e.pointerId)
+}
+
+function onTilePointerMove(e: PointerEvent) {
+  const p = press.value
+  if (p && !drag.value) {
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < 5) return
+    const rect = p.el.getBoundingClientRect()
+    drag.value = {
+      id: p.id,
+      offX: e.clientX - rect.left,
+      offY: e.clientY - rect.top,
+      x: rect.left,
+      y: rect.top,
+      w: rect.width,
+      h: rect.height,
+      html: p.el.innerHTML,
+      span2: p.el.classList.contains('span-2'),
+      settling: false,
+    }
+    press.value = null
+    document.documentElement.classList.add('ah-tile-sorting')
+    void nextTick(() => {
+      readSlots()
+      lockId = p.id
+    })
+  }
+  const d = drag.value
+  if (!d || d.settling) return
+  d.x = e.clientX - d.offX
+  d.y = e.clientY - d.offY
+  hitAt = { x: e.clientX, y: e.clientY }
+  if (hitRaf) return
+  hitRaf = requestAnimationFrame(() => {
+    hitRaf = 0
+    if (hitAt) hitReorder(hitAt.x, hitAt.y)
+  })
+}
+
+function onTilePointerUp() {
+  press.value = null
+  if (drag.value) void finishDrag()
+}
+
+function hitReorder(cx: number, cy: number) {
+  const d = drag.value
+  if (!d || d.settling) return
+  const hit = slotHit(cx, cy)
+  if (lockId) {
+    if (hit === lockId || hit === d.id) return
+    lockId = null
+  }
+  if (!hit || hit === d.id) return
+  const from = tiles.value.findIndex((t) => t.id === d.id)
+  const to = tiles.value.findIndex((t) => t.id === hit)
+  if (from < 0 || to < 0 || from === to) return
+  lockId = hit
+  flipMove(from, to)
+}
+
+function flipMove(from: number, to: number) {
+  const grid = gridEl.value
+  const first = new Map<string, { left: number; top: number }>()
+  if (grid) {
+    for (const el of grid.querySelectorAll<HTMLElement>('[data-qid]')) {
+      const id = el.dataset.qid
+      if (id) first.set(id, { left: el.getBoundingClientRect().left, top: el.getBoundingClientRect().top })
+    }
+  }
+  tiles.value = moveItem(tiles.value, from, to)
+  persist()
+  void nextTick(() => {
+    readSlots()
+    if (!grid) return
+    const ms = sortEase()
+    for (const el of grid.querySelectorAll<HTMLElement>('[data-qid]')) {
+      const id = el.dataset.qid
+      if (!id) continue
+      for (const a of el.getAnimations()) a.cancel()
+      const prev = first.get(id)
+      if (!prev) continue
+      const next = layoutPoint(el)
+      const dx = prev.left - next.left
+      const dy = prev.top - next.top
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue
+      el.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+        { duration: ms, easing: 'cubic-bezier(.2, .7, .2, 1)' },
+      )
+    }
+  })
+}
+
+async function finishDrag() {
+  const d = drag.value
+  if (!d) return
+  if (hitRaf) {
+    cancelAnimationFrame(hitRaf)
+    hitRaf = 0
+  }
+  hitAt = null
+  lockId = null
+  d.settling = true
+  await nextTick()
+  const slot = gridEl.value?.querySelector<HTMLElement>(`[data-qid="${d.id}"]`)
+  const dest = slot?.getBoundingClientRect()
+  const ms = sortEase()
+  if (dest && ms) {
+    d.x = dest.left
+    d.y = dest.top
+    d.w = dest.width
+    d.h = dest.height
+    await new Promise((r) => window.setTimeout(r, ms))
+  }
+  document.documentElement.classList.remove('ah-tile-sorting')
+  drag.value = null
+  if (!WRITABLE) return
+  const next = tileOrderKey()
+  if (next === savedOrder.value) return
+  void saveQuotaOrder(next)
+}
+
+async function saveQuotaOrder(orderKey: string) {
+  try {
+    await put('/api/settings', { dashboard: { quotaOrder: tiles.value.map((t) => t.id) } })
+    savedOrder.value = orderKey
+    persist()
+  } catch (e) {
+    message.error(errMessage(e))
+    const ids = savedOrder.value.split('\n').filter(Boolean)
+    if (!ids.length) return
+    const map = new Map(tiles.value.map((t) => [t.id, t]))
+    const restored: QuotaTile[] = []
+    for (const id of ids) {
+      const tile = map.get(id)
+      if (tile) restored.push(tile)
+    }
+    for (const tile of tiles.value) {
+      if (!ids.includes(tile.id)) restored.push(tile)
+    }
+    tiles.value = restored
+    persist()
+  }
+}
+
+usePageHotkeys({
+  refresh: () => { void onRefresh() },
+})
+
 onMounted(() => {
   window.addEventListener('agenthub-refresh', onPushRefresh)
   window.addEventListener('resize', onResize)
@@ -258,6 +499,17 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('agenthub-refresh', onPushRefresh)
   window.removeEventListener('resize', onResize)
+  document.documentElement.classList.remove('ah-tile-sorting')
+  if (hitRaf) {
+    cancelAnimationFrame(hitRaf)
+    hitRaf = 0
+  }
+  hitAt = null
+  lockId = null
+  if (drag.value && tileOrderKey() !== savedOrder.value)
+    void saveQuotaOrder(tileOrderKey())
+  drag.value = null
+  press.value = null
 })
 </script>
 
@@ -360,14 +612,24 @@ onUnmounted(() => {
   <section v-if="quotasReady" class="card" aria-labelledby="quota-title">
     <div class="card-head">
       <span id="quota-title">额度</span>
+      <span v-if="canSort" class="hint">拖动排序</span>
     </div>
     <div v-if="tiles.length" class="card-body">
-      <div class="qtiles">
+      <div ref="gridEl" class="qtiles" :class="{ 'is-sorting': !!drag }">
         <div
           v-for="q in tiles"
           :key="q.id"
           class="qtile"
-          :class="{ 'span-2': q.kind !== 'balance' && q.span === 2 }"
+          :data-qid="q.id"
+          :class="{
+            'span-2': q.kind !== 'balance' && q.span === 2,
+            'is-origin': drag?.id === q.id,
+            'can-sort': canSort,
+          }"
+          @pointerdown="onTilePointerDown(q.id, $event)"
+          @pointermove="onTilePointerMove($event)"
+          @pointerup="onTilePointerUp"
+          @pointercancel="onTilePointerUp"
         >
           <div class="q-corner">
             <span v-if="q.plan" class="q-plan">{{ q.plan }}</span>
@@ -378,7 +640,7 @@ onUnmounted(() => {
               @update:show="(on: boolean) => { if (on) loadDue(q.id) }"
             >
               <template #trigger>
-                <button type="button" class="q-due" :aria-label="q.name + ' 最近到期'">
+                <button type="button" class="q-due" draggable="false" :aria-label="q.name + ' 最近到期'">
                   <n-icon :size="14"><CircleAlert :stroke-width="1.8" /></n-icon>
                 </button>
               </template>
@@ -406,6 +668,15 @@ onUnmounted(() => {
       </div>
     </div>
   </section>
+  <Teleport to="body">
+    <div
+      v-if="drag"
+      class="qtile qtile-float"
+      :class="{ 'is-settle': drag.settling }"
+      :style="ghostStyle"
+      v-html="drag.html"
+    />
+  </Teleport>
 </template>
 
 <style scoped>
@@ -672,7 +943,11 @@ onUnmounted(() => {
   box-shadow: 0 0 0 1px var(--dot-ring);
 }
 
+:global(html.ah-tile-sorting) {
+  cursor: grabbing;
+}
 .qtiles {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--sp-3);
@@ -689,6 +964,53 @@ onUnmounted(() => {
   border: 1px solid var(--stroke);
   border-radius: var(--r-card);
   background: var(--surface);
+}
+.qtile.can-sort {
+  cursor: grab;
+  touch-action: none;
+}
+.qtile.can-sort .q-due {
+  cursor: pointer;
+  touch-action: auto;
+}
+.qtiles.is-sorting .qtile {
+  user-select: none;
+  cursor: grabbing;
+}
+.qtile.is-origin {
+  background: var(--wash);
+  border-style: dashed;
+  border-color: var(--stroke-strong);
+}
+.qtile.is-origin > * {
+  visibility: hidden;
+}
+.qtile-float {
+  position: fixed;
+  z-index: 80;
+  margin: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+  transform: scale(1.04);
+  transform-origin: center;
+  border-color: var(--accent-solid);
+}
+.qtile-float.is-settle {
+  transform: none;
+  transition:
+    left 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    top 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    width 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    height 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .qtile-float {
+    transform: none;
+  }
+  .qtile-float.is-settle {
+    transition: none;
+  }
 }
 .q-corner {
   position: absolute;

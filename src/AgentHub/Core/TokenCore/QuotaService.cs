@@ -119,7 +119,7 @@ public sealed class QuotaService
             _cache = new Dictionary<string, object?>
             {
                 ["updatedAt"] = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"),
-                ["items"] = QuotaPresenter.Flatten(sources, dash.DeriveQuotaOrder()),
+                ["items"] = QuotaPresenter.Flatten(sources, dash.ResolvedQuotaOrder()),
             };
             _cacheAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _cacheUnhealthy = IsUnhealthy(sources);

@@ -97,7 +97,7 @@ public static class UsageEndpoints
                     config.Dashboard.ShowQuotaCodex,
                     config.Dashboard.ShowAgentDsh,
                     agentOrder = config.Dashboard.ResolvedAgentOrder(),
-                    quotaOrder = config.Dashboard.DeriveQuotaOrder(),
+                    quotaOrder = config.Dashboard.ResolvedQuotaOrder(),
                     costCurrency = DashboardSettings.NormalizeCurrency(config.Dashboard.CostCurrency),
                     prices = PriceSyncService.Resolve(config.Dashboard.PriceOverrides),
                     priceSync = PriceSyncService.Status(),
@@ -238,14 +238,29 @@ public static class UsageEndpoints
                     ApplyBool(dash, "showQuotaZcode", v => config.Dashboard.ShowQuotaZcode = v);
                     ApplyBool(dash, "showQuotaCodex", v => config.Dashboard.ShowQuotaCodex = v);
                     ApplyBool(dash, "showAgentDsh", v => config.Dashboard.ShowAgentDsh = v);
+                    var wroteAgent = false;
                     if (dash.TryGetProperty("agentOrder", out var agentEl) && agentEl.ValueKind == JsonValueKind.Array)
                     {
                         config.Dashboard.AgentOrder = DashboardSettings.NormalizeAgentOrder(
                             agentEl.EnumerateArray()
                                 .Where(x => x.ValueKind == JsonValueKind.String)
                                 .Select(x => x.GetString()!));
+                        wroteAgent = true;
                     }
-                    config.Dashboard.QuotaOrder = config.Dashboard.DeriveQuotaOrder();
+                    if (dash.TryGetProperty("quotaOrder", out var quotaEl) && quotaEl.ValueKind == JsonValueKind.Array)
+                    {
+                        config.Dashboard.QuotaOrder = DashboardSettings.NormalizeQuotaOrder(
+                            quotaEl.EnumerateArray()
+                                .Where(x => x.ValueKind == JsonValueKind.String)
+                                .Select(x => x.GetString()!));
+                    }
+                    else if (wroteAgent)
+                    {
+                        config.Dashboard.QuotaOrder = config.Dashboard.QuotaOrder.Count > 0
+                            ? DashboardSettings.MergeQuotaOrder(
+                                config.Dashboard.QuotaOrder, config.Dashboard.AgentOrder)
+                            : config.Dashboard.DeriveQuotaOrder();
+                    }
                 }
                 if (root.TryGetProperty("credentials", out var cred))
                 {
