@@ -37,7 +37,9 @@ public static class PriceSyncService
         new() { Model = "deepseek-v4-flash", InputPer1m = 0.44, OutputPer1m = 1.32, Currency = "USD" },
         new() { Model = "deepseek-v4-pro", InputPer1m = 1.32, OutputPer1m = 3.96, Currency = "USD" },
         new() { Model = "DeepSeek-V4-Flash 正式版", InputPer1m = 0.44, OutputPer1m = 1.32, Currency = "USD" },
-        new() { Model = "kimi-k3-1", InputPer1m = 3.0, OutputPer1m = 15.0, Currency = "USD" },
+        new() { Model = "DeepSeek-V4-Pro 正式版", InputPer1m = 1.32, OutputPer1m = 3.96, Currency = "USD" },
+        new() { Model = "kimi-k3", InputPer1m = 3.0, OutputPer1m = 15.0, Currency = "USD" },
+        new() { Model = "Qwen3.8-Max", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
     ];
 
     private static IReadOnlyList<PriceRow> _baseline = DefaultPrices;

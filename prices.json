@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-05",
+  "updatedAt": "2026-09-07",
   "note": "官方牌价，USD 每 1M token；输入按总量计价；模型名大小写不敏感匹配",
   "prices": [
     { "model": "cursor-grok-4.6-xhigh-fast", "inputPer1m": 2.0, "outputPer1m": 6.0, "currency": "USD" },
@@ -17,6 +17,8 @@
     { "model": "deepseek-v4-flash", "inputPer1m": 0.44, "outputPer1m": 1.32, "currency": "USD" },
     { "model": "deepseek-v4-pro", "inputPer1m": 1.32, "outputPer1m": 3.96, "currency": "USD" },
     { "model": "DeepSeek-V4-Flash 正式版", "inputPer1m": 0.44, "outputPer1m": 1.32, "currency": "USD" },
-    { "model": "kimi-k3-1", "inputPer1m": 3.0, "outputPer1m": 15.0, "currency": "USD" }
+    { "model": "DeepSeek-V4-Pro 正式版", "inputPer1m": 1.32, "outputPer1m": 3.96, "currency": "USD" },
+    { "model": "kimi-k3", "inputPer1m": 3.0, "outputPer1m": 15.0, "currency": "USD" },
+    { "model": "Qwen3.8-Max", "inputPer1m": 2.0, "outputPer1m": 6.0, "currency": "USD" }
   ]
 }
