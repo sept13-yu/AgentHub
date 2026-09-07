@@ -7,9 +7,12 @@ import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
 import { formatMonthDay, formatWhen } from '../format'
 import AhConfirm from '../components/AhConfirm.vue'
+import { ahMenuKey, copyText, type AhMenuItem } from '../ahMenu'
+import { usePageHotkeys } from '../hotkeys'
 
 const message = useMessage()
 const pageLoading = inject<Ref<boolean>>('page-loading')
+const menu = inject(ahMenuKey)
 const readonly = !WRITABLE
 
 type Kind = 'skills' | 'library'
@@ -291,8 +294,9 @@ async function beginUpdate(names?: string[]) {
 }
 
 function updateSkills() {
-  if (selectedUpdateable.value.length === 0) return
-  return beginUpdate(selectedUpdateable.value.map((s) => s.relPath))
+  if (selectedUpdateable.value.length)
+    return beginUpdate(selectedUpdateable.value.map((s) => s.relPath))
+  return beginUpdate()
 }
 
 async function skillAction(path: string, body: unknown, success: string) {
@@ -311,6 +315,7 @@ async function skillAction(path: string, body: unknown, success: string) {
 }
 
 function manageSkill(skill: SkillItem) {
+  picked.value = skill
   return skillAction('/api/docs/skills/manage', { name: skill.relPath }, '已收进仓库')
 }
 
@@ -383,6 +388,10 @@ function toggleAllLibrary(on: boolean) {
 function toggleSelecting() {
   selecting.value = !selecting.value
   if (!selecting.value) selected.value = new Set()
+}
+
+function enterSelecting() {
+  selecting.value = true
 }
 
 function askDeleteSelected() {
@@ -524,6 +533,213 @@ function pickKind(id: Kind) {
   selected.value = new Set()
 }
 
+async function copyOk(text: string, ok: string) {
+  if (await copyText(text)) message.success(ok)
+  else message.error('复制失败')
+}
+
+async function revealPath(path: string) {
+  if (readonly || !path) return
+  try {
+    await post('/api/docs/open', { path, reveal: true })
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '打开目录失败')
+  }
+}
+
+async function openPath(path: string) {
+  if (readonly || !path) return
+  try {
+    await post('/api/docs/open', { path })
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '打开失败')
+  }
+}
+
+function askDeleteSkills(list: SkillItem[]) {
+  const rows = list.filter((s) => s.canDelete)
+  if (readonly || !rows.length || updateRunning.value) return
+  const names = rows.map((s) => s.name)
+  const shown = names.slice(0, 5).join('、')
+  const extra = names.length > 5 ? ` 等 ${names.length} 个` : ''
+  selected.value = new Set(rows.map((s) => s.relPath))
+  askConfirm(
+    `将删除已选的 ${names.length} 个技能（${shown}${extra}）。冲突或旧联接不会删。`,
+    deleteSelectedNow,
+  )
+}
+
+function askDeleteLibrary(list: LibItem[]) {
+  if (readonly || !list.length) return
+  const names = list.map((s) => s.name)
+  const shown = names.slice(0, 5).join('、')
+  const extra = names.length > 5 ? ` 等 ${names.length} 篇` : ''
+  selected.value = new Set(list.map((s) => s.path))
+  askConfirm(`将删除已选的 ${names.length} 篇方案（${shown}${extra}）。`, deleteSelectedNow)
+}
+
+function prepareSkill(s: SkillItem) {
+  if (!selected.value.has(s.relPath)) selected.value = new Set()
+  void openPreview(s)
+}
+
+function onSkillMenu(e: MouseEvent, s: SkillItem) {
+  if (!menu) return
+  prepareSkill(s)
+  const items: AhMenuItem[] = [
+    {
+      key: 'toggle',
+      label: s.canDisable ? '停用' : '启用',
+      disabled: readonly || toggling.value.has(s.relPath) || (!s.canEnable && !s.canDisable),
+      handler: () => toggleSkill(s, !s.enabled),
+    },
+    {
+      key: 'open',
+      label: '打开',
+      disabled: readonly,
+      handler: () => openPath(s.path),
+    },
+    {
+      key: 'reveal',
+      label: '在资源管理器中显示',
+      disabled: readonly,
+      handler: () => revealPath(s.path),
+    },
+    {
+      key: 'copy',
+      label: '复制路径',
+      handler: () => copyOk(s.path, '已复制路径'),
+    },
+    {
+      key: 'manage',
+      label: '收进仓库',
+      disabled: readonly || !s.canManage,
+      handler: () => manageSkill(s),
+    },
+    {
+      key: 'update',
+      label: '检查更新',
+      disabled: readonly || !s.canUpdate || !data.value?.skillsCli.available || updateRunning.value,
+      handler: () => beginUpdate([s.relPath]),
+    },
+    { key: 'sep', separator: true },
+    {
+      key: 'del',
+      label: '删除',
+      shortcut: 'Del',
+      danger: true,
+      disabled: readonly || !s.canDelete || updateRunning.value,
+      handler: () => askDeleteSkills([s]),
+    },
+  ]
+  menu.open(e, items)
+}
+
+function onLibMenu(e: MouseEvent, item: LibItem) {
+  if (!menu) return
+  if (!selected.value.has(item.path)) selected.value = new Set()
+  void openPreview(item)
+  const batch = selected.value.size > 1 && selected.value.has(item.path)
+    ? library.value.filter((x) => selected.value.has(x.path))
+    : [item]
+  const items: AhMenuItem[] = [
+    {
+      key: 'open',
+      label: '打开',
+      disabled: readonly,
+      handler: () => openPath(item.path),
+    },
+    {
+      key: 'reveal',
+      label: '显示所在目录',
+      disabled: readonly,
+      handler: () => revealPath(item.path),
+    },
+    {
+      key: 'copy',
+      label: '复制路径',
+      handler: () => copyOk(item.path, '已复制路径'),
+    },
+    { key: 'sep', separator: true },
+    {
+      key: 'del',
+      label: batch.length > 1 ? `删除 ${batch.length} 篇` : '删除',
+      shortcut: 'Del',
+      danger: true,
+      disabled: readonly,
+      handler: () => askDeleteLibrary(batch),
+    },
+  ]
+  menu.open(e, items)
+}
+
+function onLibGroupMenu(e: MouseEvent, g: { name: string; items: LibItem[] }) {
+  if (!menu) return
+  const items: AhMenuItem[] = [
+    {
+      key: 'fold',
+      label: folded.value.has(g.name) ? '展开' : '折叠',
+      handler: () => toggleFold(g.name),
+    },
+    {
+      key: 'sel',
+      label: '全选本组',
+      disabled: readonly,
+      handler: () => {
+        enterSelecting()
+        const next = new Set(selected.value)
+        for (const item of g.items) next.add(item.path)
+        selected.value = next
+      },
+    },
+    { key: 'sep', separator: true },
+    {
+      key: 'del',
+      label: `删除本组 ${g.items.length} 篇`,
+      danger: true,
+      disabled: readonly || g.items.length === 0,
+      handler: () => askDeleteLibrary(g.items),
+    },
+  ]
+  menu.open(e, items)
+}
+
+function onEsc() {
+  if (confirmShow.value || installShow.value) return
+  if (picked.value) {
+    picked.value = null
+    preview.value = null
+    return
+  }
+  if (selected.value.size || selecting.value) {
+    selected.value = new Set()
+    selecting.value = false
+  }
+}
+
+function onDeleteKey() {
+  if (selectedCount.value) {
+    askDeleteSelected()
+    return
+  }
+  if (!picked.value) return
+  if (picked.value.kind === 'skill') askDeleteSkills([picked.value as SkillItem])
+  else askDeleteLibrary([picked.value as LibItem])
+}
+
+function onSelectAll() {
+  enterSelecting()
+  if (kind.value === 'skills') toggleAllDeletable(true)
+  else toggleAllLibrary(true)
+}
+
+usePageHotkeys({
+  refresh: () => { void refresh() },
+  remove: onDeleteKey,
+  selectAll: onSelectAll,
+  escape: onEsc,
+})
+
 watch(kind, () => { void load() })
 let qTimer = 0
 watch(q, () => {
@@ -562,14 +778,15 @@ onUnmounted(() => { stopPoll() })
       安装
     </n-button>
     <n-button
-      v-if="kind === 'skills' && selectedUpdateable.length"
+      v-if="kind === 'skills'"
       :disabled="readonly || !data?.skillsCli.available || updateRunning"
       :loading="updateRunning && jobKind === 'update'"
       @click="updateSkills"
     >
       <template #icon><n-icon><CloudDownload :size="16" :stroke-width="1.8" /></n-icon></template>
       <template v-if="updateRunning && progress && jobKind === 'update'">检查中 {{ progress.index }}/{{ progress.total }}</template>
-      <template v-else>检查更新 {{ selectedUpdateable.length }}</template>
+      <template v-else-if="selectedUpdateable.length">检查更新 {{ selectedUpdateable.length }}</template>
+      <template v-else>检查更新</template>
     </n-button>
     <n-button type="primary" @click="refresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
@@ -637,7 +854,13 @@ onUnmounted(() => { stopPoll() })
                 </span>
               </h3>
               <div class="docs-grid">
-                <div v-for="s in sortedSkills" :key="s.path" class="doc-cell" :class="{ 'has-check': selecting && !readonly }">
+                <div
+                  v-for="s in sortedSkills"
+                  :key="s.path"
+                  class="doc-cell"
+                  :class="{ 'has-check': selecting && !readonly }"
+                  @contextmenu="onSkillMenu($event, s)"
+                >
                   <n-checkbox
                     v-if="selecting && !readonly"
                     class="doc-check"
@@ -708,12 +931,24 @@ onUnmounted(() => { stopPoll() })
               </h3>
               <table class="docs-table">
                 <colgroup>
-                  <col class="docs-col-name" /><col class="docs-col-when" />
+                  <col v-if="selecting && !readonly" class="docs-col-check" /><col class="docs-col-name" /><col class="docs-col-when" />
                 </colgroup>
-                <thead><tr><th>名称</th><th>改过</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th v-if="selecting && !readonly">
+                      <n-checkbox
+                        :checked="allLibraryOn"
+                        :indeterminate="someLibraryOn && !allLibraryOn"
+                        @update:checked="toggleAllLibrary"
+                      />
+                    </th>
+                    <th>名称</th>
+                    <th>改过</th>
+                  </tr>
+                </thead>
                 <tbody v-for="g in groups" :key="g.name" :class="{ 'is-fold': folded.has(g.name) }">
-                  <tr class="doc-ghead">
-                    <td colspan="2">
+                  <tr class="doc-ghead" @contextmenu="onLibGroupMenu($event, g)">
+                    <td :colspan="selecting && !readonly ? 3 : 2">
                       <button type="button" class="doc-gbtn" @click="toggleFold(g.name)">
                         <ChevronDown class="ico" :size="14" :stroke-width="1.8" />
                         {{ g.name }} <span class="n">{{ g.items.length }}</span>
@@ -726,16 +961,17 @@ onUnmounted(() => { stopPoll() })
                     data-plan
                     :class="{ 'is-on': picked && picked.path === item.path, 'is-picked': selected.has(item.path) }"
                     @click="openPreview(item)"
+                    @contextmenu="onLibMenu($event, item)"
                   >
+                    <td v-if="selecting && !readonly" @click.stop>
+                      <n-checkbox
+                        :checked="selected.has(item.path)"
+                        :aria-label="'选择 ' + item.name"
+                        @update:checked="(on: boolean) => toggleSelect(item.path, on)"
+                      />
+                    </td>
                     <td>
                       <span class="docs-name">
-                        <n-checkbox
-                          v-if="selecting && !readonly"
-                          :checked="selected.has(item.path)"
-                          :aria-label="'选择 ' + item.name"
-                          @click.stop
-                          @update:checked="(on: boolean) => toggleSelect(item.path, on)"
-                        />
                         <AgentMark v-if="item.agentId" :id="item.agentId" />
                         <b>{{ item.name }}</b>
                       </span>
@@ -1008,6 +1244,7 @@ onUnmounted(() => { stopPoll() })
 }
 .doc-sec h3 .n { font-variant-numeric: tabular-nums; }
 .docs-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
+.docs-table col.docs-col-check { width: 36px; }
 .docs-table col.docs-col-when { width: 56px; }
 .docs-table th {
   text-align: left; font-weight: 400; color: var(--faint); font-size: var(--fs-caption);

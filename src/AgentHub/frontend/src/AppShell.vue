@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, provide, ref } from 'vue'
+import { onMounted, onUnmounted, provide, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { bindAppHotkeys, pageHotkeysKey, type PageHotkeys } from './hotkeys'
 import { FileText, KeyRound, LayoutDashboard, Menu, MessageSquare, Moon, ScrollText, Settings, Sun } from 'lucide-vue-next'
 import { get } from './api'
 import appIcon from './assets/agenthub.png'
@@ -10,9 +11,13 @@ import { setTokenUnit } from './tokenUnit'
 const route = useRoute()
 const drawerOpen = ref(false)
 const pageLoading = ref(false)
+const pageHotkeys = ref<PageHotkeys | null>(null)
 provide('page-loading', pageLoading)
+provide(pageHotkeysKey, pageHotkeys)
 
+let stopHotkeys: (() => void) | null = null
 onMounted(() => {
+  stopHotkeys = bindAppHotkeys(pageHotkeys)
   void get<{ dashboard?: { tokenUnit?: string } }>('/api/settings')
     .then((s) => {
       const u = s.dashboard?.tokenUnit
@@ -20,6 +25,7 @@ onMounted(() => {
     })
     .catch(() => { /* 首屏用本地缓存单位 */ })
 })
+onUnmounted(() => { stopHotkeys?.() })
 
 const nav = [
   { to: '/dashboard', label: '仪表盘', icon: LayoutDashboard },

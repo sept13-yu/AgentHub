@@ -51,6 +51,10 @@ public partial class MainWindow : Window
             var env = await CoreWebView2Environment.CreateAsync(null, dataFolder);
             await Web.EnsureCoreWebView2Async(env);
 
+            // 桌面壳不是浏览器：关掉右键网页菜单（后退/刷新/检查等）和底栏链接预览
+            Web.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+            Web.CoreWebView2.Settings.IsStatusBarEnabled = false;
+
             // 写 token 注入 + fetch 自动带头：壳内 = 可写；浏览器 = 只读。
             // 主题首帧以配置为准：写 data-theme 和 localStorage，再回报壳层（UI_RULES §7.2）
             var tokenJson = JsonSerializer.Serialize(_web.WriteToken);

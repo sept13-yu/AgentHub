@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, inject, nextTick, onMounted, ref, watch, type Ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NInput, useMessage } from 'naive-ui'
 import { ChevronDown, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
@@ -7,10 +7,14 @@ import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
 import AhConfirm from '../components/AhConfirm.vue'
 import { formatBytes, formatWhen } from '../format'
+import { ahMenuKey, copyText, type AhMenuItem } from '../ahMenu'
+import { usePageHotkeys } from '../hotkeys'
 
 const message = useMessage()
 const pageLoading = inject<Ref<boolean>>('page-loading')
+const menu = inject(ahMenuKey)
 const readonly = !WRITABLE
+const titleInput = ref<{ focus: () => void } | null>(null)
 
 type RangeKey = 'week' | 'before' | 'all'
 interface Source { id: string; name: string }
@@ -517,6 +521,169 @@ watch(q, () => {
   qTimer = window.setTimeout(() => { void load() }, 280)
 })
 
+function canOpenAgent(id: string) {
+  return id.toLowerCase() !== 'cursor'
+}
+
+async function copyOk(text: string, ok: string) {
+  if (await copyText(text)) message.success(ok)
+  else message.error('复制失败')
+}
+
+async function openFileOf(row: SessionRow) {
+  if (readonly || !canOpenAgent(row.agent)) return
+  try {
+    await post('/api/sessions/open', { agent: row.agent, id: row.id })
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '打开失败')
+  }
+}
+
+async function openProject(path: string) {
+  if (readonly || !path) return
+  try {
+    await post('/api/sessions/open-project', { path })
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '打开目录失败')
+  }
+}
+
+async function startRename(row: SessionRow) {
+  await openRow(row)
+  await nextTick()
+  titleInput.value?.focus()
+}
+
+function askRemoveRows(rows: SessionRow[]) {
+  if (readonly || !rows.length) return
+  pendingRows.value = rows
+  confirmKind.value = 'delete'
+  vacuum.value = false
+  confirmShow.value = true
+}
+
+function deleteTargets(row: SessionRow): SessionRow[] {
+  const k = keyOf(row)
+  if (selected.value.size > 1 && selected.value.has(k))
+    return [...selected.value.values()]
+  return [row]
+}
+
+function prepareRow(row: SessionRow) {
+  const k = keyOf(row)
+  if (!selected.value.has(k)) selected.value = new Map()
+  void openRow(row)
+}
+
+function onRowMenu(e: MouseEvent, row: SessionRow) {
+  if (!menu) return
+  prepareRow(row)
+  const targets = deleteTargets(row)
+  const unlocked = targets.filter((r) => !r.locked)
+  const items: AhMenuItem[] = [
+    {
+      key: 'open',
+      label: '打开',
+      disabled: readonly || !canOpenAgent(row.agent),
+      handler: () => openFileOf(row),
+    },
+    {
+      key: 'rename',
+      label: '改标题',
+      disabled: readonly,
+      handler: () => startRename(row),
+    },
+    {
+      key: 'lock',
+      label: row.locked ? '解锁' : '锁定',
+      disabled: readonly,
+      handler: () => toggleLock(row),
+    },
+    {
+      key: 'copy-title',
+      label: targets.length > 1 ? `复制 ${targets.length} 个标题` : '复制标题',
+      handler: () => copyOk(targets.map((r) => r.title || '(无标题)').join('\n'), '已复制'),
+    },
+    {
+      key: 'copy-path',
+      label: '复制项目路径',
+      disabled: !row.project,
+      handler: () => copyOk(row.project || '', '已复制路径'),
+    },
+    {
+      key: 'open-dir',
+      label: '打开项目目录',
+      disabled: readonly || !row.project,
+      handler: () => openProject(row.project || ''),
+    },
+    { key: 'sep', separator: true },
+    {
+      key: 'del',
+      label: unlocked.length > 1 ? `删除 ${unlocked.length} 条` : '删除',
+      shortcut: 'Del',
+      danger: true,
+      disabled: readonly || unlocked.length === 0,
+      handler: () => askRemoveRows(targets),
+    },
+  ]
+  menu.open(e, items)
+}
+
+function onGroupMenu(e: MouseEvent, g: { key: string; name: string; path: string; items: SessionRow[] }) {
+  if (!menu) return
+  const unlocked = g.items.filter((r) => !r.locked)
+  const items: AhMenuItem[] = [
+    {
+      key: 'fold',
+      label: folded.value.has(g.key) ? '展开' : '折叠',
+      handler: () => toggleFold(g.key),
+    },
+    {
+      key: 'sel',
+      label: '全选本组未锁',
+      disabled: readonly || unlocked.length === 0,
+      handler: () => {
+        const next = new Map(selected.value)
+        for (const row of unlocked) next.set(keyOf(row), row)
+        selected.value = next
+      },
+    },
+    {
+      key: 'open-dir',
+      label: '打开项目目录',
+      disabled: readonly || !g.path,
+      handler: () => openProject(g.path),
+    },
+    { key: 'sep', separator: true },
+    {
+      key: 'del',
+      label: unlocked.length ? `删除本组未锁 ${unlocked.length} 条` : '删除本组未锁',
+      danger: true,
+      disabled: readonly || unlocked.length === 0,
+      handler: () => askRemoveRows(unlocked),
+    },
+  ]
+  menu.open(e, items)
+}
+
+function onEsc() {
+  if (confirmShow.value) return
+  if (current.value) {
+    current.value = null
+    detail.value = null
+    previewErr.value = ''
+    return
+  }
+  if (selected.value.size) selected.value = new Map()
+}
+
+usePageHotkeys({
+  refresh: () => { void (readonly ? load() : refresh()) },
+  remove: () => askRemove(),
+  selectAll: () => toggleAll(true),
+  escape: onEsc,
+})
+
 onMounted(() => { void load() })
 </script>
 
@@ -619,7 +786,7 @@ onMounted(() => { void load() })
               :key="g.key || 'unknown'"
               :class="{ 'is-fold': folded.has(g.key) }"
             >
-              <tr class="sess-ghead">
+              <tr class="sess-ghead" @contextmenu="onGroupMenu($event, g)">
                 <td colspan="4">
                   <button type="button" class="sess-gbtn" :title="g.path" @click="toggleFold(g.key)">
                     <ChevronDown class="ico" :size="14" :stroke-width="1.8" />
@@ -632,6 +799,7 @@ onMounted(() => { void load() })
                 :key="keyOf(row)"
                 :class="{ 'is-on': current && keyOf(current) === keyOf(row) }"
                 @click="openRow(row)"
+                @contextmenu="onRowMenu($event, row)"
               >
                 <td @click.stop>
                   <n-checkbox
@@ -677,7 +845,14 @@ onMounted(() => { void load() })
               <span>{{ detail?.messageCount ?? current.messageCount }} 条 · {{ formatBytes(detail?.sizeBytes ?? current.sizeBytes) }} · {{ formatWhen(detail?.lastActivity || current.lastActivity) }}</span>
             </div>
             <div v-if="!readonly && detail" class="sess-acts">
-              <n-input v-if="detail.canRename" v-model:value="titleEdit" maxlength="200" placeholder="标题" @blur="saveTitle" />
+              <n-input
+                v-if="detail.canRename"
+                ref="titleInput"
+                v-model:value="titleEdit"
+                maxlength="200"
+                placeholder="标题"
+                @blur="saveTitle"
+              />
               <n-button v-if="detail.canOpen" @click="openFile">
                 <template #icon><n-icon><ExternalLink :size="16" :stroke-width="1.8" /></n-icon></template>
                 打开

@@ -4,6 +4,7 @@ import { NButton, NIcon, NInput, NSwitch, useMessage } from 'naive-ui'
 import { CloudDownload, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import { api, del, get, post, put, WRITABLE } from '../api'
+import { usePageHotkeys } from '../hotkeys'
 
 const message = useMessage()
 const pageLoading = inject<Ref<boolean>>('page-loading')
@@ -246,6 +247,10 @@ async function removeConnection() {
 const changeText: Record<DiffRow['change'], string> = {
   keep: '不变', set: '新增', clear: '移除', change: '修改',
 }
+
+usePageHotkeys({
+  refresh: () => { void load() },
+})
 
 onMounted(() => load())
 </script>
