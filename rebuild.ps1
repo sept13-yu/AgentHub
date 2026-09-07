@@ -9,10 +9,23 @@ $Root = $PSScriptRoot
 $Frontend = Join-Path $Root 'src\AgentHub\frontend'
 $Csproj = Join-Path $Root 'src\AgentHub\AgentHub.csproj'
 $OutDir = Join-Path $Root 'src\AgentHub\bin\Debug\net10.0-windows10.0.19041.0'
+$Exe = Join-Path $OutDir 'AgentHub.exe'
 
-if (Get-Process -Name AgentHub -ErrorAction SilentlyContinue) {
-    Write-Host 'AgentHub 还在跑。请先在托盘右键退出，否则 AgentHub.exe 被锁，编译无法覆盖。' -ForegroundColor Yellow
-    Write-Host ''
+function Stop-AgentHub {
+    $procs = @(Get-Process -Name AgentHub -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) { return }
+    Write-Host '正在退出 AgentHub…'
+    $procs | Stop-Process -Force
+    $deadline = (Get-Date).AddSeconds(20)
+    do {
+        Start-Sleep -Milliseconds 300
+        $procs = @(Get-Process -Name AgentHub -ErrorAction SilentlyContinue)
+        if ((Get-Date) -gt $deadline) {
+            Write-Host 'AgentHub 未能退出，exe 仍被锁。' -ForegroundColor Red
+            exit 1
+        }
+    } while ($procs.Count -gt 0)
+    Start-Sleep -Milliseconds 500
 }
 
 function Invoke-Npm {
@@ -22,6 +35,8 @@ function Invoke-Npm {
     & $npm.Source @NpmArgs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
+
+Stop-AgentHub
 
 Write-Host '[1/2] 构建 Vue（只改前端时 dotnet build 可能整次跳过，这里强制打）'
 Push-Location $Frontend
@@ -44,6 +59,12 @@ Write-Host '输出仍在原目录：开机自启注册表指向那里，不能�
 dotnet publish $Csproj -c Release -r win-x64 --self-contained false -p:PublishReadyToRun=true -p:SkipFrontendBuild=true -o $OutDir
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+if (-not (Test-Path $Exe)) {
+    Write-Host "找不到 $Exe" -ForegroundColor Red
+    exit 1
+}
+
 Write-Host ''
-Write-Host '编译完成。托盘退出后重新打开 AgentHub。'
-Write-Host '桌面壳吃的是本目录打出的 wwwroot\app，不是 localhost:5173。'
+Write-Host '正在启动 AgentHub'
+Start-Process -FilePath $Exe -WorkingDirectory $OutDir
+Write-Host '已启动。桌面壳吃的是本目录打出的 wwwroot\app，不是 localhost:5173。'
