@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using AgentHub.Core.ProxyCore;
@@ -25,6 +25,7 @@ public static class PriceSyncService
         new() { Model = "cursor-grok-4.6-xhigh-fast", InputPer1m = 4.0, OutputPer1m = 12.0, Currency = "USD" },
         new() { Model = "cursor-grok-4.6-high-fast", InputPer1m = 4.0, OutputPer1m = 12.0, Currency = "USD" },
         new() { Model = "cursor-grok-4.6-xhigh", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
+        new() { Model = "grok-bot-default", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
         new() { Model = "cursor-grok-4.6-high", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
         new() { Model = "claude-opus-5-thinking-high", InputPer1m = 5.0, OutputPer1m = 25.0, Currency = "USD" },
         new() { Model = "gemini-3.7-flash-high", InputPer1m = 0.75, OutputPer1m = 3.5, Currency = "USD" },
@@ -234,3 +235,4 @@ public static class PriceSyncService
         public List<PriceRow>? Prices { get; set; }
     }
 }
+
