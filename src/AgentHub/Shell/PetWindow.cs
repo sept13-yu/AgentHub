@@ -41,8 +41,10 @@ internal sealed class PetWindow : Window
     private double _lastDragLeft;
     private string _size = "medium";
     private string _tokenUnit = "zh";
+    private string _character = "clawd";
     private double _bubbleBand = 56;
     private PetSnapshot _stats = new(0, 0, 0, 0, Array.Empty<PetTopModel>());
+    private static readonly string[] PetCharacters = ["clawd", "sprout", "byte", "ember"];
 
     private const long TypingLingerMs = 400;
     private const long RageStreakGapMs = 1500;
@@ -149,6 +151,16 @@ internal sealed class PetWindow : Window
         PushContext();
     }
 
+    /// <summary>clawd SVG ↔ sprout/byte/ember 精灵表。落盘在 pet-placement.json。</summary>
+    public void CycleCharacter()
+    {
+        var i = Array.IndexOf(PetCharacters, _character);
+        if (i < 0) i = 0;
+        _character = PetCharacters[(i + 1) % PetCharacters.Length];
+        SavePlacement();
+        PushContext();
+    }
+
     private void ApplySizeDims(string size)
     {
         _size = size is "small" or "large" ? size : "medium";
@@ -251,6 +263,9 @@ internal sealed class PetWindow : Window
                         break;
                     case "pet:open":
                         OpenRequested?.Invoke();
+                        break;
+                    case "pet:cycle-character":
+                        CycleCharacter();
                         break;
                 }
             };
@@ -443,11 +458,11 @@ internal sealed class PetWindow : Window
             _ = _webView.CoreWebView2.ExecuteScriptAsync(
                 "window.__ttPetCurrency={symbol:'',rate:1};" +
                 "window.__ttPetLocale='zh-CN';" +
-                "window.__ttPetCharacter='clawd';" +
                 "window.__ttPetDark=true;" +
                 "window.__ttPetSyncing=false;" +
                 "window.__ttPetConnected=true;" +
                 "window.__ttPetMiniMode=false;" +
+                $"window.__ttPetCharacter={JsonSerializer.Serialize(NormalizeCharacter(_character))};" +
                 $"window.__ttPetTokenUnit={JsonSerializer.Serialize(DashboardSettings.NormalizeTokenUnit(_tokenUnit))};" +
                 $"window.__ttPetTokens={_stats.TodayTokens.ToString(inv)};" +
                 "window.__ttPetCostUsd=0;" +
@@ -456,6 +471,7 @@ internal sealed class PetWindow : Window
                 "try{document.documentElement.dataset.size=" + JsonSerializer.Serialize(_size) + ";}catch(e){}" +
                 "window.dispatchEvent(new Event('pet:usage'));" +
                 "window.dispatchEvent(new Event('pet:connected'));" +
+                "window.dispatchEvent(new Event('pet:character'));" +
                 "window.dispatchEvent(new Event('pet:mode'));");
         }
         catch { }
@@ -473,15 +489,19 @@ internal sealed class PetWindow : Window
         try
         {
             if (File.Exists(PlacementPath)
-                && JsonNode.Parse(File.ReadAllText(PlacementPath))?.AsObject() is { } s
-                && s["x"]?.GetValue<double>() is { } x
-                && s["y"]?.GetValue<double>() is { } y
-                && IsOnScreen(x, y, Width, Height))
+                && JsonNode.Parse(File.ReadAllText(PlacementPath))?.AsObject() is { } s)
             {
-                left = Clamp(x, SystemParameters.VirtualScreenLeft,
-                    SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - Width);
-                top = Clamp(y, SystemParameters.VirtualScreenTop,
-                    SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - Height);
+                if (s["character"]?.GetValue<string>() is { } ch)
+                    _character = NormalizeCharacter(ch);
+                if (s["x"]?.GetValue<double>() is { } x
+                    && s["y"]?.GetValue<double>() is { } y
+                    && IsOnScreen(x, y, Width, Height))
+                {
+                    left = Clamp(x, SystemParameters.VirtualScreenLeft,
+                        SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - Width);
+                    top = Clamp(y, SystemParameters.VirtualScreenTop,
+                        SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - Height);
+                }
             }
         }
         catch { }
@@ -499,9 +519,15 @@ internal sealed class PetWindow : Window
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(PlacementPath)!);
-            File.WriteAllText(PlacementPath, JsonSerializer.Serialize(new { x, y }));
+            File.WriteAllText(PlacementPath, JsonSerializer.Serialize(new { x, y, character = _character }));
         }
         catch { }
+    }
+
+    private static string NormalizeCharacter(string? value)
+    {
+        var id = (value ?? "").Trim().ToLowerInvariant();
+        return Array.IndexOf(PetCharacters, id) >= 0 ? id : "clawd";
     }
 
     private static bool IsOnScreen(double x, double y, double width, double height)

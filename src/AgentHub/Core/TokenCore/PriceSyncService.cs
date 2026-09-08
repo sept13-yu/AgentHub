@@ -40,6 +40,7 @@ public static class PriceSyncService
         new() { Model = "GLM-5.3", InputPer1m = 8.0, OutputPer1m = 28.0, Currency = "CNY" },
         new() { Model = "GLM-5.3-Flash", InputPer1m = 0.8, OutputPer1m = 2.8, Currency = "CNY" },
         new() { Model = "deepseek-v4-flash", InputPer1m = 3.0, OutputPer1m = 9.0, Currency = "CNY" },
+        new() { Model = "deepseek-v4-flash-vision-exp", InputPer1m = 3.0, OutputPer1m = 9.0, Currency = "CNY" },
         new() { Model = "deepseek-v4-pro", InputPer1m = 9.0, OutputPer1m = 27.0, Currency = "CNY" },
         new() { Model = "DeepSeek-V4-Flash 正式版", InputPer1m = 3.0, OutputPer1m = 9.0, Currency = "CNY" },
         new() { Model = "DeepSeek-V4-Pro 正式版", InputPer1m = 9.0, OutputPer1m = 27.0, Currency = "CNY" },
@@ -116,7 +117,8 @@ public static class PriceSyncService
         });
     }
 
-    /// <summary>PriceOverrides（按 Model，OrdinalIgnoreCase 覆盖/追加）> Baseline（远端缓存 > DefaultPrices）。</summary>
+    /// <summary>PriceOverrides（按 Model，OrdinalIgnoreCase 覆盖/追加）> Baseline（远端缓存 > DefaultPrices）。
+    /// 算钱时的变体名映射在 <see cref="PriceAliases"/>（UsageCost 精确命中后再走别名），不在这里扩表。</summary>
     public static IReadOnlyList<PriceRow> Resolve(IEnumerable<PriceRow>? overrides)
     {
         var table = new Dictionary<string, PriceRow>(StringComparer.OrdinalIgnoreCase);
