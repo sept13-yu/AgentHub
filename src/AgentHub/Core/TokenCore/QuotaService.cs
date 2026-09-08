@@ -257,6 +257,20 @@ public sealed class QuotaService
             };
             if (!string.IsNullOrEmpty(membership))
                 card["plan"] = membership;
+
+            // Grok Bot Sand 窗口：失败/未开通不改动 usage-summary 成功卡
+            var accessToken = CursorAuth.ReadAccessToken();
+            if (!string.IsNullOrEmpty(accessToken))
+            {
+                var sand = await CursorSand.TryFetchAsync(_http, accessToken, CancellationToken.None);
+                if (sand.Granted && sand.UsagePercent is double grokPct)
+                {
+                    card["grokPercent"] = grokPct;
+                    if (!string.IsNullOrEmpty(sand.NextResetAt))
+                        card["grokResetAt"] = sand.NextResetAt;
+                }
+            }
+
             return card;
         }
         catch (Exception ex)

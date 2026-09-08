@@ -11,13 +11,16 @@ export type QuotaTile =
   | { kind: 'balance'; id: string; name: string; color: string; text: string; dueHint?: boolean; plan?: string }
   | { kind: 'windows'; id: string; name: string; color: string; span: 1 | 2; windows: QuotaWindow[]; plan?: string }
 
-const PAIR: Record<string, { group: string; mate: string; short: string }> = {
-  'cursor-auto': { group: 'cursor', mate: 'cursor-api', short: 'Auto' },
-  'cursor-api': { group: 'cursor', mate: 'cursor-auto', short: 'API' },
-  'zcode-5h': { group: 'zcode', mate: 'zcode-week', short: '5 小时' },
-  'zcode-week': { group: 'zcode', mate: 'zcode-5h', short: '每周' },
-  'codex-5h': { group: 'codex', mate: 'codex-7d', short: '5 小时' },
-  'codex-7d': { group: 'codex', mate: 'codex-5h', short: '每周' },
+/** remain 条目归属的 Agent 组与短名（同组可多窗拼成一块砖）。 */
+const WINDOW_META: Record<string, { group: string; short: string }> = {
+  'cursor-total': { group: 'cursor', short: '总用量' },
+  'cursor-auto': { group: 'cursor', short: 'Auto' },
+  'cursor-api': { group: 'cursor', short: 'API' },
+  'cursor-grok': { group: 'cursor', short: 'Grok Bot' },
+  'zcode-5h': { group: 'zcode', short: '5 小时' },
+  'zcode-week': { group: 'zcode', short: '每周' },
+  'codex-5h': { group: 'codex', short: '5 小时' },
+  'codex-7d': { group: 'codex', short: '每周' },
 }
 
 export function toQuotaTiles(raw: unknown): QuotaTile[] {
@@ -41,26 +44,29 @@ export function toQuotaTiles(raw: unknown): QuotaTile[] {
       continue
     }
     if (kind !== 'remain') continue
-    const pair = PAIR[id]
-    if (!pair) continue
-    let mate: Record<string, unknown> | null = null
-    for (let j = i + 1; j < list.length; j++) {
+    const meta = WINDOW_META[id]
+    if (!meta) continue
+
+    const members: { id: string; rec: Record<string, unknown> }[] = []
+    for (let j = i; j < list.length; j++) {
       if (used.has(j)) continue
-      if (str(list[j].id) === pair.mate && str(list[j].kind) === 'remain') {
-        mate = list[j]
-        used.add(j)
-        break
-      }
+      if (str(list[j].kind) !== 'remain') continue
+      const rid = str(list[j].id)
+      const rmeta = WINDOW_META[rid]
+      if (!rmeta || rmeta.group !== meta.group) continue
+      members.push({ id: rid, rec: list[j] })
+      used.add(j)
     }
-    const first = windowOf(id, rec)
-    const second = mate ? windowOf(str(mate.id), mate) : null
-    const windows = [first, second].filter((w): w is QuotaWindow => !!w)
+
+    const windows = members
+      .map((m) => windowOf(m.id, m.rec))
+      .filter((w): w is QuotaWindow => !!w)
     tiles.push({
       kind: 'windows',
-      id: pair.group,
-      name: AGENT_NAME[pair.group] ?? pair.group,
-      color: AGENT_COLOR[pair.group] ?? 'var(--idle)',
-      span: windows.length === 2 ? 2 : 1,
+      id: meta.group,
+      name: AGENT_NAME[meta.group] ?? meta.group,
+      color: AGENT_COLOR[meta.group] ?? 'var(--idle)',
+      span: windows.length >= 2 ? 2 : 1,
       windows,
       plan: subscriptionPlan(str(rec.plan)) || undefined,
     })
@@ -84,7 +90,7 @@ function balanceTile(id: string, rec: Record<string, unknown>): QuotaTile {
 function windowOf(id: string, rec: Record<string, unknown>): QuotaWindow {
   const remain = clamp(num(rec.remainPercent), 0, 100)
   return {
-    name: PAIR[id]?.short || str(rec.name) || id,
+    name: WINDOW_META[id]?.short || str(rec.name) || id,
     remain,
     period: formatPeriod(str(rec.period)),
     hot: remain < 10,
