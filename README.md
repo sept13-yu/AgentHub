@@ -17,8 +17,6 @@
 | **规则** | 编辑并同步各家 Agent 的共用规则母本 |
 | **宠物** | 桌面精灵（可开关），右键换皮肤 |
 
-![技能管理](media/readme/docs-skills.png)
-
 ![共用规则](media/readme/rules.png)
 
 ## 技术栈
