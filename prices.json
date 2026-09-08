@@ -19,6 +19,7 @@
     { "model": "gpt-5.6-luna-fast", "inputPer1m": 0.4, "outputPer1m": 2.4, "currency": "USD" },
     { "model": "GLM-5.3", "inputPer1m": 8.0, "outputPer1m": 28.0, "currency": "CNY" },
     { "model": "GLM-5.3-Flash", "inputPer1m": 0.8, "outputPer1m": 2.8, "currency": "CNY" },
+    { "model": "deepseek-v4.1-flash-expires-on-0910", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
     { "model": "deepseek-v4-flash", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
     { "model": "deepseek-v4-flash-vision-exp", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
     { "model": "deepseek-v4-pro", "inputPer1m": 9.0, "outputPer1m": 27.0, "currency": "CNY" },
