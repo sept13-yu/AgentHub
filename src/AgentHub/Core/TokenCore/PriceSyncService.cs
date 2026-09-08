@@ -32,14 +32,15 @@ public static class PriceSyncService
         new() { Model = "gpt-5.6-sol", InputPer1m = 4.0, OutputPer1m = 20.0, Currency = "USD" },
         new() { Model = "gpt-5.6-terra", InputPer1m = 2.0, OutputPer1m = 12.0, Currency = "USD" },
         new() { Model = "gpt-5.6-luna", InputPer1m = 0.2, OutputPer1m = 1.2, Currency = "USD" },
-        new() { Model = "GLM-5.3", InputPer1m = 1.4, OutputPer1m = 4.4, Currency = "USD" },
-        new() { Model = "GLM-5.3-Flash", InputPer1m = 0.15, OutputPer1m = 0.5, Currency = "USD" },
-        new() { Model = "deepseek-v4-flash", InputPer1m = 0.44, OutputPer1m = 1.32, Currency = "USD" },
-        new() { Model = "deepseek-v4-pro", InputPer1m = 1.32, OutputPer1m = 3.96, Currency = "USD" },
-        new() { Model = "DeepSeek-V4-Flash 正式版", InputPer1m = 0.44, OutputPer1m = 1.32, Currency = "USD" },
-        new() { Model = "DeepSeek-V4-Pro 正式版", InputPer1m = 1.32, OutputPer1m = 3.96, Currency = "USD" },
-        new() { Model = "kimi-k3", InputPer1m = 3.0, OutputPer1m = 15.0, Currency = "USD" },
-        new() { Model = "Qwen3.8-Max", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
+        new() { Model = "GLM-5.3", InputPer1m = 8.0, OutputPer1m = 28.0, Currency = "CNY" },
+        new() { Model = "GLM-5.3-Flash", InputPer1m = 0.8, OutputPer1m = 2.8, Currency = "CNY" },
+        new() { Model = "deepseek-v4-flash", InputPer1m = 3.0, OutputPer1m = 9.0, Currency = "CNY" },
+        new() { Model = "deepseek-v4-pro", InputPer1m = 9.0, OutputPer1m = 27.0, Currency = "CNY" },
+        new() { Model = "DeepSeek-V4-Flash 正式版", InputPer1m = 3.0, OutputPer1m = 9.0, Currency = "CNY" },
+        new() { Model = "DeepSeek-V4-Pro 正式版", InputPer1m = 9.0, OutputPer1m = 27.0, Currency = "CNY" },
+        new() { Model = "kimi-k3", InputPer1m = 20.0, OutputPer1m = 100.0, Currency = "CNY" },
+        new() { Model = "Qwen3.8-Max", InputPer1m = 12.0, OutputPer1m = 36.0, Currency = "CNY" },
+        new() { Model = "hy4-preview", InputPer1m = 6.0, OutputPer1m = 18.0, Currency = "CNY" },
     ];
 
     private static IReadOnlyList<PriceRow> _baseline = DefaultPrices;
