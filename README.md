@@ -21,8 +21,6 @@
 
 ![共用规则](media/readme/rules.png)
 
-![会话管理](media/readme/sessions.png)
-
 ## 技术栈
 
 - **壳**：.NET 10 WinExe / WPF + WebView2 + 托盘
