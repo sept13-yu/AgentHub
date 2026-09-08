@@ -812,16 +812,13 @@ onUnmounted(() => { stopPoll() })
               清理旧仓
             </n-button>
           </div>
-          <div v-if="progress && (progress.running || progress.detail)" class="legacy-banner">
-            <span v-if="progress.running">
+          <div v-if="progress?.running" class="legacy-banner">
+            <span>
               {{ progress.currentName
                 ? (jobKind === 'install' ? `正在安装 ${progress.currentName}` : `正在更新 ${progress.currentName}`)
                 : (jobKind === 'install' ? '正在下载' : '正在对照远端') }}
               （{{ progress.index }}/{{ progress.total }}，已{{ jobKind === 'install' ? '安装' : '更新' }} {{ progress.ok }}<template v-if="progress.skipped">，跳过 {{ progress.skipped }}</template><template v-if="progress.failed">，失败 {{ progress.failed }}</template>）
               <template v-if="progress.detail"> · {{ progress.detail }}</template>
-            </span>
-            <span v-else>
-              {{ progress.detail || `上次更新 ${progress.ok}/${progress.total}` }}
             </span>
           </div>
           <template v-if="skills.length">
