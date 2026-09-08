@@ -1,4 +1,5 @@
 import { agentColor, agentName } from './agentMeta'
+import { costCurrency, type CostCurrency } from './costCurrency'
 import { tokenUnit } from './tokenUnit'
 
 export type RangeKey = 'today' | '7d' | 'month'
@@ -35,10 +36,14 @@ export interface UsageView {
   hero: string
   unit: string
   delta: { kind: 'up' | 'down' | 'flat'; vs: string; text: string } | null
-  cost: { text: string } | null
+  cost: CostView | null
   agents: UsageAgent[]
   days: UsageDay[]
 }
+
+export type CostView =
+  | { kind: 'amount'; amount: number; currency: CostCurrency; fxUsdToCny: number; partial: boolean }
+  | { kind: 'none' }
 
 export function emptyUsageView(): UsageView {
   return { error: null, totalTokens: 0, hero: '0', unit: '', delta: null, cost: null, agents: [], days: [] }
@@ -160,12 +165,30 @@ function readDelta(tokens: number, prevRaw: unknown, vs: string): UsageView['del
 
 function readCost(total: Record<string, unknown>): UsageView['cost'] {
   if (total.cost == null)
-    return total.costPartial === true ? { text: '无报价' } : null
-  const cost = num(total.cost)
-  const currency = str(total.currency) || 'CNY'
-  const symbol = currency === 'USD' ? '$' : '¥'
-  const text = symbol + cost.toFixed(2)
-  return { text: total.costPartial === true ? text + ' · 部分无报价' : text }
+    return total.costPartial === true ? { kind: 'none' } : null
+  const amount = num(total.cost)
+  const currency: CostCurrency = str(total.currency) === 'USD' ? 'USD' : 'CNY'
+  const fx = num(total.fxUsdToCny)
+  return {
+    kind: 'amount',
+    amount,
+    currency,
+    fxUsdToCny: fx > 0 ? fx : 7,
+    partial: total.costPartial === true,
+  }
+}
+
+export function displayCostText(cost: CostView | null): string {
+  if (!cost) return ''
+  if (cost.kind === 'none') return '无报价'
+  const want = costCurrency.value
+  const rate = cost.fxUsdToCny > 0 ? cost.fxUsdToCny : 7
+  let amount = cost.amount
+  if (want !== cost.currency)
+    amount = cost.currency === 'USD' ? amount * rate : amount / rate
+  const symbol = want === 'USD' ? '$' : '¥'
+  const text = symbol + amount.toFixed(2)
+  return cost.partial ? text + ' · 部分无报价' : text
 }
 
 function pctShares(values: number[]): number[] {

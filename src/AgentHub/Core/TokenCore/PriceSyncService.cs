@@ -22,16 +22,20 @@ public static class PriceSyncService
     /// <summary>与仓库根 prices.json 同源的内置默认表（唯一代码来源）。</summary>
     public static readonly IReadOnlyList<PriceRow> DefaultPrices =
     [
-        new() { Model = "cursor-grok-4.6-xhigh-fast", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
-        new() { Model = "cursor-grok-4.6-high-fast", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
+        new() { Model = "cursor-grok-4.6-xhigh-fast", InputPer1m = 4.0, OutputPer1m = 12.0, Currency = "USD" },
+        new() { Model = "cursor-grok-4.6-high-fast", InputPer1m = 4.0, OutputPer1m = 12.0, Currency = "USD" },
         new() { Model = "cursor-grok-4.6-xhigh", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
         new() { Model = "cursor-grok-4.6-high", InputPer1m = 2.0, OutputPer1m = 6.0, Currency = "USD" },
         new() { Model = "claude-opus-5-thinking-high", InputPer1m = 5.0, OutputPer1m = 25.0, Currency = "USD" },
-        new() { Model = "gemini-3.7-flash-high", InputPer1m = 0.75, OutputPer1m = 3.75, Currency = "USD" },
+        new() { Model = "gemini-3.7-flash-high", InputPer1m = 0.75, OutputPer1m = 3.5, Currency = "USD" },
+        new() { Model = "composer-2.5", InputPer1m = 0.5, OutputPer1m = 2.5, Currency = "USD" },
         new() { Model = "composer-2.5-fast", InputPer1m = 3.0, OutputPer1m = 15.0, Currency = "USD" },
         new() { Model = "gpt-5.6-sol", InputPer1m = 4.0, OutputPer1m = 20.0, Currency = "USD" },
+        new() { Model = "gpt-5.6-sol-fast", InputPer1m = 8.0, OutputPer1m = 40.0, Currency = "USD" },
         new() { Model = "gpt-5.6-terra", InputPer1m = 2.0, OutputPer1m = 12.0, Currency = "USD" },
+        new() { Model = "gpt-5.6-terra-fast", InputPer1m = 4.0, OutputPer1m = 24.0, Currency = "USD" },
         new() { Model = "gpt-5.6-luna", InputPer1m = 0.2, OutputPer1m = 1.2, Currency = "USD" },
+        new() { Model = "gpt-5.6-luna-fast", InputPer1m = 0.4, OutputPer1m = 2.4, Currency = "USD" },
         new() { Model = "GLM-5.3", InputPer1m = 8.0, OutputPer1m = 28.0, Currency = "CNY" },
         new() { Model = "GLM-5.3-Flash", InputPer1m = 0.8, OutputPer1m = 2.8, Currency = "CNY" },
         new() { Model = "deepseek-v4-flash", InputPer1m = 3.0, OutputPer1m = 9.0, Currency = "CNY" },

@@ -4,8 +4,8 @@ namespace AgentHub.Core.TokenCore;
 
 /// <summary>按输入 / 输出单价估算金额。输入按总量（含缓存命中与写入）。
 /// 价格行保存厂商原币种原价（海外 USD、国内 CNY），表内不写死折算价。
-/// 算钱时按 defaultCurrency（设置 costCurrency）折成展示币种：行币种不同才拉
-/// 实时 USD→CNY 汇率；接口拿不到用 fxFallback。</summary>
+/// 算钱时按 defaultCurrency（设置 costCurrency）折成展示币种。
+/// fxUsdToCny 由调用方先解析（实时汇率，失败用兜底），表内不写死折算价。</summary>
 public static class UsageCost
 {
     public static (double? Cost, bool? Partial, string? Currency) Estimate(
@@ -24,7 +24,7 @@ public static class UsageCost
         double sum = 0;
         var any = false;
         var missed = false;
-        double? rate = null; // 1 USD = ? CNY；懒加载：只有行币种与展示币种不同才拉
+        var rate = NormalizeRate(fxUsdToCny);
         foreach (var row in rows)
         {
             if (!table.TryGetValue(row.Model.Trim(), out var p))
@@ -33,7 +33,7 @@ public static class UsageCost
                 continue;
             }
             any = true;
-            var (unitIn, unitOut) = ConvertUnits(p.Input, p.Output, p.IsCny, targetCny, fxUsdToCny, ref rate);
+            var (unitIn, unitOut) = ConvertUnits(p.Input, p.Output, p.IsCny, targetCny, rate);
             sum += row.Input / 1_000_000d * unitIn + row.Output / 1_000_000d * unitOut;
         }
         if (!any) return missed ? (null, true, target) : (null, null, null);
@@ -41,13 +41,12 @@ public static class UsageCost
     }
 
     private static (double Input, double Output) ConvertUnits(
-        double input, double output, bool rowCny, bool targetCny, double fxFallback, ref double? rate)
+        double input, double output, bool rowCny, bool targetCny, double rate)
     {
         if (rowCny == targetCny) return (input, output);
-        rate ??= NormalizeRate(FxService.UsdToCny(fxFallback));
         return rowCny
-            ? (input / rate.Value, output / rate.Value)
-            : (input * rate.Value, output * rate.Value);
+            ? (input / rate, output / rate)
+            : (input * rate, output * rate);
     }
 
     private static double NormalizeRate(double rate) => rate > 0 ? rate : 1;

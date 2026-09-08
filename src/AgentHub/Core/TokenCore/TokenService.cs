@@ -230,12 +230,18 @@ public sealed class TokenService
         var byAgent = BuildByAgent(rows);
         var total = byAgent.Sum(a => (long)a["tokens"]!);
         var prev = SumBilled(conn, prevFrom, prevTo, filter);
+        var fx = _config.Dashboard.FxFallbackRate;
+        if (_config.Dashboard.CostEstimate)
+        {
+            fx = FxService.UsdToCny(_config.Dashboard.FxFallbackRate);
+            if (fx <= 0) fx = _config.Dashboard.FxFallbackRate > 0 ? _config.Dashboard.FxFallbackRate : 7;
+        }
         var (cost, partial, currency) = UsageCost.Estimate(
             rows.Select(r => (r.Model, r.Input + r.Cached + r.CacheWrite, r.Output)),
             PriceSyncService.Resolve(_config.Dashboard.PriceOverrides),
             _config.Dashboard.CostEstimate,
             _config.Dashboard.CostCurrency,
-            _config.Dashboard.FxFallbackRate);
+            fx);
 
         return new Dictionary<string, object?>
         {
@@ -252,6 +258,7 @@ public sealed class TokenService
                 ["cost"] = cost,
                 ["costPartial"] = partial,
                 ["currency"] = currency,
+                ["fxUsdToCny"] = cost is not null ? fx : null,
             },
             ["byAgent"] = byAgent,
             ["days"] = ReadDailyDays(conn, HeatmapStart(today), today, filter),

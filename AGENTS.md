@@ -30,7 +30,7 @@ Core 不引用 ASP.NET、WPF、WinForms。端点按资源拆文件。API 响应�
 
 ## 命令
 
-日常改完验证用仓库根 `rebuild.ps1`：停进程 → 强制打前端 → `dotnet publish` Release + ReadyToRun。输出目录必须仍是 `src/AgentHub/bin/Debug/net10.0-windows10.0.19041.0`（开机自启指向那里，不能换）。桌面壳吃的是打出来的 `wwwroot\app`，不是 `localhost:5173`。
+日常改完验证用仓库根 `rebuild.ps1`：停进程 → 强制打前端 → `dotnet publish` Release + ReadyToRun。输出目录必须仍是 `src/AgentHub/bin/Debug/net10.0-windows10.0.19041.0`（开机自启指向那里，不能换）。桌面壳吃的是打出来的 `wwwroot\app`，不是 `localhost:5173`。要在壳里验证时 Agent 自己跑这个脚本并拉起进程，不要让用户手动重建。
 
 ```text
 dotnet build src/AgentHub/AgentHub.csproj
