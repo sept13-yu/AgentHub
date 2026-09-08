@@ -28,6 +28,10 @@ public sealed class QuotaService
     private string? _traeRejectedJwt;
     private long _traeJwtExp;
     private string[] _wbPackageCodes = [];
+    // 到期积分结果缓存：与额度同 TTL。只缓存成功结果——error 与「开关关闭」的空结果不缓存，
+    // 否则用户改完设置/凭据后点「!」还要等 TTL 过期。
+    private Dictionary<string, object?>? _expiryCache;
+    private long _expiryCacheAt;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan ErrorTtl = TimeSpan.FromSeconds(3);
 
@@ -41,29 +45,50 @@ public sealed class QuotaService
         LoadDiskCache();
     }
 
-    /// <summary>丢掉额度缓存。重扫后下次拉取会重建 HTTP 连接并对瞬时失败重试。</summary>
+    /// <summary>丢掉额度缓存。重扫后下次拉取会重建 HTTP 连接并对瞬时失败重试。
+    /// 套餐码 _wbPackageCodes 不清：它不是健康状态，清了到期积分每次都要多串行打一次 summary。</summary>
     public void InvalidateCache()
     {
         _cache = null;
         _cacheAt = 0;
         _cacheUnhealthy = true;
+        _expiryCache = null;
+        _expiryCacheAt = 0;
         _traeJwt = null;
         _traeRejectedJwt = null;
         _traeJwtExp = 0;
-        _wbPackageCodes = [];
     }
+
+    private bool ExpiryCacheFresh(string id) =>
+        _expiryCache is not null
+        && string.Equals(_expiryCache.GetValueOrDefault("id") as string, id, StringComparison.Ordinal)
+        && DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _expiryCacheAt < CacheTtl.TotalMilliseconds;
 
     public async Task<Dictionary<string, object?>> GetCreditExpiryAsync(string id)
     {
+        if (ExpiryCacheFresh(id))
+            return _expiryCache!;
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+        Dictionary<string, object?> result;
         if (id == "trae")
         {
             if (!_config.Dashboard.ShowQuotaTrae)
-                return ExpiryNone("trae");
-            return await TraeExpiryAsync();
+                return ExpiryNone("trae");   // 开关关闭不进缓存：设置里打开后立即可查
+            result = await TraeExpiryAsync();
         }
-        if (!_config.Dashboard.ShowQuotaWorkBuddy)
-            return ExpiryNone("workbuddy");
-        return await WorkBuddyExpiryAsync();
+        else
+        {
+            if (!_config.Dashboard.ShowQuotaWorkBuddy)
+                return ExpiryNone("workbuddy");
+            result = await WorkBuddyExpiryAsync();
+        }
+        if (result.ContainsKey("error"))
+            return result;
+        _expiryCache = result;
+        _expiryCacheAt = now;
+        return result;
     }
 
     public async Task<Dictionary<string, object?>> GetQuotasAsync(bool force = false)
@@ -124,6 +149,15 @@ public sealed class QuotaService
             _cacheAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _cacheUnhealthy = IsUnhealthy(sources);
             WriteDiskCache();
+
+            // 额度拉完顺带预热到期积分缓存（后台，不阻塞本次响应）：用户点「!」时几乎总是命中，
+            // 省掉「打开应用后第一次点」的冷启动等待。失败了不影响额度，下次点击再拉。
+            if (dash.ShowQuotaWorkBuddy && !ExpiryCacheFresh("workbuddy"))
+                _ = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    try { await GetCreditExpiryAsync("workbuddy"); }
+                    catch (Exception) { }
+                });
             return _cache;
         }
         finally
@@ -683,7 +717,7 @@ public sealed class QuotaService
             if (codes.Length == 0)
             {
                 using var sum = await SendQuotaAsync(() => WorkBuddyRequest(
-                    "/billing/meter/get-user-resource-summary", session, "{}"));
+                    "/billing/meter/get-user-resource-summary", session, "{}"), 1);
                 if ((int)sum.StatusCode is 401 or 403)
                     return ExpiryErr("workbuddy", "会话过期");
                 if (!sum.IsSuccessStatusCode)
@@ -695,31 +729,20 @@ public sealed class QuotaService
             if (codes.Length == 0)
                 return ExpiryNone("workbuddy");
 
-            var today = DateTime.Today;
-            var payload = JsonSerializer.Serialize(new
-            {
-                PageNumber = 1,
-                PageSize = 200,
-                Status = new[] { 0 },
-                SlicePeriodStartTime = today.ToString("yyyy-MM-dd") + " 00:00:00",
-                SlicePeriodEndTime = today.ToString("yyyy-MM-dd") + " 23:59:59",
-                PackageCodes = codes,
-            });
-            var rows = new List<(DateOnly Date, decimal Amount)>();
-            foreach (var path in new[]
-            {
-                "/billing/meter/get-user-resource-free-packages",
-                "/billing/meter/get-user-resource-paid-packages",
-            })
-            {
-                using var resp = await SendQuotaAsync(() => WorkBuddyRequest(path, session, payload));
-                if ((int)resp.StatusCode is 401 or 403)
-                    return ExpiryErr("workbuddy", "会话过期");
-                if (!resp.IsSuccessStatusCode)
-                    continue;
-                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStreamAsync());
-                CollectWorkBuddyDue(doc.RootElement, rows);
-            }
+            // 实测 2026-09-08：SlicePeriodStartTime/EndTime 传与不传返回逐条一致（参数无效）；
+            // Status:[0] 会把「非 0 状态」批次整批滤掉，一旦官网给仍有剩余的批次标了非 0 状态就漏报。
+            // 口径定为「将有积分作废的最近一天」：一律不传 Status，靠剩余量在归堆层判断。
+            // 免费/付费两源相互独立，并行拉，各自按「整页才翻下页」防御拉满。
+            var freeRows = new List<(DateOnly Date, decimal Amount)>();
+            var paidRows = new List<(DateOnly Date, decimal Amount)>();
+            var errs = await Task.WhenAll(
+                CollectWbPackageDueAsync(session, codes, "/billing/meter/get-user-resource-free-packages", freeRows),
+                CollectWbPackageDueAsync(session, codes, "/billing/meter/get-user-resource-paid-packages", paidRows));
+            if (errs.FirstOrDefault(e => e is not null) is { } fail)
+                return ExpiryErr("workbuddy", fail);
+            var rows = new List<(DateOnly Date, decimal Amount)>(freeRows.Count + paidRows.Count);
+            rows.AddRange(freeRows);
+            rows.AddRange(paidRows);
             return ExpiryFromRows("workbuddy", rows);
         }
         catch (Exception ex)
@@ -743,28 +766,72 @@ public sealed class QuotaService
         return req;
     }
 
-    private static void CollectWorkBuddyDue(JsonElement root, List<(DateOnly Date, decimal Amount)> rows)
+    /// <summary>拉一个资源包列表并归集到期行，写入 into（调用方保证各源独立 list，并行无共享写）。
+    /// 返回 null 表示成功；「会话过期」向上抛给整条 expiry 链路，其余非 401/403 失败沿用旧行为静默跳过该源。
+    /// 翻页按「返回条数等于整页才继续」防御，封顶 5 页，防止上游改契约后死循环。</summary>
+    private async Task<string?> CollectWbPackageDueAsync(
+        string session, string[] codes, string path, List<(DateOnly Date, decimal Amount)> into)
+    {
+        const int pageSize = 200;
+        const int maxPages = 5;
+        for (var page = 1; page <= maxPages; page++)
+        {
+            var payload = JsonSerializer.Serialize(new
+            {
+                PageNumber = page,
+                PageSize = pageSize,
+                PackageCodes = codes,
+            });
+            using var resp = await SendQuotaAsync(() => WorkBuddyRequest(path, session, payload), 1);
+            if ((int)resp.StatusCode is 401 or 403)
+                return "会话过期";
+            if (!resp.IsSuccessStatusCode)
+                return null;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStreamAsync());
+            var added = CollectWorkBuddyDue(doc.RootElement, into);
+            if (added < pageSize)
+                return null;
+        }
+        return null;
+    }
+
+    /// <summary>归集一个来源的到期行（Date=本机自然日，Amount=该批次剩余），返回新增条数供翻页判断。
+    /// 不按 Status 过滤（实测 2026-09-08：官网「即将过期」提醒不区分 Status，且非 0 状态批次也可能有剩余），
+    /// 「剩余为 0 不算要过期」交给归堆层 ExpiryFromRows 统一判断。
+    /// 到期时间优先毫秒字段 DeductionEndTime（与 CycleEndTime 字符串逐条等价、恒为 +8 本地时间），
+    /// 字符串回退仅给老数据兜底；AssumeLocal 在非 +8 时区机器上会偏移，毫秒路径不受影响。</summary>
+    private static int CollectWorkBuddyDue(JsonElement root, List<(DateOnly Date, decimal Amount)> rows)
     {
         var data = root;
         if (root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object)
             data = d;
         if (!data.TryGetProperty("Accounts", out var accs) || accs.ValueKind != JsonValueKind.Array)
-            return;
+            return 0;
+        var added = 0;
         foreach (var a in accs.EnumerateArray())
         {
-            if (a.TryGetProperty("Status", out var st) && st.ValueKind == JsonValueKind.Number
-                && st.TryGetInt32(out var n) && n != 0)
-                continue;
             if (!TryGetDecimal(a, "CycleCapacityRemainPrecise", out var remain)
                 && !TryGetDecimal(a, "CycleCapacityRemain", out remain))
                 continue;
-            var raw = GetStr(a, "CycleEndTime");
-            if (string.IsNullOrEmpty(raw)
-                || !DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
-                    System.Globalization.DateTimeStyles.AssumeLocal, out var dt))
-                continue;
-            rows.Add((DateOnly.FromDateTime(dt), remain));
+            DateOnly day;
+            if (a.TryGetProperty("DeductionEndTime", out var de) && de.ValueKind == JsonValueKind.Number
+                && de.TryGetInt64(out var ms) && ms > 0)
+            {
+                day = DateOnly.FromDateTime(DateTimeOffset.FromUnixTimeMilliseconds(ms).ToLocalTime().DateTime);
+            }
+            else
+            {
+                var raw = GetStr(a, "CycleEndTime");
+                if (string.IsNullOrEmpty(raw)
+                    || !DateTime.TryParse(raw, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeLocal, out var dt))
+                    continue;
+                day = DateOnly.FromDateTime(dt);
+            }
+            rows.Add((day, remain));
+            added++;
         }
+        return added;
     }
 
     private async Task<Dictionary<string, object?>> TraeExpiryAsync()
@@ -863,6 +930,9 @@ public sealed class QuotaService
         rows.Add((day, remain));
     }
 
+    /// <summary>归堆口径（用户拍板）：「最近的会有积分作废的那天 + 作废多少」。
+    /// 只统计仍有剩余、今天及以后的批次；已耗尽批次没有「要过期的积分」，不构成提醒
+    /// （官网提醒的是批次到期日，含已耗尽批次，两侧口径不同是有意为之）。Trae 源头已保证 remain>0，不受影响。</summary>
     private static Dictionary<string, object?> ExpiryFromRows(string id, List<(DateOnly Date, decimal Amount)> rows)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -1097,9 +1167,12 @@ public sealed class QuotaService
         old.Dispose();
     }
 
-    private async Task<HttpResponseMessage> SendQuotaAsync(Func<HttpRequestMessage> factory)
+    /// <summary>attempts 显式传 1 时不做重试：到期积分这类手动触发的低频链路不该继承额度链路的 _retryHttp，
+    /// 否则首页 force 刷新把 _retryHttp 置 true 期间点「!」，一个请求要重试 3 次；
+    /// 本机 HTTPS 经系统代理偶发 SSL 握手失败要等约 5 秒，3 次就是 15 秒。</summary>
+    private async Task<HttpResponseMessage> SendQuotaAsync(Func<HttpRequestMessage> factory, int? attemptsOverride = null)
     {
-        var attempts = _retryHttp ? 3 : 1;
+        var attempts = attemptsOverride ?? (_retryHttp ? 3 : 1);
         Exception? last = null;
         for (var i = 1; i <= attempts; i++)
         {

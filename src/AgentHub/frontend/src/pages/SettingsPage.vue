@@ -86,10 +86,10 @@ const updateLatest = ref('')
 const updateHint = ref('')
 const updateBusy = ref(false)
 const updateCanApply = ref(false)
-const releaseUrl = ref('')
 const applyShow = ref(false)
 const downloadShow = ref(false)
 const priceSync = ref<PriceSyncInfo | null>(null)
+const LATEST_RELEASE_URL = 'https://github.com/sept13-yu/AgentHub/releases/latest'
 
 const f = reactive({
   relayPanelBaseUrl: '',
@@ -300,7 +300,6 @@ function applyUpdateStatus(r: AppUpdateStatus) {
   if (r.installed != null) updateInstalled.value = r.installed
   updateLatest.value = r.latest || ''
   updateCanApply.value = !!r.canApply
-  releaseUrl.value = r.releaseUrl || ''
   const text = r.error || r.message || ''
   updateHint.value = text
   return text
@@ -315,6 +314,7 @@ async function checkUpdate() {
     const text = applyUpdateStatus(r)
     if (r.error) {
       message.error(text || '检查更新失败')
+      await openReleasePage()
       return
     }
     if (r.needsInstaller && r.latest) downloadShow.value = true
@@ -322,6 +322,7 @@ async function checkUpdate() {
     const text = e instanceof Error ? e.message : '检查更新失败'
     updateHint.value = text
     message.error(text)
+    await openReleasePage()
   } finally {
     updateBusy.value = false
   }
@@ -329,7 +330,7 @@ async function checkUpdate() {
 
 async function openReleasePage() {
   downloadShow.value = false
-  const url = releaseUrl.value || 'https://github.com/sept13-yu/AgentHub/releases/latest'
+  const url = LATEST_RELEASE_URL
   try {
     if (WRITABLE) await post('/api/settings/open-release', { url })
     else window.open(url, '_blank', 'noopener')
@@ -350,7 +351,10 @@ async function applyUpdate() {
       downloadShow.value = true
       return
     }
-    if (r.error) message.error(text || '更新失败')
+    if (r.error) {
+      message.error(text || '更新失败')
+      await openReleasePage()
+    }
     else message.success(text || '正在重启')
   } catch {
     updateHint.value = '正在重启以完成更新'
@@ -492,6 +496,9 @@ onUnmounted(() => {
             </n-button>
             <n-button type="button" :disabled="readonly || updateBusy || !updateInstalled || (updateLatest !== '' && !updateCanApply)" @click="applyShow = true">
               立即更新并重启
+            </n-button>
+            <n-button type="button" @click="openReleasePage">
+              手动下载
             </n-button>
           </div>
         </div>
@@ -784,7 +791,7 @@ onUnmounted(() => {
   justify-content: flex-end;
   min-width: 0;
 }
-.ctrl--actions { gap: var(--sp-2); }
+.ctrl--actions { gap: var(--sp-2); flex-wrap: wrap; }
 .ctrl--field,
 .ctrl--secret {
   display: grid;
