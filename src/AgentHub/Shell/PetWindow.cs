@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -42,7 +42,7 @@ internal sealed class PetWindow : Window
     private string _size = "medium";
     private string _tokenUnit = "zh";
     private string _character = "clawd";
-    private double _bubbleBand = 56;
+    private double _bubbleBand = 72;
     private PetSnapshot _stats = new(0, 0, 0, 0, Array.Empty<PetTopModel>());
     private static readonly string[] PetCharacters = ["clawd", "sprout", "byte", "ember"];
 
@@ -166,9 +166,9 @@ internal sealed class PetWindow : Window
         _size = size is "small" or "large" ? size : "medium";
         (Width, Height, _bubbleBand) = _size switch
         {
-            "small" => (168d, 140d, 44d),
-            "large" => (280d, 220d, 72d),
-            _ => (216d, 180d, 56d),
+            "small" => (168d, 154d, 58d),
+            "large" => (280d, 236d, 88d),
+            _ => (216d, 196d, 72d),
         };
     }
 
@@ -603,3 +603,4 @@ internal sealed class PetWindow : Window
     [DllImport("user32.dll")]
     private static extern short GetAsyncKeyState(int vKey);
 }
+

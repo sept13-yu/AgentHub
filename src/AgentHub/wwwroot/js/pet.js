@@ -1,4 +1,4 @@
-// 移植 TokenTracker dashboard/src/pet.jsx + lib/pet-personality.js（MIT）。
+﻿// 移植 TokenTracker dashboard/src/pet.jsx + lib/pet-personality.js（MIT）。
 // 独立透明窗入口：clawd SVG 状态机 + sprout/byte/ember 精灵表；不进 Vue 主界面。
 // 未移植：React PetPage、bot 矢量引擎、额度进度条、迷你贴边、v2 朝向表。
 
@@ -234,7 +234,8 @@ async function paint() {
   const atlasPet = isAtlasPet(character);
   sprite.classList.toggle("is-left", !atlasPet && pose === "running-left");
   sprite.classList.toggle("is-atlas", atlasPet);
-  const size = Math.max(40, Math.min(window.innerWidth, window.innerHeight - 56) - 8);
+  const band = ({ small: 58, medium: 72, large: 88 })[document.documentElement.dataset.size] || 72;
+  const size = Math.max(40, Math.min(window.innerWidth, window.innerHeight - band) - 8);
   const shift = state.hovering ? state.leanX * size * LEAN_MAX_SHIFT_FRAC : 0;
   const tilt = state.hovering ? state.leanX * LEAN_MAX_TILT_DEG : 0;
   sprite.style.transform = (shift || tilt)
@@ -394,3 +395,4 @@ document.addEventListener("contextmenu", (e) => {
 if (!window.__ttPetCharacter) window.__ttPetCharacter = readStoredCharacter();
 scheduleAmbient();
 paint();
+

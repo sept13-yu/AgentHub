@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN" data-size="medium">
   <head>
     <meta charset="UTF-8" />
@@ -28,7 +28,8 @@
       }
       #bubble {
         flex: none;
-        height: 56px;
+        min-height: 72px;
+        height: auto;
         width: 100%;
         display: flex;
         align-items: flex-end;
@@ -37,17 +38,18 @@
         box-sizing: border-box;
         padding: 0 12px 6px;
       }
-      html[data-size="small"] #bubble { height: 44px; padding: 0 8px 4px; }
-      html[data-size="large"] #bubble { height: 72px; }
+      html[data-size="small"] #bubble { min-height: 58px; padding: 0 8px 6px; }
+      html[data-size="large"] #bubble { min-height: 88px; }
       #bubble span {
         display: none;
+        overflow: visible;
         max-width: 100%;
-        padding: 6px 11px 7px;
+        padding: 8px 12px 10px;
         border-radius: 16px;
         background: linear-gradient(145deg, rgba(18, 20, 24, 0.82), rgba(30, 32, 38, 0.72));
         border: 1px solid rgba(255, 255, 255, 0.24);
         color: rgba(255, 255, 255, 0.94);
-        font: 600 12px/1.35 system-ui, "Segoe UI", sans-serif;
+        font: 600 12px/1.45 system-ui, "Segoe UI", sans-serif;
         letter-spacing: 0.01em;
         white-space: pre-line;
         text-align: center;
@@ -87,3 +89,4 @@
     <script type="module" src="/js/pet.js"></script>
   </body>
 </html>
+
