@@ -9,7 +9,9 @@ import { moveItem } from '../settingsModel'
 import { toQuotaTiles, type QuotaTile } from '../quotaView'
 import { dashCache } from '../dashCache'
 import { usePageHotkeys } from '../hotkeys'
+import { costCurrency, toggleCostCurrency } from '../costCurrency'
 import {
+  displayCostText,
   formatTokens,
   RANGES,
   splitTokens,
@@ -60,6 +62,10 @@ const modelsOverflow = ref(false)
 
 const rangeLabel = computed(() => RANGES.find((r) => r.key === range.value)?.label ?? '')
 const heroSplit = computed(() => splitTokens(usage.value.totalTokens))
+const costText = computed(() => displayCostText(usage.value.cost))
+const costToggleHint = computed(() =>
+  costCurrency.value === 'CNY' ? '点击改为美元' : '点击改为人民币',
+)
 const ringPaint = computed(() => {
   const parts = usage.value.agents.filter((a) => a.pct > 0)
   if (!parts.length) return { background: 'var(--wash)' }
@@ -555,7 +561,15 @@ onUnmounted(() => {
               <span class="vs">{{ usage.delta.vs }}</span>
               <span class="num">{{ usage.delta.text }}</span>
             </div>
-            <div v-if="usage.cost" class="cost num">{{ usage.cost.text }}</div>
+            <button
+              v-if="usage.cost?.kind === 'amount'"
+              type="button"
+              class="cost cost--toggle num"
+              :title="costToggleHint"
+              :aria-label="costToggleHint"
+              @click="toggleCostCurrency"
+            >{{ costText }}</button>
+            <div v-else-if="usage.cost" class="cost num">{{ costText }}</div>
           </div>
         </div>
         <div v-if="usage.agents.length">
@@ -807,6 +821,18 @@ onUnmounted(() => {
 .cost {
   font-size: var(--fs-body);
   color: var(--dim);
+}
+button.cost {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--dur) linear;
+}
+button.cost:hover,
+button.cost:focus-visible {
+  color: var(--text);
 }
 .usage-error {
   margin: 0;
