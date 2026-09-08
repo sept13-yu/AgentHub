@@ -27,7 +27,10 @@ public static class UsageCost
         var rate = NormalizeRate(fxUsdToCny);
         foreach (var row in rows)
         {
-            if (!table.TryGetValue(row.Model.Trim(), out var p))
+            var name = row.Model.Trim();
+            // 精确命中优先；未命中再走 PriceAliases；仍没有 → costPartial。
+            if (!table.TryGetValue(name, out var p)
+                && !(PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out p)))
             {
                 missed = true;
                 continue;

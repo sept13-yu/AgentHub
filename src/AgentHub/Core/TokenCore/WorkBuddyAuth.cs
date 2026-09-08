@@ -40,7 +40,7 @@ internal static class WorkBuddyAuth
             "本机没读到登录态，可在设置里先藏掉这张卡");
     }
 
-    /// <summary>积分接口要的是网站 session Cookie：与 <see cref="Read"/> 同一份。</summary>
+    /// <summary>积分接口要的是网站 session Cookie：与 <see cref="Read"/> 同一份（本机登录态优先于设置里的 cookie）。</summary>
     public static string? ResolveQuotaSession(string? settingsRaw)
     {
         var probe = Read(settingsRaw);
