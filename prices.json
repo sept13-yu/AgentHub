@@ -1,6 +1,6 @@
 {
   "updatedAt": "2026-09-08",
-  "note": "官方牌价（每 1M token）：海外 USD、国内 CNY，表内不写死折算价；输入按总量计价；模型名大小写不敏感。国内 DeepSeek 取高峰时段。算钱时按设置币种用实时汇率折算。",
+  "note": "官方牌价（每 1M token）：海外 USD、国内 CNY，表内不写死折算价；输入按总量计价；模型名大小写不敏感。国内 DeepSeek 取高峰时段。算钱时按设置币种用实时汇率折算。变体名经 PriceAliases 映射到表内 canonical；deepseek-v4-flash-vision-exp 与 flash 同价（CNY 3/9）。",
   "prices": [
     { "model": "cursor-grok-4.6-xhigh-fast", "inputPer1m": 4.0, "outputPer1m": 12.0, "currency": "USD" },
     { "model": "cursor-grok-4.6-high-fast", "inputPer1m": 4.0, "outputPer1m": 12.0, "currency": "USD" },
@@ -19,6 +19,7 @@
     { "model": "GLM-5.3", "inputPer1m": 8.0, "outputPer1m": 28.0, "currency": "CNY" },
     { "model": "GLM-5.3-Flash", "inputPer1m": 0.8, "outputPer1m": 2.8, "currency": "CNY" },
     { "model": "deepseek-v4-flash", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
+    { "model": "deepseek-v4-flash-vision-exp", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
     { "model": "deepseek-v4-pro", "inputPer1m": 9.0, "outputPer1m": 27.0, "currency": "CNY" },
     { "model": "DeepSeek-V4-Flash 正式版", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
     { "model": "DeepSeek-V4-Pro 正式版", "inputPer1m": 9.0, "outputPer1m": 27.0, "currency": "CNY" },

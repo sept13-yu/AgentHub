@@ -32,6 +32,7 @@ internal sealed class PetHost : IDisposable
 
         _petMenu = new ContextMenuStrip { ShowCheckMargin = false, ShowImageMargin = false };
         _petMenu.Items.Add("立即同步", null, (_, _) => _syncNow());
+        _petMenu.Items.Add("换一只宠物", null, (_, _) => _window?.CycleCharacter());
         _petMenu.Items.Add("关闭桌面宠物", null, (_, _) => DisablePet());
     }
 
