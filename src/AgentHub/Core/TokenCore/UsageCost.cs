@@ -3,8 +3,9 @@ using AgentHub.Core.ProxyCore;
 namespace AgentHub.Core.TokenCore;
 
 /// <summary>按输入 / 输出单价估算金额。输入按总量（含缓存命中与写入）。
-/// 价格行保存厂商原币种原价（海外 USD、国内 CNY），算钱时统一按实时汇率折成 USD
-/// （CNY 行 ÷ USD→CNY 汇率；汇率接口拿不到用 fxFallback）。</summary>
+/// 价格行保存厂商原币种原价（海外 USD、国内 CNY），表内不写死折算价。
+/// 算钱时按 defaultCurrency（设置 costCurrency）折成展示币种：行币种不同才拉
+/// 实时 USD→CNY 汇率；接口拿不到用 fxFallback。</summary>
 public static class UsageCost
 {
     public static (double? Cost, bool? Partial, string? Currency) Estimate(
@@ -18,10 +19,12 @@ public static class UsageCost
         var table = BuildTable(prices, defaultCurrency);
         if (table.Count == 0) return (null, null, null);
 
+        var targetCny = !string.Equals(defaultCurrency, "USD", StringComparison.OrdinalIgnoreCase);
+        var target = targetCny ? "CNY" : "USD";
         double sum = 0;
         var any = false;
         var missed = false;
-        double? rate = null; // 1 USD = ? CNY；懒加载：只有实际用到 CNY 行才拉汇率
+        double? rate = null; // 1 USD = ? CNY；懒加载：只有行币种与展示币种不同才拉
         foreach (var row in rows)
         {
             if (!table.TryGetValue(row.Model.Trim(), out var p))
@@ -30,19 +33,21 @@ public static class UsageCost
                 continue;
             }
             any = true;
-            var unitIn = p.Input;
-            var unitOut = p.Output;
-            if (p.IsCny)
-            {
-                rate ??= NormalizeRate(FxService.UsdToCny(fxUsdToCny));
-                unitIn = p.Input / rate.Value;
-                unitOut = p.Output / rate.Value;
-            }
+            var (unitIn, unitOut) = ConvertUnits(p.Input, p.Output, p.IsCny, targetCny, fxUsdToCny, ref rate);
             sum += row.Input / 1_000_000d * unitIn + row.Output / 1_000_000d * unitOut;
         }
-        if (!any) return missed ? (null, true, "USD") : (null, null, null);
-        // 结果统一折成 USD：前端只认 $ / ¥ 两个符号
-        return (sum, missed, "USD");
+        if (!any) return missed ? (null, true, target) : (null, null, null);
+        return (sum, missed, target);
+    }
+
+    private static (double Input, double Output) ConvertUnits(
+        double input, double output, bool rowCny, bool targetCny, double fxFallback, ref double? rate)
+    {
+        if (rowCny == targetCny) return (input, output);
+        rate ??= NormalizeRate(FxService.UsdToCny(fxFallback));
+        return rowCny
+            ? (input / rate.Value, output / rate.Value)
+            : (input * rate.Value, output * rate.Value);
     }
 
     private static double NormalizeRate(double rate) => rate > 0 ? rate : 1;

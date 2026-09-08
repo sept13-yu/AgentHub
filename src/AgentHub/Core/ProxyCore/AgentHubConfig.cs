@@ -43,7 +43,7 @@ public sealed class PriceRow
     public double? InputPer1m { get; set; }
     public double? OutputPer1m { get; set; }
     /// <summary>CNY | USD。保存厂商原币种原价（海外 USD、国内 CNY）；空/非法按 Dashboard.CostCurrency。
-    /// 算钱时统一按实时汇率折算成 USD（汇率拿不到用 FxFallbackRate）。</summary>
+    /// 表内不写死折算价；算钱时按设置币种用实时汇率折（汇率拿不到用 FxFallbackRate）。</summary>
     public string Currency { get; set; } = "";
 }
 
@@ -121,7 +121,7 @@ public sealed class DashboardSettings
     public List<string> AgentOrder { get; set; } = [];
     /// <summary>额度条目顺序。空或未调过按 DefaultQuotaOrder。</summary>
     public List<string> QuotaOrder { get; set; } = [];
-    /// <summary>CNY | USD。整表一个默认币种，仅用于价格行未标 Currency 的一侧；算钱结果统一是 USD。</summary>
+    /// <summary>CNY | USD。展示币种，兼作价格行未标 Currency 时的默认。算钱按实时汇率折到此币种。</summary>
     public string CostCurrency { get; set; } = "CNY";
     /// <summary>汇率兜底：实时 USD→CNY 拿不到（接口不可达/超时/解析失败）时用此值估算。单位：1 USD = ? CNY。</summary>
     public double FxFallbackRate { get; set; } = 7.0;
