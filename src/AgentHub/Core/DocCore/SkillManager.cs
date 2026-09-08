@@ -73,7 +73,9 @@ public sealed class SkillManager
                 if (item is null) continue;
                 if (!string.IsNullOrWhiteSpace(query)
                     && !item.Name.Contains(query, StringComparison.OrdinalIgnoreCase)
-                    && !item.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    && !item.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    && (item.Alias is null || !item.Alias.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    && (item.Note is null || !item.Note.Contains(query, StringComparison.OrdinalIgnoreCase)))
                     continue;
                 items.Add(item);
             }
@@ -82,7 +84,9 @@ public sealed class SkillManager
                 _log?.Invoke($"[skills] 扫描 {name} 失败：{ex.Message}");
             }
         }
-        return items.OrderBy(i => StateOrder(i.State)).ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
+        return items.OrderBy(i => StateOrder(i.State))
+            .ThenBy(i => string.IsNullOrWhiteSpace(i.Alias) ? i.DisplayName : i.Alias!, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public SkillOperationResult Manage(string name) => Locked(name, () =>
@@ -251,6 +255,29 @@ public sealed class SkillManager
         catch (Exception ex) { return new(false, ex.Message); }
         finally { gate.Release(); }
     }
+
+    public SkillOperationResult SetMeta(string name, string? alias, string? note) => Locked(name, () =>
+    {
+        GuardName(name);
+        var state = LoadState();
+        var item = InspectOne(name, state);
+        if (item is null) return new(false, "没有这个 Skill");
+        if (!state.Skills.TryGetValue(name, out var entry))
+        {
+            entry = new SkillStateEntry
+            {
+                Enabled = item.State is ManagedSkillState.Enabled or ManagedSkillState.Modified or ManagedSkillState.LegacyLink,
+                LastDeployedHash = item.State is ManagedSkillState.Enabled or ManagedSkillState.Modified
+                    ? HashDirectory(Path.Combine(ActiveRoot, name))
+                    : null,
+            };
+            state.Skills[name] = entry;
+        }
+        entry.Alias = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
+        entry.Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        SaveState(state);
+        return Success(name, "备注已保存");
+    });
 
     public SkillOperationResult ResolveModified(string name, ModifiedResolution resolution) => Locked(name, () =>
     {
@@ -631,6 +658,9 @@ public sealed class SkillManager
             ? Path.Combine(store, "SKILL.md")
             : Path.Combine(active, "SKILL.md");
         var (display, description) = ReadMetadata(preview, name);
+        state.Skills.TryGetValue(name, out var meta);
+        var alias = string.IsNullOrWhiteSpace(meta?.Alias) ? null : meta!.Alias!.Trim();
+        var note = string.IsNullOrWhiteSpace(meta?.Note) ? null : meta!.Note!.Trim();
         var modified = File.Exists(preview) ? File.GetLastWriteTimeUtc(preview) : DateTime.MinValue;
         var cliAvailable = CliStatus.Available;
         var canManage = status == ManagedSkillState.External;
@@ -644,7 +674,7 @@ public sealed class SkillManager
             }
             catch (Exception) { canManage = false; }
         }
-        return new(name, display, description, status, preview,
+        return new(name, display, description, alias, note, status, preview,
             activeExists ? active : null, storeExists ? store : null, modified,
             status == ManagedSkillState.Disabled,
             status == ManagedSkillState.Enabled,

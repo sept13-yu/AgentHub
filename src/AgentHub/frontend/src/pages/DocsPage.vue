@@ -21,6 +21,8 @@ interface SkillItem {
   name: string
   displayName: string
   description: string | null
+  alias: string | null
+  note: string | null
   path: string
   relPath: string
   sizeBytes: number
@@ -112,6 +114,11 @@ const allLibraryOn = computed(() =>
 )
 const someLibraryOn = computed(() => library.value.some((s) => selected.value.has(s.path)))
 const toggling = ref(new Set<string>())
+const deleting = ref(false)
+const metaSaving = ref(false)
+const legacyBusy = ref(false)
+const noteDraft = ref('')
+const aliasDraft = ref('')
 const progress = ref<SkillsUpdate | null>(null)
 const updateableCount = computed(() => data.value?.updateableCount ?? 0)
 const updateRunning = computed(() => !!progress.value?.running)
@@ -134,6 +141,15 @@ const groups = computed(() => {
 
 function setLoading(on: boolean) {
   if (pageLoading) pageLoading.value = on
+}
+
+function skillTitle(s: SkillItem) {
+  return (s.alias || s.displayName || s.name).trim()
+}
+
+function syncMetaDraft(s: SkillItem | null) {
+  aliasDraft.value = s?.alias || ''
+  noteDraft.value = s?.note || ''
 }
 
 async function refresh() {
@@ -182,6 +198,8 @@ async function load() {
 
 async function openPreview(item: SkillItem | LibItem) {
   picked.value = item
+  if (item.kind === 'skill') syncMetaDraft(item as SkillItem)
+  else syncMetaDraft(null)
   try {
     const r = await get<{ content: string; path: string }>(`/api/docs/preview?path=${encodeURIComponent(item.path)}`)
     preview.value = r
@@ -314,6 +332,30 @@ async function skillAction(path: string, body: unknown, success: string) {
   }
 }
 
+async function saveMeta() {
+  if (readonly || metaSaving.value || !picked.value || picked.value.kind !== 'skill') return
+  const skill = picked.value as SkillItem
+  metaSaving.value = true
+  try {
+    await post('/api/docs/skills/meta', {
+      name: skill.relPath,
+      alias: aliasDraft.value,
+      note: noteDraft.value,
+    })
+    message.success('备注已保存')
+    await load()
+    const still = skills.value.find((s) => s.relPath === skill.relPath)
+    if (still) {
+      picked.value = still
+      syncMetaDraft(still)
+    }
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '保存备注失败')
+  } finally {
+    metaSaving.value = false
+  }
+}
+
 function manageSkill(skill: SkillItem) {
   picked.value = skill
   return skillAction('/api/docs/skills/manage', { name: skill.relPath }, '已收进仓库')
@@ -413,40 +455,47 @@ function askDeleteSelected() {
 }
 
 async function deleteSelectedNow() {
-  if (readonly) return
-  if (kind.value === 'skills') {
-    const names = selectedSkills.value.map((s) => s.relPath)
+  if (readonly || deleting.value) return
+  deleting.value = true
+  setLoading(true)
+  try {
+    if (kind.value === 'skills') {
+      const names = selectedSkills.value.map((s) => s.relPath)
+      let ok = 0
+      const errors: string[] = []
+      for (const name of names) {
+        try {
+          await post('/api/docs/skills/delete', { name })
+          ok++
+        } catch (e) {
+          errors.push(e instanceof Error ? e.message : name)
+        }
+      }
+      selected.value = new Set()
+      if (errors.length) message.error(ok ? `已删除 ${ok} 个，失败：${errors[0]}` : errors[0])
+      else message.success(`已删除 ${ok} 个`)
+      await load()
+      return
+    }
+    const paths = selectedLibrary.value.map((s) => s.path)
     let ok = 0
     const errors: string[] = []
-    for (const name of names) {
+    for (const path of paths) {
       try {
-        await post('/api/docs/skills/delete', { name })
+        await post('/api/docs/library/delete', { path })
         ok++
       } catch (e) {
-        errors.push(e instanceof Error ? e.message : name)
+        errors.push(e instanceof Error ? e.message : path)
       }
     }
     selected.value = new Set()
-    if (errors.length) message.error(ok ? `已删除 ${ok} 个，失败：${errors[0]}` : errors[0])
-    else message.success(`已删除 ${ok} 个`)
+    if (errors.length) message.error(ok ? `已删除 ${ok} 篇，失败：${errors[0]}` : errors[0])
+    else message.success(`已删除 ${ok} 篇`)
     await load()
-    return
+  } finally {
+    deleting.value = false
+    setLoading(false)
   }
-  const paths = selectedLibrary.value.map((s) => s.path)
-  let ok = 0
-  const errors: string[] = []
-  for (const path of paths) {
-    try {
-      await post('/api/docs/library/delete', { path })
-      ok++
-    } catch (e) {
-      errors.push(e instanceof Error ? e.message : path)
-    }
-  }
-  selected.value = new Set()
-  if (errors.length) message.error(ok ? `已删除 ${ok} 篇，失败：${errors[0]}` : errors[0])
-  else message.success(`已删除 ${ok} 篇`)
-  await load()
 }
 
 function resolveSkill(skill: SkillItem, action: 'keepLocalAsStore' | 'restoreFromStore') {
@@ -477,7 +526,8 @@ function migrateLegacy() {
 }
 
 async function migrateLegacyNow() {
-  if (readonly) return
+  if (readonly || legacyBusy.value) return
+  legacyBusy.value = true
   setLoading(true)
   try {
     const r = await post<{ updated: number; errors: string[] }>('/api/docs/skills/legacy/migrate')
@@ -485,7 +535,10 @@ async function migrateLegacyNow() {
     else message.success(`已迁移 ${r.updated} 个启用 Skill`)
     await load()
   } catch (e) { message.error(e instanceof Error ? e.message : '迁移失败') }
-  finally { setLoading(false) }
+  finally {
+    setLoading(false)
+    legacyBusy.value = false
+  }
 }
 
 function cleanLegacy() {
@@ -493,12 +546,18 @@ function cleanLegacy() {
 }
 
 async function cleanLegacyNow() {
-  if (readonly) return
+  if (readonly || legacyBusy.value) return
+  legacyBusy.value = true
+  setLoading(true)
   try {
     await post('/api/docs/skills/legacy/clean')
     message.success('旧 Skill 仓已清理')
     await load()
   } catch (e) { message.error(e instanceof Error ? e.message : '清理失败') }
+  finally {
+    setLoading(false)
+    legacyBusy.value = false
+  }
 }
 
 async function openRoot(rootKind: 'active' | 'store' | 'library') {
@@ -759,11 +818,12 @@ onUnmounted(() => { stopPoll() })
     </div>
   </teleport>
   <teleport defer to="#chrome-actions">
-    <n-input v-model:value="q" class="docs-search" placeholder="搜索名称" clearable />
+    <n-input v-model:value="q" class="docs-search" placeholder="搜索名称/备注" clearable />
     <n-button
       v-if="selectedCount"
       type="error"
-      :disabled="readonly || updateRunning"
+      :disabled="readonly || updateRunning || deleting"
+      :loading="deleting"
       @click="askDeleteSelected"
     >
       <template #icon><n-icon><Trash2 :size="16" :stroke-width="1.8" /></n-icon></template>
@@ -800,14 +860,14 @@ onUnmounted(() => { stopPoll() })
         <template v-if="kind === 'skills'">
           <div v-if="legacy?.linkCount" class="legacy-banner">
             <span>检测到 {{ legacy.linkCount }} 个旧联接，迁移后会改为真实目录副本。</span>
-            <n-button size="small" type="primary" :disabled="readonly" @click="migrateLegacy">
+            <n-button size="small" type="primary" :disabled="readonly || legacyBusy" :loading="legacyBusy" @click="migrateLegacy">
               <template #icon><n-icon><ArrowRightLeft :size="16" :stroke-width="1.8" /></n-icon></template>
               迁移
             </n-button>
           </div>
           <div v-else-if="legacy?.canClean" class="legacy-banner">
             <span>旧 All-Skills 已无引用，可以清理已核验的重复副本。</span>
-            <n-button size="small" :disabled="readonly" @click="cleanLegacy">
+            <n-button size="small" :disabled="readonly || legacyBusy" :loading="legacyBusy" @click="cleanLegacy">
               <template #icon><n-icon><Eraser :size="16" :stroke-width="1.8" /></n-icon></template>
               清理旧仓
             </n-button>
@@ -880,10 +940,10 @@ onUnmounted(() => { stopPoll() })
                   >
                       <span class="doc-card-top">
                         <i class="doc-pip" />
-                        <b>{{ s.displayName || s.name }}</b>
+                        <b>{{ skillTitle(s) }}</b>
                         <span v-if="skillCardTag(s.state)" class="doc-tag">{{ skillCardTag(s.state) }}</span>
                       </span>
-                    <p>{{ s.description || ' ' }}</p>
+                    <p :class="{ 'is-empty': !s.note }">{{ s.note || '暂无备注' }}</p>
                     <time>{{ formatMonthDay(s.modifiedUtc) }}</time>
                   </button>
                   <n-switch
@@ -998,14 +1058,47 @@ onUnmounted(() => { stopPoll() })
             <span>{{ formatWhen(picked.modifiedUtc) }}</span>
             <span v-if="picked.kind === 'skill' && (picked as SkillItem).conflict">目录冲突，程序未修改任何一侧</span>
           </div>
+          <div v-if="picked.kind === 'skill'" class="skill-meta">
+            <label class="skill-meta-row">
+              <span>中文名</span>
+              <n-input v-model:value="aliasDraft" :disabled="readonly || metaSaving" placeholder="例如：Jira 改单" maxlength="40" />
+            </label>
+            <label class="skill-meta-row">
+              <span>备注</span>
+              <n-input
+                v-model:value="noteDraft"
+                type="textarea"
+                :disabled="readonly || metaSaving"
+                placeholder="一两句说明用途，只存在本机"
+                :autosize="{ minRows: 2, maxRows: 4 }"
+                maxlength="200"
+                show-count
+              />
+            </label>
+            <n-button v-if="!readonly" type="primary" :loading="metaSaving" :disabled="metaSaving" @click="saveMeta">保存备注</n-button>
+          </div>
           <div v-if="!readonly" class="skill-actions">
-            <n-button v-if="picked.kind === 'skill' && (picked as SkillItem).canManage" type="primary" @click="manageSkill(picked as SkillItem)">
+            <n-button
+              v-if="picked.kind === 'skill' && (picked as SkillItem).canManage"
+              type="primary"
+              :loading="toggling.has((picked as SkillItem).relPath)"
+              :disabled="toggling.has((picked as SkillItem).relPath)"
+              @click="manageSkill(picked as SkillItem)"
+            >
               <template #icon><n-icon><Archive :size="16" :stroke-width="1.8" /></n-icon></template>
               收进仓库
             </n-button>
             <template v-if="picked.kind === 'skill' && (picked as SkillItem).state === 'modified'">
-              <n-button @click="resolveSkill(picked as SkillItem, 'keepLocalAsStore')">保留本地版本</n-button>
-              <n-button @click="resolveSkill(picked as SkillItem, 'restoreFromStore')">恢复仓库版本</n-button>
+              <n-button
+                :loading="toggling.has((picked as SkillItem).relPath)"
+                :disabled="toggling.has((picked as SkillItem).relPath)"
+                @click="resolveSkill(picked as SkillItem, 'keepLocalAsStore')"
+              >保留本地版本</n-button>
+              <n-button
+                :loading="toggling.has((picked as SkillItem).relPath)"
+                :disabled="toggling.has((picked as SkillItem).relPath)"
+                @click="resolveSkill(picked as SkillItem, 'restoreFromStore')"
+              >恢复仓库版本</n-button>
             </template>
             <n-button @click="openFile">
               <template #icon><n-icon><ExternalLink :size="16" :stroke-width="1.8" /></n-icon></template>
@@ -1040,7 +1133,7 @@ onUnmounted(() => { stopPoll() })
       />
       <div class="install-acts">
         <n-button @click="installShow = false">取消</n-button>
-        <n-button type="primary" :disabled="updateRunning || !installSource.trim()" @click="runInstall">安装</n-button>
+        <n-button type="primary" :disabled="updateRunning || !installSource.trim()" :loading="updateRunning && jobKind === 'install'" @click="runInstall">安装</n-button>
       </div>
     </div>
   </n-modal>
@@ -1186,6 +1279,10 @@ onUnmounted(() => { stopPoll() })
 .doc-select:disabled { color: var(--disabled-fg); cursor: not-allowed; }
 .doc-select[aria-pressed='true'] { color: var(--text); background: var(--wash); }
 .skill-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.skill-meta { display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
+.skill-meta-row { display: grid; gap: 4px; font-size: 12px; color: var(--faint); }
+.skill-meta-row > span { font-weight: 500; }
+.doc-card p.is-empty { color: var(--faint); font-style: italic; }
 .docs-roots {
   display: flex;
   align-items: center;

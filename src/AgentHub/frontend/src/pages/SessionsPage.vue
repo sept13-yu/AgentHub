@@ -83,6 +83,7 @@ const folded = ref<Set<string>>(new Set())
 const detail = ref<Detail | null>(null)
 const previewErr = ref('')
 const previewBusy = ref(false)
+const deleting = ref(false)
 const titleEdit = ref('')
 let previewAc: AbortController | null = null
 const vacuum = ref(false)
@@ -417,6 +418,8 @@ function askCleanResidue() {
 }
 
 async function runDelete(rows: SessionRow[]) {
+  if (deleting.value) return
+  deleting.value = true
   setLoading(true)
   try {
     const r = await post<{ ok: boolean; skipped: number; results?: DeleteResult[]; vacuum?: { ok?: boolean; error?: string } }>(
@@ -457,6 +460,7 @@ async function runDelete(rows: SessionRow[]) {
     await loadList()
   } finally {
     setLoading(false)
+    deleting.value = false
   }
 }
 
@@ -700,7 +704,7 @@ onMounted(() => { void load() })
     </div>
   </teleport>
   <teleport defer to="#chrome-actions">
-    <n-button v-if="selected.size || current" type="error" :disabled="!canDelete" @click="askRemove">
+    <n-button v-if="selected.size || current" type="error" :disabled="!canDelete || deleting" :loading="deleting" @click="askRemove">
       <template #icon><n-icon><Trash2 :size="16" :stroke-width="1.8" /></n-icon></template>
       删除
     </n-button>

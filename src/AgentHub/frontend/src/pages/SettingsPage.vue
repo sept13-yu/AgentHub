@@ -491,10 +491,10 @@ onUnmounted(() => {
             <span class="hint">{{ updateHint || (appVersion ? `当前 ${appVersion}` : '检查 GitHub 上的最新版本') }}</span>
           </div>
           <div class="ctrl ctrl--actions">
-            <n-button type="button" :disabled="updateBusy" @click="checkUpdate">
+            <n-button type="button" :disabled="updateBusy" :loading="updateBusy" @click="checkUpdate">
               检查更新
             </n-button>
-            <n-button type="button" :disabled="readonly || updateBusy || !updateInstalled || (updateLatest !== '' && !updateCanApply)" @click="applyShow = true">
+            <n-button type="button" :disabled="readonly || updateBusy || !updateInstalled || (updateLatest !== '' && !updateCanApply)" :loading="updateBusy" @click="applyShow = true">
               立即更新并重启
             </n-button>
             <n-button type="button" @click="openReleasePage">

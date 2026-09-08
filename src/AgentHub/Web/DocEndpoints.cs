@@ -48,6 +48,8 @@ public static class DocEndpoints
                     name = s.Name,
                     displayName = s.DisplayName,
                     description = s.Description,
+                    alias = s.Alias,
+                    note = s.Note,
                     path = s.PreviewPath,
                     relPath = s.Name,
                     state = char.ToLowerInvariant(s.State.ToString()[0]) + s.State.ToString()[1..],
@@ -235,6 +237,22 @@ public static class DocEndpoints
             }
         });
 
+        app.MapPost("/api/docs/skills/meta", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx)) return Forbidden();
+            var body = await ctx.Request.ReadFromJsonAsync<MetaBody>();
+            if (string.IsNullOrWhiteSpace(body?.name))
+                return Results.Json(new { error = "body 须为 {name, alias?, note?}" }, statusCode: 400);
+            try
+            {
+                return SkillJson(docs.Skills.SetMeta(body.name.Trim(), body.alias, body.note));
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+            }
+        });
+
         app.MapPost("/api/docs/skills/manage", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx)) return Forbidden();
@@ -336,5 +354,6 @@ public static class DocEndpoints
     private sealed record SourceBody(string source);
     private sealed record UpdateBody(string[]? names);
     private sealed record ResolveBody(string name, string action);
+    private sealed record MetaBody(string name, string? alias, string? note);
     private sealed record RootBody(string kind);
 }

@@ -20,6 +20,8 @@ public sealed record ManagedSkillItem(
     string Name,
     string DisplayName,
     string? Description,
+    string? Alias,
+    string? Note,
     ManagedSkillState State,
     string PreviewPath,
     string? ActivePath,
@@ -66,4 +68,8 @@ internal sealed class SkillStateEntry
     public bool Enabled { get; set; }
     public string? LastDeployedHash { get; set; }
     public DateTime? LastUpdatedUtc { get; set; }
+    /// <summary>本机中文名，不写回 SKILL.md。</summary>
+    public string? Alias { get; set; }
+    /// <summary>本机备注，不写回 SKILL.md。</summary>
+    public string? Note { get; set; }
 }
