@@ -274,11 +274,7 @@ async function loadList() {
   }
   page.value = last ? { ...last, items: acc, offset: 0, limit: acc.length } : null
   const keys = new Set(acc.map(keyOf))
-  if (current.value && !keys.has(keyOf(current.value))) {
-    current.value = null
-    detail.value = null
-    previewErr.value = ''
-  }
+  if (current.value && !keys.has(keyOf(current.value))) closePreview()
 }
 
 async function refresh() {
@@ -308,7 +304,20 @@ async function load() {
   }
 }
 
+function closePreview() {
+  previewAc?.abort()
+  previewAc = null
+  current.value = null
+  detail.value = null
+  previewErr.value = ''
+  previewBusy.value = false
+}
+
 async function openRow(row: SessionRow) {
+  if (current.value && keyOf(current.value) === keyOf(row)) {
+    closePreview()
+    return
+  }
   current.value = row
   titleEdit.value = row.title
   previewErr.value = ''
@@ -444,11 +453,7 @@ async function runDelete(rows: SessionRow[]) {
     const gone = new Set(
       (r.results ?? []).filter((x) => x.ok).map((x) => `${x.agentId}:${x.id}`),
     )
-    if (current.value && gone.has(keyOf(current.value))) {
-      current.value = null
-      detail.value = null
-      previewErr.value = ''
-    }
+    if (current.value && gone.has(keyOf(current.value))) closePreview()
     // 失败的保留勾选，方便直接重试
     const next = new Map(selected.value)
     for (const row of rows) if (gone.has(keyOf(row))) next.delete(keyOf(row))
@@ -673,9 +678,7 @@ function onGroupMenu(e: MouseEvent, g: { key: string; name: string; path: string
 function onEsc() {
   if (confirmShow.value) return
   if (current.value) {
-    current.value = null
-    detail.value = null
-    previewErr.value = ''
+    closePreview()
     return
   }
   if (selected.value.size) selected.value = new Map()
@@ -843,7 +846,13 @@ onMounted(() => { void load() })
         </div>
         <div class="sess-preview">
           <template v-if="current">
-            <h3>{{ detail?.title || current.title || '(无标题)' }}</h3>
+            <div class="sess-preview-head">
+              <h3>{{ detail?.title || current.title || '(无标题)' }}</h3>
+              <button type="button" class="sess-close" @click="closePreview">
+                <X :size="16" :stroke-width="1.8" />
+                收起
+              </button>
+            </div>
             <div class="sess-meta">
               <span>{{ agentName(detail?.agent || current.agent) }} · {{ (detail?.project ?? current.project) || '未知项目' }}</span>
               <span>{{ detail?.messageCount ?? current.messageCount }} 条 · {{ formatBytes(detail?.sizeBytes ?? current.sizeBytes) }} · {{ formatWhen(detail?.lastActivity || current.lastActivity) }}</span>
@@ -1036,7 +1045,27 @@ onMounted(() => { void load() })
 .sess-gbtn .n { font-variant-numeric: tabular-nums; }
 .sess-table tbody.is-fold .sess-gbtn .ico { transform: rotate(-90deg); }
 .sess-empty { color: var(--empty-fg); font-size: var(--fs-small); padding: var(--sp-6) 0; }
-.sess-preview h3 { font-size: var(--fs-card); font-weight: 600; margin: 0; }
+.sess-preview-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.sess-preview-head h3 {
+  flex: 1; min-width: 0;
+  font-size: var(--fs-card); font-weight: 600; margin: 0;
+}
+.sess-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--h-icon-btn);
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  border-radius: var(--r-in);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-small);
+}
+.sess-close:hover { color: var(--text); background: var(--wash); }
 .sess-meta { font-size: var(--fs-caption); color: var(--faint); display: flex; flex-direction: column; gap: 2px; }
 .sess-acts { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .sess-msgs {

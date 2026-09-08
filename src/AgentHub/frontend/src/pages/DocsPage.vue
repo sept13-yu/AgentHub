@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NInput, NModal, NSwitch, useMessage } from 'naive-ui'
-import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, ListChecks, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
+import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, ListChecks, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
 import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
@@ -196,14 +196,25 @@ async function load() {
   }
 }
 
+function closePreview() {
+  picked.value = null
+  preview.value = null
+}
+
 async function openPreview(item: SkillItem | LibItem) {
+  if (picked.value?.path === item.path) {
+    closePreview()
+    return
+  }
   picked.value = item
   if (item.kind === 'skill') syncMetaDraft(item as SkillItem)
   else syncMetaDraft(null)
   try {
     const r = await get<{ content: string; path: string }>(`/api/docs/preview?path=${encodeURIComponent(item.path)}`)
+    if (picked.value?.path !== item.path) return
     preview.value = r
   } catch (e) {
+    if (picked.value?.path !== item.path) return
     preview.value = null
     message.error(e instanceof Error ? e.message : '预览失败')
   }
@@ -586,8 +597,7 @@ function toggleFold(name: string) {
 
 function pickKind(id: Kind) {
   kind.value = id
-  picked.value = null
-  preview.value = null
+  closePreview()
   selecting.value = false
   selected.value = new Set()
 }
@@ -766,8 +776,7 @@ function onLibGroupMenu(e: MouseEvent, g: { name: string; items: LibItem[] }) {
 function onEsc() {
   if (confirmShow.value || installShow.value) return
   if (picked.value) {
-    picked.value = null
-    preview.value = null
+    closePreview()
     return
   }
   if (selected.value.size || selecting.value) {
@@ -1044,7 +1053,13 @@ onUnmounted(() => { stopPoll() })
       </div>
       <div class="docs-preview">
         <template v-if="picked && preview">
-          <h3>{{ picked.name }}</h3>
+          <div class="docs-preview-head">
+            <h3>{{ picked.name }}</h3>
+            <button type="button" class="docs-close" @click="closePreview">
+              <X :size="16" :stroke-width="1.8" />
+              收起
+            </button>
+          </div>
           <div class="docs-meta">
             <span v-if="picked.kind === 'skill'">
               用户级 Skill · {{ skillStateText((picked as SkillItem).state) }}
@@ -1218,9 +1233,11 @@ onUnmounted(() => { stopPoll() })
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--sp-3);
+  align-items: stretch;
 }
 .doc-card {
   width: 100%;
+  flex: 1;
   text-align: left;
   border: 1px solid var(--stroke);
   border-radius: var(--r-card);
@@ -1241,7 +1258,7 @@ onUnmounted(() => { stopPoll() })
 .doc-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 44px; line-height: var(--h-control); }
 .has-check .doc-card-top { padding-left: 28px; }
 .doc-tag { font-size: var(--fs-caption); color: var(--warn); flex: none; line-height: 1; }
-.doc-cell { position: relative; min-width: 0; }
+.doc-cell { position: relative; min-width: 0; display: flex; flex-direction: column; }
 .doc-check {
   position: absolute;
   top: 10px;
@@ -1317,12 +1334,14 @@ onUnmounted(() => { stopPoll() })
 }
 .doc-card.is-off .doc-pip { background: var(--idle); }
 .doc-card b {
+  flex: 1; min-width: 0;
   font-size: var(--fs-body); font-weight: 500;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .doc-card p {
-  margin: 0; font-size: var(--fs-caption); color: var(--dim);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  margin: 0; font-size: var(--fs-caption); line-height: 1.5; color: var(--dim);
+  height: calc(var(--fs-caption) * 1.5 * 2);
+  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .doc-card time { font-size: var(--fs-caption); color: var(--faint); margin-top: auto; }
 .doc-sec { margin: 0 0 var(--sp-5); }
@@ -1366,7 +1385,27 @@ onUnmounted(() => { stopPoll() })
 }
 .doc-gbtn:hover { color: var(--text); }
 .docs-table tbody.is-fold .doc-gbtn .ico { transform: rotate(-90deg); }
-.docs-preview h3 { font-size: var(--fs-card); font-weight: 600; margin: 0; }
+.docs-preview-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.docs-preview-head h3 {
+  flex: 1; min-width: 0;
+  font-size: var(--fs-card); font-weight: 600; margin: 0;
+}
+.docs-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--h-icon-btn);
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  border-radius: var(--r-in);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-small);
+}
+.docs-close:hover { color: var(--text); background: var(--wash); }
 .docs-meta { font-size: var(--fs-caption); color: var(--faint); display: flex; flex-direction: column; gap: 2px; }
 .docs-body {
   font-size: var(--fs-small); color: var(--dim); line-height: 1.65;
