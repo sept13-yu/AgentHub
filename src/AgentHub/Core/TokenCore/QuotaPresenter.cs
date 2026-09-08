@@ -41,7 +41,7 @@ public static class QuotaPresenter
     private static IEnumerable<string> Expand(string group) => group switch
     {
         "zcode" => ["zcode-5h", "zcode-week"],
-        "cursor" => ["cursor-auto", "cursor-api"],
+        "cursor" => ["cursor-total", "cursor-auto", "cursor-api", "cursor-grok"],
         "codex" => ["codex-5h", "codex-7d"],
         _ => [group],
     };
@@ -74,6 +74,12 @@ public static class QuotaPresenter
         if (!TryOk(sources, "cursor", out var card)) return;
         var period = Str(card, "cycleEnd") ?? Str(card, "cycleStart") ?? "";
         var plan = Str(card, "plan");
+        if (TryNum(card, "usedPercent", out var used) || TryNum(card, "total", out used))
+        {
+            bag["cursor-total"] = Remain(
+                "cursor-total", "Cursor 总用量",
+                100 - used, period, plan);
+        }
         if (card.ContainsKey("autoPercent"))
         {
             bag["cursor-auto"] = Remain(
@@ -85,6 +91,13 @@ public static class QuotaPresenter
             bag["cursor-api"] = Remain(
                 "cursor-api", "Cursor API",
                 100 - ToDouble(card["apiPercent"]), period, plan);
+        }
+        if (card.ContainsKey("grokPercent"))
+        {
+            bag["cursor-grok"] = Remain(
+                "cursor-grok", "Cursor Grok Bot",
+                100 - ToDouble(card["grokPercent"]),
+                Str(card, "grokResetAt") ?? period, plan);
         }
     }
 
