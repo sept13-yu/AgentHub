@@ -11,6 +11,8 @@ import { ahMenuKey, copyText, type AhMenuItem } from '../ahMenu'
 import { usePageHotkeys } from '../hotkeys'
 
 const message = useMessage()
+const props = withDefaults(defineProps<{ panel?: 'skills' | 'library' | 'both' }>(), { panel: 'both' })
+const showKindTabs = computed(() => props.panel === 'both')
 const pageLoading = inject<Ref<boolean>>('page-loading')
 const menu = inject(ahMenuKey)
 const readonly = !WRITABLE
@@ -74,7 +76,7 @@ interface SkillsUpdate {
 }
 interface LegacyStatus { linkCount: number; storeCount: number; canClean: boolean; errors: string[] }
 
-const kind = ref<Kind>('skills')
+const kind = ref<Kind>(props.panel === 'library' ? 'library' : 'skills')
 const q = ref('')
 const data = ref<DocsPayload | null>(null)
 const picked = ref<SkillItem | LibItem | null>(null)
@@ -647,14 +649,10 @@ function askDeleteLibrary(list: LibItem[]) {
   askConfirm(`将删除已选的 ${names.length} 篇方案（${shown}${extra}）。`, deleteSelectedNow)
 }
 
-function prepareSkill(s: SkillItem) {
-  if (!selected.value.has(s.relPath)) selected.value = new Set()
-  void openPreview(s)
-}
-
 function onSkillMenu(e: MouseEvent, s: SkillItem) {
   if (!menu) return
-  prepareSkill(s)
+  // 右键只出菜单，不展开右侧详情
+  if (!selected.value.has(s.relPath)) selected.value = new Set()
   const items: AhMenuItem[] = [
     {
       key: 'toggle',
@@ -706,8 +704,8 @@ function onSkillMenu(e: MouseEvent, s: SkillItem) {
 
 function onLibMenu(e: MouseEvent, item: LibItem) {
   if (!menu) return
+  // 右键只出菜单，不展开右侧详情
   if (!selected.value.has(item.path)) selected.value = new Set()
-  void openPreview(item)
   const batch = selected.value.size > 1 && selected.value.has(item.path)
     ? library.value.filter((x) => selected.value.has(x.path))
     : [item]
@@ -820,7 +818,7 @@ onUnmounted(() => { stopPoll() })
 </script>
 
 <template>
-  <teleport defer to="#chrome-tabs">
+  <teleport v-if="showKindTabs" defer to="#chrome-tabs">
     <div class="ah-tabs" role="group" aria-label="资料">
       <button type="button" :aria-pressed="kind === 'skills' ? 'true' : 'false'" @click="pickKind('skills')">技能</button>
       <button type="button" :aria-pressed="kind === 'library' ? 'true' : 'false'" @click="pickKind('library')">方案</button>

@@ -119,7 +119,9 @@ function tip(c: Cell): string {
         </div>
       </div>
     </div>
-    <span v-if="hover" class="heat-tip num">{{ tip(hover) }}</span>
+    <div class="heat-tip-row" aria-live="polite">
+      <span class="heat-tip num">{{ hover ? tip(hover) : '\u00a0' }}</span>
+    </div>
   </div>
 </template>
 
@@ -130,17 +132,14 @@ function tip(c: Cell): string {
   --heat-label: 14px;
   --heat-gutter: 6px;
   --heat-cell: 11px;
-  display: grid;
-  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
-  grid-template-rows: 1fr;
-  align-items: end;
-  column-gap: var(--sp-4);
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  max-width: 100%;
   min-width: 0;
 }
 .heat-scroll {
-  grid-column: 1;
-  grid-row: 1;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -214,13 +213,16 @@ function tip(c: Cell): string {
 .heat-cell.future {
   opacity: 0.28;
 }
+.heat-tip-row {
+  box-sizing: border-box;
+  min-height: calc(var(--fs-caption) * 1.4);
+  margin-top: 6px;
+  padding-left: calc(var(--heat-label) + var(--heat-gutter));
+}
 .heat-tip {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: end;
-  justify-self: end;
-  padding-left: 20px;
+  display: inline-block;
   font-size: var(--fs-caption);
+  line-height: 1.4;
   color: var(--text);
   white-space: nowrap;
 }

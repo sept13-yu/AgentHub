@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Cryptography;
 using AgentHub.Core.CodexConfigCore;
 using AgentHub.Core.DocCore;
+using AgentHub.Core.McpCore;
 using AgentHub.Core.ProxyCore;
 using AgentHub.Core.SessionCore;
 using AgentHub.Core.TokenCore;
@@ -30,6 +31,7 @@ public sealed class WebHostService
     private readonly AgentHubConfig? _config;
     private readonly AgentRuleBootstrapService? _agentRules;
     private readonly CodexConfigService? _codexConfig;
+    private readonly McpSyncService? _mcp;
     private WebApplication? _app;
     private Task? _runTask;
     private readonly TaskCompletionSource _ready = new();
@@ -57,7 +59,7 @@ public sealed class WebHostService
     public WebHostService(SessionService? sessions = null, DocService? docs = null,
         TokenService? tokens = null, QuotaService? quotas = null,
         AgentHubConfig? config = null, AgentRuleBootstrapService? agentRules = null,
-        CodexConfigService? codexConfig = null)
+        CodexConfigService? codexConfig = null, McpSyncService? mcp = null)
     {
         _sessions = sessions;
         _docs = docs;
@@ -66,6 +68,7 @@ public sealed class WebHostService
         _config = config;
         _agentRules = agentRules;
         _codexConfig = codexConfig;
+        _mcp = mcp;
     }
 
     /// <summary>写接口鉴权：Host 须为 127.0.0.1，防止 DNS rebinding；并校验壳内 token。</summary>
@@ -125,6 +128,8 @@ public sealed class WebHostService
             app.MapAgentRuleEndpoints(_agentRules, WriteAuth);
         if (_codexConfig is not null)
             app.MapCodexConfigEndpoints(_codexConfig, WriteAuth);
+        if (_mcp is not null)
+            app.MapMcpEndpoints(_mcp, WriteAuth);
         if (_tokens is not null && _quotas is not null && _config is not null)
             app.MapUsageEndpoints(_tokens, _quotas, _config, WriteAuth,
                 () => SettingsSaved?.Invoke(), () => PetIsRunning?.Invoke() ?? false,

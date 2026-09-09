@@ -578,15 +578,11 @@ function deleteTargets(row: SessionRow): SessionRow[] {
   return [row]
 }
 
-function prepareRow(row: SessionRow) {
-  const k = keyOf(row)
-  if (!selected.value.has(k)) selected.value = new Map()
-  void openRow(row)
-}
-
 function onRowMenu(e: MouseEvent, row: SessionRow) {
   if (!menu) return
-  prepareRow(row)
+  // 右键只出菜单：不打开右侧详情；若当前未多选该项则清空多选，避免误伤批量
+  const k = keyOf(row)
+  if (!selected.value.has(k)) selected.value = new Map()
   const targets = deleteTargets(row)
   const unlocked = targets.filter((r) => !r.locked)
   const items: AhMenuItem[] = [

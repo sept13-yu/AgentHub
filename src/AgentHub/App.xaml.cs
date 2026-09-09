@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows;
 using AgentHub.Core.CodexConfigCore;
 using AgentHub.Core.DocCore;
+using AgentHub.Core.McpCore;
 using AgentHub.Core.ProxyCore;
 using AgentHub.Core.SessionCore;
 using AgentHub.Core.TokenCore;
@@ -25,6 +26,7 @@ public partial class App : Application
     private PetHost? _pet;
     private AgentHubConfig? _config;
     private CodexConfigService? _codexConfig;
+    private McpSyncService? _mcp;
     private TitleOverrideStore? _titles;
     private SessionService? _sessions;
     private DocService? _docs;
@@ -103,9 +105,10 @@ public partial class App : Application
         _quotas = new QuotaService(_config);
         _scan = new ScanScheduler(_tokens, _sessions, _config, Log, OnUsageScanCompleted);
         _codexConfig = new CodexConfigService(_config);
+        _mcp = new McpSyncService(log: Log);
         _codexConfig.EnsureSeeded();
 
-        _web = new WebHostService(_sessions, _docs, _tokens, _quotas, _config, _agentRules, _codexConfig);
+        _web = new WebHostService(_sessions, _docs, _tokens, _quotas, _config, _agentRules, _codexConfig, _mcp);
         _web.UsageScan = () => _scan.RunAsync();
         _web.PickFolder = initial => Dispatcher.Invoke(() =>
         {

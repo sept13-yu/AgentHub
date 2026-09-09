@@ -25,7 +25,7 @@ public sealed class SkillsCliUpdater
     {
         var executable = FindNpx();
         return executable is null
-            ? new(false, "未检测到 Node.js / npx")
+            ? new(false, "未找到 npx：技能安装/更新不可用（需完整 Node.js，含 npm）")
             : new(true, $"skills@{PackageVersion}", executable);
     }
 

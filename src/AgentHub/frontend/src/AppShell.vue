@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, provide, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { bindAppHotkeys, pageHotkeysKey, type PageHotkeys } from './hotkeys'
-import { FileText, KeyRound, LayoutDashboard, Menu, MessageSquare, Moon, ScrollText, Settings, Sun } from 'lucide-vue-next'
+import { FileText, KeyRound, LayoutDashboard, Menu, MessageSquare, Moon, ScrollText, Settings, Sun, Zap } from 'lucide-vue-next'
 import { get } from './api'
 import appIcon from './assets/agenthub.png'
 import { setTheme, theme } from './theme'
@@ -29,11 +29,11 @@ onUnmounted(() => { stopHotkeys?.() })
 
 const nav = [
   { to: '/dashboard', label: '仪表盘', icon: LayoutDashboard },
-  { to: '/sessions', label: '会话管理', icon: MessageSquare },
-  { to: '/docs', label: '资料中心', icon: FileText },
-  { to: '/rules', label: '共用规则', icon: ScrollText },
-  { to: '/codex-config', label: 'Codex 配置', icon: KeyRound },
-  { to: '/settings', label: '设置', icon: Settings },
+  { to: '/sessions', label: '会话', icon: MessageSquare },
+  { to: '/capabilities', label: '能力', icon: Zap },
+  { to: '/docs', label: '资料', icon: FileText },
+  { to: '/rules', label: '规则', icon: ScrollText },
+  { to: '/codex-config', label: 'Codex', icon: KeyRound },
 ]
 </script>
 
@@ -60,16 +60,13 @@ const nav = [
         </router-link>
       </nav>
       <div class="rail-foot">
-        <button
-          type="button"
-          class="theme-btn"
-          :title="theme === 'dark' ? '切换到浅色' : '切换到深色'"
-          :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
-          @click="setTheme(theme === 'dark' ? 'light' : 'dark')"
+        <router-link
+          to="/settings"
+          class="nav-item settings-foot"
+          @click="drawerOpen = false"
         >
-          <Sun v-if="theme === 'dark'" :size="16" :stroke-width="1.8" />
-          <Moon v-else :size="16" :stroke-width="1.8" />
-        </button>
+          <Settings :size="16" :stroke-width="1.8" />设置
+        </router-link>
       </div>
     </aside>
 
@@ -92,6 +89,16 @@ const nav = [
           <div id="chrome-tabs" />
           <div id="chrome-extra" />
           <div id="chrome-actions" />
+          <button
+            type="button"
+            class="theme-btn chrome-theme"
+            :title="theme === 'dark' ? '切换到浅色' : '切换到深色'"
+            :aria-label="theme === 'dark' ? '切换到浅色' : '切换到深色'"
+            @click="setTheme(theme === 'dark' ? 'light' : 'dark')"
+          >
+            <Sun v-if="theme === 'dark'" :size="16" :stroke-width="1.8" />
+            <Moon v-else :size="16" :stroke-width="1.8" />
+          </button>
         </div>
       </div>
       <div class="stage">
@@ -119,7 +126,8 @@ const nav = [
 
 .rail {
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: var(--bg-sunken);
   border-right: 1px solid var(--stroke);
   padding: var(--sp-4) var(--sp-2);
@@ -163,6 +171,9 @@ const nav = [
   gap: var(--sp-2);
   padding: 0 var(--sp-3);
   height: var(--h-control);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border-radius: var(--r-in);
   color: var(--dim);
   text-decoration: none;
@@ -186,17 +197,26 @@ const nav = [
 .rail-foot {
   margin-top: auto;
   padding: var(--sp-2) 0;
+  overflow: hidden;
+  min-width: 0;
+}
+.settings-foot {
+  width: 100%;
+  max-width: 100%;
 }
 .theme-btn {
   display: inline-flex;
   align-items: center;
-  height: var(--h-control);
-  padding: 0 var(--sp-3);
+  justify-content: center;
+  width: var(--h-icon-btn);
+  height: var(--h-icon-btn);
+  padding: 0;
   border: 0;
   border-radius: var(--r-in);
   background: transparent;
   color: var(--dim);
   cursor: pointer;
+  flex: none;
   transition:
     background var(--dur) linear,
     color var(--dur) linear;
@@ -207,6 +227,9 @@ const nav = [
 }
 .theme-btn:active {
   background: var(--seg-on-bg);
+}
+.chrome-theme {
+  margin-left: var(--sp-2);
 }
 
 .main {
