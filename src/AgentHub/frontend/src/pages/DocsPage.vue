@@ -1137,7 +1137,7 @@ onUnmounted(() => { stopPoll() })
   />
   <n-modal :show="installShow" :mask-closable="true" @update:show="installShow = $event">
     <div class="install-box" role="dialog" aria-modal="true" aria-label="安装技能">
-      <p>从 GitHub 安装到启用目录，并收进持久仓。只写入 <code>~/.agents/skills</code>。</p>
+      <p>从 GitHub 安装到启用目录，并收进持久仓。只写入 <code>~/.agents/skills</code>（Cursor / Codex / MiMo 等会读这里）。</p>
       <n-input
         v-model:value="installSource"
         placeholder="owner/repo、owner/repo@skill 或 https://github.com/…"

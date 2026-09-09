@@ -74,6 +74,7 @@ export const tokens = {
     srcWb: '#FFE44D',
     srcTrae: '#FB923C',
     srcZcode: '#E879F9',
+    srcMimocode: '#FF6900',
     srcRelay: '#22D3EE',
   },
   light: {
@@ -119,6 +120,7 @@ export const tokens = {
     srcWb: '#D4A017',
     srcTrae: '#F97316',
     srcZcode: '#C026D3',
+    srcMimocode: '#E65C00',
     srcRelay: '#22D3EE',
   },
 } as const

@@ -4,6 +4,7 @@ import workbuddy from './assets/agents/workbuddy.png'
 import zcode from './assets/agents/zcode.svg'
 import cursor from './assets/agents/cursor.svg'
 import codex from './assets/agents/codex.png'
+import mimocode from './assets/agents/mimocode.png'
 import relay from './assets/agents/relay.svg'
 
 export const AGENT_ICON: Record<string, string> = {
@@ -14,6 +15,7 @@ export const AGENT_ICON: Record<string, string> = {
   zcode,
   cursor,
   codex,
+  mimocode,
   relay,
 }
 
@@ -25,6 +27,7 @@ export const AGENT_COLOR: Record<string, string> = {
   zcode: 'var(--src-zcode)',
   cursor: 'var(--src-cursor)',
   codex: 'var(--src-codex)',
+  mimocode: 'var(--src-mimocode)',
   relay: 'var(--src-relay)',
 }
 
@@ -36,6 +39,7 @@ export const AGENT_NAME: Record<string, string> = {
   zcode: 'ZCode',
   cursor: 'Cursor',
   codex: 'Codex',
+  mimocode: 'MiMo',
   relay: 'Sub2API',
 }
 

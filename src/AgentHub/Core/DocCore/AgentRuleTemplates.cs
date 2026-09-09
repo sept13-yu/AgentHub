@@ -217,6 +217,7 @@ internal static class AgentRuleTemplates
         "cursor" => ("Cursor", "Cursor"),
         "trae" => ("Trae", "Trae"),
         "workbuddy" => ("WorkBuddy", "WorkBuddy"),
+        "mimocode" => ("MiMo", "MiMoCode"),
         _ => throw new ArgumentOutOfRangeException(nameof(agentId)),
     };
 

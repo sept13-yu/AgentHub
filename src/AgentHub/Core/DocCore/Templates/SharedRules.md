@@ -40,7 +40,7 @@
 
 `<project-slug>` 用当前仓库文件夹名。工作区不是某个仓库、或就是本资料目录时，写到 `SandBox/<Agent>/`。
 
-`<Agent>` 用当前产品名（忽略大小写）：`Cursor`、`Codex`、`Dsh`、`Trae`、`WorkBuddy`、`ZCode`。`TraeWork` 视为 `Trae`。
+`<Agent>` 用当前产品名（忽略大小写）：`Cursor`、`Codex`、`Dsh`、`Trae`、`WorkBuddy`、`ZCode`、`MiMoCode`。`TraeWork` 视为 `Trae`；`MiMo` / `Mimocode` 视为 `MiMoCode`。
 
 文档名用中文。工单号可作前缀。不套日期文件夹，需要时再创建目录。
 

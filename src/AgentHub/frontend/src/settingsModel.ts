@@ -8,6 +8,7 @@ export const SET_AGENTS = [
   { id: 'trae', name: 'Trae', windows: '积分 · 用量', show: 'showQuotaTrae' },
   { id: 'workbuddy', name: 'WorkBuddy', windows: '积分 · 用量', show: 'showQuotaWorkBuddy' },
   { id: 'zcode', name: 'ZCode', windows: '5 小时 + 每周', show: 'showQuotaZcode' },
+  { id: 'mimocode', name: 'MiMo', windows: '会话 · 用量', show: 'showAgentMimocode' },
   { id: 'cursor', name: 'Cursor', windows: '总用量 · Auto · API · Grok', show: 'showQuotaCursor' },
   { id: 'codex', name: 'Codex', windows: '5 小时 + 每周', show: 'showQuotaCodex' },
 ] as const
@@ -23,6 +24,7 @@ const AGENT_ALIAS: Record<string, AgentId> = {
   zcode: 'zcode',
   'zcode-5h': 'zcode',
   'zcode-week': 'zcode',
+  mimocode: 'mimocode',
   cursor: 'cursor',
   'cursor-total': 'cursor',
   'cursor-auto': 'cursor',

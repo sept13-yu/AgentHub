@@ -82,6 +82,7 @@ public sealed class McpMotherDocument
         ["trae"] = true,
         ["workbuddy"] = true,
         ["zcode"] = true,
+        ["mimocode"] = true,
     };
     public List<string> ExcludeNames { get; set; } = ["node_repl", "cua_repl"];
 }

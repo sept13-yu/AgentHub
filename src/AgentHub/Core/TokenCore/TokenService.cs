@@ -31,7 +31,7 @@ public sealed class TokenService
     // 扫描
     // ------------------------------------------------------------------
 
-    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode，单事务）。不碰网络，亚秒级。
+    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode，单事务）。不碰网络，亚秒级。
     /// 主键冲突时更新用量列；仅当旧 model 为 unknown
     /// 且新解析出真名时回填（WorkBuddy 曾误读根级 model，存量全是 unknown）。</summary>
     public ScanAllResult ScanAllLocal()
@@ -88,6 +88,10 @@ public sealed class TokenService
 
                 sources["zcode"] = ZcodeLocal.DbExists
                     ? Ingest("zcode", ZcodeLocal.DbPath, () => ZcodeLocal.ReadUsage())
+                    : new SourceScanStat(0, 0, 0);
+
+                sources["mimocode"] = MimocodeLocal.DbExists
+                    ? Ingest("mimocode", MimocodeLocal.DbPath, () => MimocodeLocal.ReadUsage())
                     : new SourceScanStat(0, 0, 0);
 
                 tx.Commit();
@@ -306,6 +310,7 @@ public sealed class TokenService
         var dash = _config.Dashboard;
         var hide = new List<string>();
         if (!dash.ShowAgentDsh) hide.Add("dsh");
+        if (!dash.ShowAgentMimocode) hide.Add("mimocode");
         if (!dash.ShowQuotaTrae) hide.Add("trae");
         if (!dash.ShowQuotaWorkBuddy) hide.Add("workbuddy");
         if (!dash.ShowQuotaZcode) hide.Add("zcode");

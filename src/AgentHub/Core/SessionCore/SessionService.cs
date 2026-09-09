@@ -31,6 +31,7 @@ public sealed class SessionService
             ["dsh"] = new DshProvider(titles),
             ["workbuddy"] = new WorkBuddyProvider(titles, log, config),
             ["zcode"] = new ZcodeProvider(titles),
+            ["mimocode"] = new MimocodeProvider(titles),
         };
         _index.LoadFromDisk();
     }

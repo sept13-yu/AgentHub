@@ -57,12 +57,12 @@ public sealed class DashboardSettings
 
     public static readonly string[] DefaultAgentOrder =
     [
-        "dsh", "trae", "workbuddy", "zcode", "cursor", "codex",
+        "dsh", "trae", "workbuddy", "zcode", "mimocode", "cursor", "codex",
     ];
 
     public static readonly string[] SessionReadableAgents =
     [
-        "codex", "dsh", "cursor", "workbuddy", "zcode",
+        "codex", "dsh", "cursor", "workbuddy", "zcode", "mimocode",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -73,6 +73,7 @@ public sealed class DashboardSettings
         ["zcode"] = "zcode",
         ["zcode-5h"] = "zcode",
         ["zcode-week"] = "zcode",
+        ["mimocode"] = "mimocode",
         ["cursor"] = "cursor",
         ["cursor-total"] = "cursor",
         ["cursor-auto"] = "cursor",
@@ -121,6 +122,8 @@ public sealed class DashboardSettings
     public bool ShowQuotaCodex { get; set; } = true;
     /// <summary>DSH 无额度砖，只控制用量和会话。</summary>
     public bool ShowAgentDsh { get; set; } = true;
+    /// <summary>MiMo 无额度砖，只控制用量和会话。</summary>
+    public bool ShowAgentMimocode { get; set; } = true;
     /// <summary>Agent 表顺序。空或未调过按 DefaultAgentOrder。</summary>
     public List<string> AgentOrder { get; set; } = [];
     /// <summary>额度条目顺序。空或未调过按 DefaultQuotaOrder。</summary>
@@ -191,7 +194,7 @@ public sealed class DashboardSettings
         if (ShowQuotaRelay) q.Add("relay");
         foreach (var id in ResolvedAgentOrder())
         {
-            if (id == "dsh" || !AgentEnabled(id)) continue;
+            if (id == "dsh" || id == "mimocode" || !AgentEnabled(id)) continue;
             q.Add(id);
         }
         return q;
@@ -202,7 +205,8 @@ public sealed class DashboardSettings
     {
         var quota = NormalizeQuotaOrder(quotaOrder);
         var agents = NormalizeAgentOrder(agentOrder)
-            .Where(id => !string.Equals(id, "dsh", StringComparison.OrdinalIgnoreCase))
+            .Where(id => !string.Equals(id, "dsh", StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(id, "mimocode", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var agentSet = new HashSet<string>(agents, StringComparer.Ordinal);
         var qi = 0;
@@ -225,6 +229,7 @@ public sealed class DashboardSettings
     public bool AgentEnabled(string id) => id.ToLowerInvariant() switch
     {
         "dsh" => ShowAgentDsh,
+        "mimocode" => ShowAgentMimocode,
         "trae" => ShowQuotaTrae,
         "workbuddy" => ShowQuotaWorkBuddy,
         "zcode" => ShowQuotaZcode,
@@ -246,6 +251,7 @@ public sealed class DashboardSettings
     public static string AgentDisplayName(string id) => id.ToLowerInvariant() switch
     {
         "dsh" => "DSH",
+        "mimocode" => "MiMo",
         "trae" => "Trae",
         "workbuddy" => "WorkBuddy",
         "zcode" => "ZCode",

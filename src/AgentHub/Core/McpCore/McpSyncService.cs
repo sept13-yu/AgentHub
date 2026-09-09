@@ -27,6 +27,7 @@ public sealed class McpSyncService
         new TraeMcpAdapter(),
         new WorkBuddyMcpAdapter(),
         new ZcodeMcpAdapter(),
+        new MimocodeMcpAdapter(),
     ];
 
     public object ListMasked()

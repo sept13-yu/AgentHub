@@ -582,6 +582,7 @@ public sealed class AgentRuleBootstrapService
         yield return new("trae", "Trae", Path.Combine(_home, ".trae-cn"), RuleKind.Trae);
         yield return new("workbuddy", "WorkBuddy", Path.Combine(_home, ".workbuddy"), RuleKind.WorkBuddy);
         yield return new("zcode", "ZCode", Path.Combine(_home, ".zcode"), RuleKind.Markdown);
+        yield return new("mimocode", "MiMo", Path.Combine(_home, ".config", "mimocode"), RuleKind.Markdown);
     }
 
     private static AgentRuleItem Item(Descriptor d, bool detected, AgentRuleStatus status,

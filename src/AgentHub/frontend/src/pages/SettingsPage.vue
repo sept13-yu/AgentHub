@@ -48,6 +48,7 @@ interface SettingsPayload {
     showQuotaZcode: boolean
     showQuotaCodex: boolean
     showAgentDsh?: boolean
+    showAgentMimocode?: boolean
     agentOrder?: string[]
   }
   credentials: {
@@ -107,6 +108,7 @@ const f = reactive({
   showQuotaZcode: true,
   showQuotaCodex: true,
   showAgentDsh: true,
+  showAgentMimocode: true,
   agentOrder: normalizeAgentOrder([]),
   deepseekKey: '',
   relayKey: '',
@@ -165,6 +167,7 @@ function applyLoaded(s: SettingsPayload) {
   f.showQuotaZcode = d.showQuotaZcode !== false
   f.showQuotaCodex = d.showQuotaCodex !== false
   f.showAgentDsh = d.showAgentDsh !== false
+  f.showAgentMimocode = d.showAgentMimocode !== false
   f.agentOrder = normalizeAgentOrder(d.agentOrder)
   f.deepseekKey = ''
   f.relayKey = ''
@@ -266,6 +269,7 @@ async function save() {
         showQuotaZcode: !!f.showQuotaZcode,
         showQuotaCodex: !!f.showQuotaCodex,
         showAgentDsh: !!f.showAgentDsh,
+        showAgentMimocode: !!f.showAgentMimocode,
         agentOrder: f.agentOrder,
       },
       credentials: {
