@@ -492,7 +492,7 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <span class="lbl">版本与更新</span>
-            <span class="hint">{{ updateHint || (appVersion ? `当前 ${appVersion}` : '检查 GitHub 上的最新版本') }}</span>
+            <span class="hint">{{ updateHint || (appVersion ? `当前 ${appVersion}` : '检查最新版本') }}</span>
           </div>
           <div class="ctrl ctrl--actions">
             <n-button type="button" :disabled="updateBusy" :loading="updateBusy" @click="checkUpdate">

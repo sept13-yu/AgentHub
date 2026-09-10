@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -41,7 +41,7 @@ public sealed class GithubApiUpdateSource : IUpdateSource
         await RefreshIndexAsync(CancellationToken.None).ConfigureAwait(false);
         var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
         var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
-            ?? throw new InvalidOperationException("GitHub Release 里没有 releases.win.json。");
+            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
         var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), CancellationToken.None).ConfigureAwait(false);
         return VelopackAssetFeed.FromJson(json);
     }
@@ -56,7 +56,7 @@ public sealed class GithubApiUpdateSource : IUpdateSource
         {
             await RefreshIndexAsync(cancelToken).ConfigureAwait(false);
             url = FindUrl(releaseEntry.FileName)
-                ?? throw new InvalidOperationException("GitHub 上找不到 " + releaseEntry.FileName + "。");
+                ?? throw new InvalidOperationException("更新源上找不到 " + releaseEntry.FileName + "。");
         }
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -138,7 +138,7 @@ public sealed class GithubApiUpdateSource : IUpdateSource
         await RefreshIndexAsync(ct).ConfigureAwait(false);
         var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
         var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
-            ?? throw new InvalidOperationException("GitHub Release 里没有 releases.win.json。");
+            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
         var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
         return VelopackAssetFeed.FromJson(json);
     }
@@ -200,6 +200,217 @@ public sealed class GithubApiUpdateSource : IUpdateSource
     }
 }
 
+/// <summary>
+/// 走 gitee.com/api/v5 列 Release；上传文件在 attach_files（assets 多为源码包）。
+/// 下载直接用 browser_download_url，不走 GitHub 式 assets API。
+/// </summary>
+public sealed class GiteeApiUpdateSource : IUpdateSource
+{
+    public const string RepoUrl = "https://gitee.com/sept13-yu/AgentHub";
+    const string ApiLatest = "https://gitee.com/api/v5/repos/sept13-yu/AgentHub/releases/latest";
+    const string ApiReleases = "https://gitee.com/api/v5/repos/sept13-yu/AgentHub/releases?per_page=20";
+    const string ApiAttachFilesFmt = "https://gitee.com/api/v5/repos/sept13-yu/AgentHub/releases/{0}/attach_files";
+
+    static readonly HttpClient Http = CreateClient();
+    readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
+    readonly object _gate = new();
+
+    public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger, string? appId, string channel,
+        Guid? stagingId = null, VelopackAsset? latestLocalRelease = null)
+    {
+        await RefreshIndexAsync(CancellationToken.None).ConfigureAwait(false);
+        var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
+        var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
+            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
+        var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), CancellationToken.None).ConfigureAwait(false);
+        return VelopackAssetFeed.FromJson(json);
+    }
+
+    public async Task DownloadReleaseEntry(IVelopackLogger logger, VelopackAsset releaseEntry, string localFile,
+        Action<int> progress, CancellationToken cancelToken)
+    {
+        if (string.IsNullOrWhiteSpace(releaseEntry.FileName))
+            throw new InvalidOperationException("更新包没有文件名。");
+        var url = FindUrl(releaseEntry.FileName);
+        if (url is null)
+        {
+            await RefreshIndexAsync(cancelToken).ConfigureAwait(false);
+            url = FindUrl(releaseEntry.FileName)
+                ?? throw new InvalidOperationException("更新源上找不到 " + releaseEntry.FileName + "。");
+        }
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+        using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancelToken)
+            .ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        var total = resp.Content.Headers.ContentLength;
+        await using var src = await resp.Content.ReadAsStreamAsync(cancelToken).ConfigureAwait(false);
+        await using var dst = File.Create(localFile);
+        var buf = new byte[81920];
+        long read = 0;
+        var last = -1;
+        int n;
+        while ((n = await src.ReadAsync(buf.AsMemory(0, buf.Length), cancelToken).ConfigureAwait(false)) > 0)
+        {
+            await dst.WriteAsync(buf.AsMemory(0, n), cancelToken).ConfigureAwait(false);
+            read += n;
+            if (total is > 0)
+            {
+                var pct = (int)(read * 100 / total.Value);
+                if (pct != last)
+                {
+                    last = pct;
+                    progress?.Invoke(pct);
+                }
+            }
+        }
+        progress?.Invoke(100);
+    }
+
+    public static async Task<string?> FetchLatestTagAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, ApiLatest);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(15));
+            using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
+                var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(tag))
+                    return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
+            }
+        }
+        catch (Exception) { /* 回落到列表首个非预发布 */ }
+
+        using var listReq = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
+        using var listCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        listCts.CancelAfter(TimeSpan.FromSeconds(15));
+        using var listResp = await Http.SendAsync(listReq, listCts.Token).ConfigureAwait(false);
+        listResp.EnsureSuccessStatusCode();
+        await using var listStream = await listResp.Content.ReadAsStreamAsync(listCts.Token).ConfigureAwait(false);
+        using var listDoc = await JsonDocument.ParseAsync(listStream, cancellationToken: listCts.Token).ConfigureAwait(false);
+        foreach (var rel in listDoc.RootElement.EnumerateArray())
+        {
+            if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
+                continue;
+            var tag = rel.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
+            if (string.IsNullOrWhiteSpace(tag)) continue;
+            return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
+        }
+        return null;
+    }
+
+    public async Task<VelopackAssetFeed> FetchFeedAsync(string? channel, CancellationToken ct = default)
+    {
+        await RefreshIndexAsync(ct).ConfigureAwait(false);
+        var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
+        var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
+            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
+        var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
+        return VelopackAssetFeed.FromJson(json);
+    }
+
+    async Task RefreshIndexAsync(CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(20));
+        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
+
+        var next = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var rel in doc.RootElement.EnumerateArray())
+        {
+            if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
+                continue;
+            if (!rel.TryGetProperty("id", out var idEl)) continue;
+            var id = idEl.ValueKind == JsonValueKind.Number ? idEl.GetInt64().ToString() : idEl.GetString();
+            if (string.IsNullOrWhiteSpace(id)) continue;
+
+            // Gitee：用户上传文件在 attach_files；assets 常只有源码 zip/tar。优先 attach_files。
+            try
+            {
+                await IndexAttachFilesAsync(id, next, cts.Token).ConfigureAwait(false);
+            }
+            catch (Exception) { /* 单个 release 附件失败不阻断其它 */ }
+
+            if (rel.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var a in assets.EnumerateArray())
+                    TryAddAsset(a, next, preferOverwrite: false);
+            }
+        }
+
+        lock (_gate)
+        {
+            _files.Clear();
+            foreach (var kv in next) _files[kv.Key] = kv.Value;
+        }
+    }
+
+    static async Task IndexAttachFilesAsync(string releaseId, Dictionary<string, string> into, CancellationToken ct)
+    {
+        var url = string.Format(ApiAttachFilesFmt, releaseId);
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        using var resp = await Http.SendAsync(req, ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode) return;
+        await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+        if (doc.RootElement.ValueKind != JsonValueKind.Array) return;
+        foreach (var a in doc.RootElement.EnumerateArray())
+            TryAddAsset(a, into, preferOverwrite: true);
+    }
+
+    static void TryAddAsset(JsonElement a, Dictionary<string, string> into, bool preferOverwrite)
+    {
+        var name = a.TryGetProperty("name", out var n) ? n.GetString() : null;
+        // 优先 browser_download_url；没有再退 url（源码包等）
+        string? url = null;
+        if (a.TryGetProperty("browser_download_url", out var b) && b.ValueKind == JsonValueKind.String)
+            url = b.GetString();
+        if (string.IsNullOrWhiteSpace(url) && a.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String)
+            url = u.GetString();
+        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) return;
+        if (preferOverwrite)
+            into[name] = url;
+        else
+            into.TryAdd(name, url);
+    }
+
+    string? FindUrl(string name)
+    {
+        lock (_gate) return _files.TryGetValue(name, out var url) ? url : null;
+    }
+
+    static async Task<string> DownloadStringAsync(string downloadUrl, TimeSpan timeout, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
+        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(timeout);
+        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        return await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+    }
+
+    static HttpClient CreateClient()
+    {
+        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
+        {
+            Timeout = TimeSpan.FromMinutes(10),
+        };
+        http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "AgentHub");
+        return http;
+    }
+}
+
 /// <summary>设置页的检查 / 下载更新。</summary>
 public static class AppUpdate
 {
@@ -228,7 +439,7 @@ public static class AppUpdate
         }
     }
 
-    public static UpdateManager CreateManager() => new(new GithubApiUpdateSource());
+    public static UpdateManager CreateManager() => new(new GiteeApiUpdateSource());
 
     public static AppUpdateStatus Snapshot()
     {
@@ -323,6 +534,21 @@ public static class AppUpdate
     {
         if (TryReadCache(out var cached, stale: false))
             return (cached, null);
+
+        try
+        {
+            var latest = await AwaitTimeout(GiteeApiUpdateSource.FetchLatestTagAsync(), CheckTimeout)
+                .ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(latest))
+            {
+                RememberLatest(latest);
+                return (latest, null);
+            }
+        }
+        catch (Exception)
+        {
+            /* Gitee 失败时弱回落到 GitHub */
+        }
 
         try
         {
@@ -469,7 +695,7 @@ public static class AppUpdate
         if (string.IsNullOrWhiteSpace(msg)) return "更新失败。";
         if (msg.Contains("403", StringComparison.Ordinal) &&
             msg.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
-            return "GitHub 请求较频繁，请稍后再检查更新。";
+            return "更新源请求较频繁，请稍后再检查更新。";
         return msg.Contains("更新失败", StringComparison.Ordinal) ? msg : "更新失败：" + msg;
     }
 

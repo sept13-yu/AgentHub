@@ -179,6 +179,7 @@ public sealed class DocService
         "trae" or "traework" => "trae",
         "workbuddy" => "workbuddy",
         "zcode" => "zcode",
+        "mimocode" or "mimo" => "mimocode",
         _ => null,
     };
 
