@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, type Ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
-import { NButton, NIcon, NInput, NInputNumber, NSwitch, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NInputNumber, NModal, NProgress, NSwitch, useMessage } from 'naive-ui'
 import { FileCog, Lock } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import { get, post, put, WRITABLE } from '../api'
@@ -89,6 +89,10 @@ const updateBusy = ref(false)
 const updateCanApply = ref(false)
 const applyShow = ref(false)
 const downloadShow = ref(false)
+const progressShow = ref(false)
+const progressPercent = ref(0)
+const progressText = ref('')
+let progressTimer: number | null = null
 const priceSync = ref<PriceSyncInfo | null>(null)
 const LATEST_RELEASE_URL = 'https://github.com/sept13-yu/AgentHub/releases/latest'
 
@@ -305,8 +309,27 @@ function applyUpdateStatus(r: AppUpdateStatus) {
   updateLatest.value = r.latest || ''
   updateCanApply.value = !!r.canApply
   const text = r.error || r.message || ''
-  updateHint.value = text
+  updateHint.value = r.error ? text : (appVersion.value ? `当前 ${appVersion.value}` : text)
   return text
+}
+
+function clearProgressTimer() {
+  if (progressTimer != null) {
+    window.clearInterval(progressTimer)
+    progressTimer = null
+  }
+}
+
+async function pollUpdateProgress() {
+  try {
+    const p = await get<{ running?: boolean; percent?: number; phase?: string; message?: string }>(
+      '/api/update/progress',
+    )
+    if (typeof p.percent === 'number') progressPercent.value = p.percent
+    progressText.value = p.message || (p.phase === 'applying' ? '正在应用更新…' : '正在下载更新…')
+  } catch {
+    /* 轮询失败不打断主请求 */
+  }
 }
 
 async function checkUpdate() {
@@ -318,15 +341,22 @@ async function checkUpdate() {
     const text = applyUpdateStatus(r)
     if (r.error) {
       message.error(text || '检查更新失败')
-      await openReleasePage()
       return
     }
-    if (r.needsInstaller && r.latest) downloadShow.value = true
+    if (r.needsInstaller && r.latest) {
+      downloadShow.value = true
+      return
+    }
+    if (r.canApply && r.latest) {
+      message.success(`发现新版本 ${r.latest}`)
+      applyShow.value = true
+      return
+    }
+    if (r.latest) message.success(text || '已是最新版本')
   } catch (e) {
     const text = e instanceof Error ? e.message : '检查更新失败'
     updateHint.value = text
     message.error(text)
-    await openReleasePage()
   } finally {
     updateBusy.value = false
   }
@@ -348,8 +378,15 @@ async function applyUpdate() {
   applyShow.value = false
   updateBusy.value = true
   updateHint.value = '正在下载…'
+  progressShow.value = true
+  progressPercent.value = 0
+  progressText.value = '正在检查更新…'
+  clearProgressTimer()
+  progressTimer = window.setInterval(() => { void pollUpdateProgress() }, 500)
   try {
     const r = await post<AppUpdateStatus>('/api/settings/apply-update')
+    clearProgressTimer()
+    progressShow.value = false
     const text = applyUpdateStatus(r)
     if (r.needsInstaller && r.latest) {
       downloadShow.value = true
@@ -357,13 +394,16 @@ async function applyUpdate() {
     }
     if (r.error) {
       message.error(text || '更新失败')
-      await openReleasePage()
+      return
     }
-    else message.success(text || '正在重启')
+    message.success(text || '正在重启以完成更新')
   } catch {
+    clearProgressTimer()
+    progressShow.value = false
     updateHint.value = '正在重启以完成更新'
     message.success('正在重启以完成更新')
   } finally {
+    clearProgressTimer()
     updateBusy.value = false
   }
 }
@@ -429,6 +469,7 @@ onMounted(async () => {
 onUnmounted(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
   sectionObserver?.disconnect()
+  clearProgressTimer()
 })
 </script>
 
@@ -694,9 +735,40 @@ onUnmounted(() => {
     @update:show="(on: boolean) => { downloadShow = on }"
     @confirm="openReleasePage"
   />
+  <n-modal :show="progressShow" :mask-closable="false" :close-on-esc="false">
+    <div class="update-progress" role="dialog" aria-modal="true" aria-label="更新进度">
+      <p class="update-progress__title">正在更新</p>
+      <p class="update-progress__text">{{ progressText || '正在下载更新…' }}</p>
+      <n-progress
+        type="line"
+        :percentage="progressPercent"
+        indicator-placement="inside"
+        processing
+      />
+    </div>
+  </n-modal>
 </template>
 
 <style scoped>
+.update-progress {
+  width: min(400px, calc(100vw - 48px));
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+}
+.update-progress__title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+}
+.update-progress__text {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-small);
+  color: var(--dim);
+  line-height: 1.5;
+}
 .banner {
   margin: 0 0 var(--sp-4);
   padding: var(--sp-3) var(--sp-4);

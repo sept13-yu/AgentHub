@@ -147,6 +147,8 @@ public static class UsageEndpoints
 
         app.MapGet("/api/update", async () => Results.Json(await AppUpdate.CheckAsync()));
 
+        app.MapGet("/api/update/progress", () => Results.Json(AppUpdate.Progress));
+
         app.MapPost("/api/settings/apply-update", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx))

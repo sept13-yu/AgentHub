@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
@@ -411,6 +411,16 @@ public sealed class GiteeApiUpdateSource : IUpdateSource
     }
 }
 
+/// <summary>立即更新的进度快照，设置页轮询用。</summary>
+public sealed record UpdateProgressSnapshot
+{
+    public bool running { get; init; }
+    public int percent { get; init; }
+    /// <summary>checking | downloading | applying | done | error</summary>
+    public string phase { get; init; } = "";
+    public string? message { get; init; }
+}
+
 /// <summary>设置页的检查 / 下载更新。</summary>
 public static class AppUpdate
 {
@@ -418,11 +428,30 @@ public static class AppUpdate
     static readonly TimeSpan LatestTtl = TimeSpan.FromMinutes(30);
     static readonly string LatestCachePath = Path.Combine(AgentHubConfig.Dir, "update.latest.json");
     static readonly object CacheGate = new();
+    static readonly object ProgressGate = new();
     static string? _cachedLatest;
     static DateTimeOffset _cachedAt;
     static int _busy;
+    static UpdateProgressSnapshot _progress = new();
 
     public static bool Busy => Volatile.Read(ref _busy) != 0;
+
+    public static UpdateProgressSnapshot Progress
+    {
+        get { lock (ProgressGate) return _progress; }
+    }
+
+    static void SetProgress(bool running, int percent, string phase, string? message = null)
+    {
+        lock (ProgressGate)
+            _progress = new UpdateProgressSnapshot
+            {
+                running = running,
+                percent = Math.Clamp(percent, 0, 100),
+                phase = phase,
+                message = message,
+            };
+    }
 
     public static string CurrentVersion
     {
@@ -485,6 +514,7 @@ public static class AppUpdate
     public static async Task<AppUpdateStatus> ApplyAsync(Action<int>? progress = null, CancellationToken ct = default)
     {
         if (!TryBegin()) return AlreadyBusy();
+        SetProgress(true, 0, "checking", "正在检查更新…");
         try
         {
             var mgr = CreateManager();
@@ -492,17 +522,32 @@ public static class AppUpdate
             {
                 var (found, probeError) = await ProbeLatestAsync().ConfigureAwait(false);
                 if (found is null)
-                    return Fail(probeError ?? "没有查到可用版本。", installed: false, CurrentVersion);
+                {
+                    var err = probeError ?? "没有查到可用版本。";
+                    SetProgress(false, 0, "error", err);
+                    return Fail(err, installed: false, CurrentVersion);
+                }
+                SetProgress(false, 0, "done", "当前不是安装版，请手动下载。");
                 return Compose(installed: false, CurrentVersion, found);
             }
 
             var info = await AwaitTimeout(mgr.CheckForUpdatesAsync(), CheckTimeout).ConfigureAwait(false);
             if (info is null)
+            {
+                SetProgress(false, 0, "done", "已是最新版本。");
                 return new AppUpdateStatus { installed = true, current = CurrentVersion, message = "已是最新版本。" };
+            }
 
             var latest = info.TargetFullRelease.Version.ToString();
+            SetProgress(true, 0, "downloading", "正在下载更新…");
 
-            await mgr.DownloadUpdatesAsync(info, progress, ct).ConfigureAwait(false);
+            await mgr.DownloadUpdatesAsync(info, p =>
+            {
+                progress?.Invoke(p);
+                SetProgress(true, p, "downloading", $"正在下载更新… {p}%");
+            }, ct).ConfigureAwait(false);
+
+            SetProgress(true, 100, "applying", "正在应用更新…");
             mgr.ApplyUpdatesAndRestart(info);
             return new AppUpdateStatus
             {
@@ -514,7 +559,9 @@ public static class AppUpdate
         }
         catch (Exception ex)
         {
-            return Fail(Humanize(ex), installed: true, CurrentVersion);
+            var err = Humanize(ex);
+            SetProgress(false, 0, "error", err);
+            return Fail(err, installed: true, CurrentVersion);
         }
         finally
         {
@@ -625,6 +672,17 @@ public static class AppUpdate
         var newer = IsNewer(latest, current);
         var page = GithubApiUpdateSource.RepoUrl + "/releases/tag/v" + latest;
         if (!installed)
+        {
+            // 便携/调试运行：只有真有更新才提示去下载安装包
+            if (!newer)
+                return new AppUpdateStatus
+                {
+                    installed = false,
+                    current = current,
+                    latest = latest,
+                    releaseUrl = page,
+                    message = "已是最新版本。",
+                };
             return new AppUpdateStatus
             {
                 installed = false,
@@ -634,6 +692,7 @@ public static class AppUpdate
                 releaseUrl = page,
                 message = "有最新版本 " + latest,
             };
+        }
 
         if (!newer)
             return new AppUpdateStatus
