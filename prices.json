@@ -1,6 +1,6 @@
 {
   "updatedAt": "2026-09-11",
-  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced route names (auto/unknown/agent_review/codex-auto-review/stealth/ox-alpha) stay costPartial. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
+  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced: auto/unknown/agent_review; mimo-x-*-preview (closed beta, no public list price). codex-auto-review aliases to gpt-5.6-luna (OpenAI auto-review backend since ~2026-07); stealth/ox-alpha aliases to GLM-5.3-Flash. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
   "prices": [
     {
       "model": "cursor-grok-4.6-xhigh-fast",
@@ -249,22 +249,6 @@
       "currency": "USD",
       "cacheReadPer1m": 1.0,
       "cacheWritePer1m": 12.5
-    },
-    {
-      "model": "mimo-x-pro-preview",
-      "inputPer1m": 0.435,
-      "outputPer1m": 0.87,
-      "currency": "USD",
-      "cacheReadPer1m": 0.0036,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "mimo-x-flash-preview",
-      "inputPer1m": 0.1,
-      "outputPer1m": 0.3,
-      "currency": "USD",
-      "cacheReadPer1m": 0.01,
-      "cacheWritePer1m": 0.0
     }
   ]
 }

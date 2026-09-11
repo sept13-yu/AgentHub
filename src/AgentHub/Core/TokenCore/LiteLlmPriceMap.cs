@@ -46,8 +46,6 @@ public static class LiteLlmPriceMap
             ["claude-opus-4-8"] = "claude-opus-4-8",
             ["claude-opus-4-6"] = "claude-opus-4-6",
             ["claude-fable-5"] = "claude-fable-5",
-            ["mimo-x-pro-preview"] = "openrouter/xiaomi/mimo-v2.5-pro",
-            ["mimo-x-flash-preview"] = "openrouter/xiaomi/mimo-v2-flash",
         };
 
     public static bool TryMap(string? model, out string liteLlmKey)

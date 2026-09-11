@@ -10,7 +10,8 @@ public static class PriceAliases
     /// <summary>
     /// 别名 → 正式模型。大小写不敏感。
     /// glm-5.2 / glm-5.2-* 暂与 GLM-5.3 共用国内牌价。
-    /// auto / unknown / agent_review / stealth/ox-alpha / codex-auto-review 无稳定牌价，不映射。
+    /// auto / unknown / agent_review 无稳定牌价，不映射；mimo-x-*-preview 内测无公开价。
+    /// stealth/ox-alpha → GLM-5.3-Flash；codex-auto-review → gpt-5.6-luna（OpenAI 自动审后端）。
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string> Map =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -40,6 +41,8 @@ public static class PriceAliases
             ["claude-4.6-opus-high-thinking"] = "claude-opus-4-6",
             ["claude-fable-5-thinking-high"] = "claude-fable-5",
             ["claude-4.5-sonnet"] = "claude-sonnet-4-5",
+            ["stealth/ox-alpha"] = "GLM-5.3-Flash",
+            ["codex-auto-review"] = "gpt-5.6-luna",
         };
 
     /// <summary>当 model 是别名时返回 true；精确命中应先查价表，不要先走这里。</summary>
