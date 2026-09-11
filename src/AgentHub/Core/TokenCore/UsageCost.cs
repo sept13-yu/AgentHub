@@ -2,14 +2,15 @@ using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.TokenCore;
 
-/// <summary>按输入 / 输出单价估算金额。输入按总量（含缓存命中与写入）。
-/// 价格行保存厂商原币种原价（海外 USD、国内 CNY），表内不写死折算价。
-/// 算钱时按 defaultCurrency（设置 costCurrency）折成展示币种。
-/// fxUsdToCny 由调用方先解析（实时汇率，失败用兜底），表内不写死折算价。</summary>
+/// <summary>Estimate spend from vendor list prices (input, output, cache-read, cache-write).
+/// Price table keeps vendor currency (USD overseas / CNY domestic); no hard-coded FX in the table.
+/// At estimate time convert to defaultCurrency (costCurrency setting) with fxUsdToCny from caller.
+/// Aligns with LiteLLM/TokenTracker: netInput*input + cacheRead*cacheRead + cacheWrite*cacheWrite + output*output;
+/// missing cache unit price falls back to input price.</summary>
 public static class UsageCost
 {
     public static (double? Cost, bool? Partial, string? Currency) Estimate(
-        IEnumerable<(string Model, long Input, long Output)> rows,
+        IEnumerable<(string Model, long Input, long Output, long Cached, long CacheWrite)> rows,
         IEnumerable<PriceRow> prices,
         bool enabled,
         string? defaultCurrency,
@@ -28,7 +29,7 @@ public static class UsageCost
         foreach (var row in rows)
         {
             var name = row.Model.Trim();
-            // 精确命中优先；未命中再走 PriceAliases；仍没有 → costPartial。
+            // Exact hit first; then PriceAliases; still missing -> costPartial.
             if (!table.TryGetValue(name, out var p)
                 && !(PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out p)))
             {
@@ -36,41 +37,50 @@ public static class UsageCost
                 continue;
             }
             any = true;
-            var (unitIn, unitOut) = ConvertUnits(p.Input, p.Output, p.IsCny, targetCny, rate);
-            sum += row.Input / 1_000_000d * unitIn + row.Output / 1_000_000d * unitOut;
+            var (unitIn, unitOut, unitCr, unitCw) = ConvertUnits(p, targetCny, rate);
+            sum += row.Input / 1_000_000d * unitIn
+                 + row.Cached / 1_000_000d * unitCr
+                 + row.CacheWrite / 1_000_000d * unitCw
+                 + row.Output / 1_000_000d * unitOut;
         }
         if (!any) return missed ? (null, true, target) : (null, null, null);
         return (sum, missed, target);
     }
 
-    private static (double Input, double Output) ConvertUnits(
-        double input, double output, bool rowCny, bool targetCny, double rate)
+    private static (double Input, double Output, double CacheRead, double CacheWrite) ConvertUnits(
+        (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny) p,
+        bool targetCny,
+        double rate)
     {
-        if (rowCny == targetCny) return (input, output);
-        return rowCny
-            ? (input / rate, output / rate)
-            : (input * rate, output * rate);
+        var cr = p.CacheRead ?? p.Input;
+        var cw = p.CacheWrite ?? p.Input;
+        if (p.IsCny == targetCny) return (p.Input, p.Output, cr, cw);
+        return p.IsCny
+            ? (p.Input / rate, p.Output / rate, cr / rate, cw / rate)
+            : (p.Input * rate, p.Output * rate, cr * rate, cw * rate);
     }
 
     private static double NormalizeRate(double rate) => rate > 0 ? rate : 1;
 
-    private static Dictionary<string, (double Input, double Output, bool IsCny)> BuildTable(
+    private static Dictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> BuildTable(
         IEnumerable<PriceRow> prices, string? defaultCurrency)
     {
         var defCny = !string.Equals(defaultCurrency, "USD", StringComparison.OrdinalIgnoreCase);
-        var table = new Dictionary<string, (double, double, bool)>(StringComparer.OrdinalIgnoreCase);
+        var table = new Dictionary<string, (double, double, double?, double?, bool)>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in prices)
         {
             var name = (row.Model ?? "").Trim();
             if (name.Length == 0 || row.InputPer1m is not { } inn || row.OutputPer1m is not { } outt)
                 continue;
             if (!double.IsFinite(inn) || !double.IsFinite(outt)) continue;
+            double? cr = row.CacheReadPer1m is { } crr && double.IsFinite(crr) ? crr : null;
+            double? cw = row.CacheWritePer1m is { } cww && double.IsFinite(cww) ? cww : null;
             var isCny = string.Equals(row.Currency, "CNY", StringComparison.OrdinalIgnoreCase)
                 ? true
                 : string.Equals(row.Currency, "USD", StringComparison.OrdinalIgnoreCase)
                     ? false
                     : defCny;
-            table[name] = (inn, outt, isCny);
+            table[name] = (inn, outt, cr, cw, isCny);
         }
         return table;
     }

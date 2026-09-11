@@ -241,7 +241,7 @@ public sealed class TokenService
             if (fx <= 0) fx = _config.Dashboard.FxFallbackRate > 0 ? _config.Dashboard.FxFallbackRate : 7;
         }
         var (cost, partial, currency) = UsageCost.Estimate(
-            rows.Select(r => (r.Model, r.Input + r.Cached + r.CacheWrite, r.Output)),
+            rows.Select(r => (r.Model, r.Input, r.Output, r.Cached, r.CacheWrite)),
             PriceSyncService.Resolve(_config.Dashboard.PriceOverrides),
             _config.Dashboard.CostEstimate,
             _config.Dashboard.CostCurrency,

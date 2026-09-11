@@ -42,6 +42,9 @@ public sealed class PriceRow
     public string Model { get; set; } = "";
     public double? InputPer1m { get; set; }
     public double? OutputPer1m { get; set; }
+    // Cache hit / write per 1M; null => fall back to InputPer1m (LiteLLM/TokenTracker)
+    public double? CacheReadPer1m { get; set; }
+    public double? CacheWritePer1m { get; set; }
     /// <summary>CNY | USD。保存厂商原币种原价（海外 USD、国内 CNY）；空/非法按 Dashboard.CostCurrency。
     /// 表内不写死折算价；算钱时按设置币种用实时汇率折（汇率拿不到用 FxFallbackRate）。</summary>
     public string Currency { get; set; } = "";

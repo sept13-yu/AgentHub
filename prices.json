@@ -1,32 +1,164 @@
-﻿{
-  "updatedAt": "2026-09-08",
-  "note": "官方牌价（每 1M token）：海外 USD、国内 CNY，表内不写死折算价；输入按总量计价；模型名大小写不敏感。国内 DeepSeek 取高峰时段。算钱时按设置币种用实时汇率折算。变体名经 PriceAliases 映射到表内 canonical；deepseek-v4-flash-vision-exp 与 flash 同价（CNY 3/9）。",
+{
+  "updatedAt": "2026-09-11",
+  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output required; cacheReadPer1m/cacheWritePer1m optional (estimate falls back to input; LiteLLM/TokenTracker-aligned); model names case-insensitive. Domestic DeepSeek peak-hour. FX at estimate time. Variants via PriceAliases.",
   "prices": [
-    { "model": "cursor-grok-4.6-xhigh-fast", "inputPer1m": 4.0, "outputPer1m": 12.0, "currency": "USD" },
-    { "model": "cursor-grok-4.6-high-fast", "inputPer1m": 4.0, "outputPer1m": 12.0, "currency": "USD" },
-    { "model": "cursor-grok-4.6-xhigh", "inputPer1m": 2.0, "outputPer1m": 6.0, "currency": "USD" },
-    { "model": "grok-bot-default", "inputPer1m": 2.0, "outputPer1m": 6.0, "currency": "USD" },
-    { "model": "cursor-grok-4.6-high", "inputPer1m": 2.0, "outputPer1m": 6.0, "currency": "USD" },
-    { "model": "claude-opus-5-thinking-high", "inputPer1m": 5.0, "outputPer1m": 25.0, "currency": "USD" },
-    { "model": "gemini-3.7-flash-high", "inputPer1m": 0.75, "outputPer1m": 3.5, "currency": "USD" },
-    { "model": "composer-2.5", "inputPer1m": 0.5, "outputPer1m": 2.5, "currency": "USD" },
-    { "model": "composer-2.5-fast", "inputPer1m": 3.0, "outputPer1m": 15.0, "currency": "USD" },
-    { "model": "gpt-5.6-sol", "inputPer1m": 4.0, "outputPer1m": 20.0, "currency": "USD" },
-    { "model": "gpt-5.6-sol-fast", "inputPer1m": 8.0, "outputPer1m": 40.0, "currency": "USD" },
-    { "model": "gpt-5.6-terra", "inputPer1m": 2.0, "outputPer1m": 12.0, "currency": "USD" },
-    { "model": "gpt-5.6-terra-fast", "inputPer1m": 4.0, "outputPer1m": 24.0, "currency": "USD" },
-    { "model": "gpt-5.6-luna", "inputPer1m": 0.2, "outputPer1m": 1.2, "currency": "USD" },
-    { "model": "gpt-5.6-luna-fast", "inputPer1m": 0.4, "outputPer1m": 2.4, "currency": "USD" },
-    { "model": "GLM-5.3", "inputPer1m": 8.0, "outputPer1m": 28.0, "currency": "CNY" },
-    { "model": "GLM-5.3-Flash", "inputPer1m": 0.8, "outputPer1m": 2.8, "currency": "CNY" },
-    { "model": "deepseek-v4.1-flash-expires-on-0910", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
-    { "model": "deepseek-v4-flash", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
-    { "model": "deepseek-v4-flash-vision-exp", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
-    { "model": "deepseek-v4-pro", "inputPer1m": 9.0, "outputPer1m": 27.0, "currency": "CNY" },
-    { "model": "DeepSeek-V4-Flash 正式版", "inputPer1m": 3.0, "outputPer1m": 9.0, "currency": "CNY" },
-    { "model": "DeepSeek-V4-Pro 正式版", "inputPer1m": 9.0, "outputPer1m": 27.0, "currency": "CNY" },
-    { "model": "kimi-k3", "inputPer1m": 20.0, "outputPer1m": 100.0, "currency": "CNY" },
-    { "model": "Qwen3.8-Max", "inputPer1m": 12.0, "outputPer1m": 36.0, "currency": "CNY" },
-    { "model": "hy4-preview", "inputPer1m": 6.0, "outputPer1m": 18.0, "currency": "CNY" }
+    {
+      "model": "cursor-grok-4.6-xhigh-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD"
+    },
+    {
+      "model": "cursor-grok-4.6-high-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD"
+    },
+    {
+      "model": "cursor-grok-4.6-xhigh",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD"
+    },
+    {
+      "model": "grok-bot-default",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD"
+    },
+    {
+      "model": "cursor-grok-4.6-high",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD"
+    },
+    {
+      "model": "claude-opus-5-thinking-high",
+      "inputPer1m": 5.0,
+      "outputPer1m": 25.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5,
+      "cacheWritePer1m": 6.25
+    },
+    {
+      "model": "gemini-3.7-flash-high",
+      "inputPer1m": 0.75,
+      "outputPer1m": 3.5,
+      "currency": "USD"
+    },
+    {
+      "model": "composer-2.5",
+      "inputPer1m": 0.5,
+      "outputPer1m": 2.5,
+      "currency": "USD"
+    },
+    {
+      "model": "composer-2.5-fast",
+      "inputPer1m": 3.0,
+      "outputPer1m": 15.0,
+      "currency": "USD"
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "inputPer1m": 4.0,
+      "outputPer1m": 20.0,
+      "currency": "USD"
+    },
+    {
+      "model": "gpt-5.6-sol-fast",
+      "inputPer1m": 8.0,
+      "outputPer1m": 40.0,
+      "currency": "USD"
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "inputPer1m": 2.0,
+      "outputPer1m": 12.0,
+      "currency": "USD"
+    },
+    {
+      "model": "gpt-5.6-terra-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 24.0,
+      "currency": "USD"
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "inputPer1m": 0.2,
+      "outputPer1m": 1.2,
+      "currency": "USD"
+    },
+    {
+      "model": "gpt-5.6-luna-fast",
+      "inputPer1m": 0.4,
+      "outputPer1m": 2.4,
+      "currency": "USD"
+    },
+    {
+      "model": "GLM-5.3",
+      "inputPer1m": 8.0,
+      "outputPer1m": 28.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "GLM-5.3-Flash",
+      "inputPer1m": 0.8,
+      "outputPer1m": 2.8,
+      "currency": "CNY"
+    },
+    {
+      "model": "deepseek-v4.1-flash-expires-on-0910",
+      "inputPer1m": 3.0,
+      "outputPer1m": 9.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "deepseek-v4-flash",
+      "inputPer1m": 3.0,
+      "outputPer1m": 9.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "deepseek-v4-flash-vision-exp",
+      "inputPer1m": 3.0,
+      "outputPer1m": 9.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "inputPer1m": 9.0,
+      "outputPer1m": 27.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "DeepSeek-V4-Flash 正式版",
+      "inputPer1m": 3.0,
+      "outputPer1m": 9.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "DeepSeek-V4-Pro 正式版",
+      "inputPer1m": 9.0,
+      "outputPer1m": 27.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "kimi-k3",
+      "inputPer1m": 20.0,
+      "outputPer1m": 100.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "Qwen3.8-Max",
+      "inputPer1m": 12.0,
+      "outputPer1m": 36.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "hy4-preview",
+      "inputPer1m": 6.0,
+      "outputPer1m": 18.0,
+      "currency": "CNY"
+    }
   ]
 }
