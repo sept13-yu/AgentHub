@@ -91,3 +91,18 @@ jobs:
         with:
           files: dist/github-assets/*
           generate_release_notes: true
+
+      # 应用内更新走 Gitee attach_files，须与 GitHub 同 tag。
+      # 仓库 Settings → Secrets and variables → Actions 必须配置 GITEE_TOKEN
+      # （Gitee 私人令牌，勾选 projects 权限）。缺 token 本步会失败，避免只发到 GitHub。
+      # 同步：releases.win.json / assets.win.json / RELEASES / AgentHub-$ver-{full,delta}.nupkg
+      # Setup exe 仍只放 GitHub，不上传 Gitee。
+      - name: 同步 Velopack 到 Gitee Release
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        shell: pwsh
+        run: |
+          pack/windows/sync-gitee-release.ps1 `
+            -Tag "${env:GITHUB_REF_NAME}" `
+            -AssetsDir dist/github-assets `
+            -TargetCommitish "${env:GITHUB_SHA}"

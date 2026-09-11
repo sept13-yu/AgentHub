@@ -61,7 +61,7 @@ npm run build
 
 ### 发版
 
-见 `pack/windows/pack.ps1` 与 tag `v*`。版本号需与 `AgentHub.csproj` 的 Version、`latest.json` 一致。
+见 `pack/windows/pack.ps1` 与 tag `v*`。版本号需与 `AgentHub.csproj` 的 Version、`latest.json` 一致。发版 workflow 会把 Velopack 产物同步到 Gitee Release（应用内更新源）；仓库 Settings → Secrets 需配置 `GITEE_TOKEN`（Gitee 私人令牌，projects 权限）。手动 Setup 安装包只发 GitHub。
 
 ## 安全口径
 
