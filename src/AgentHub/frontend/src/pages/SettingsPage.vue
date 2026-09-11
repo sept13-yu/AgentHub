@@ -188,16 +188,19 @@ function applyLoaded(s: SettingsPayload) {
 
 function priceSyncHint(): string {
   const s = priceSync.value
-  if (!s) return '启动后会拉 GitHub 仓库根的价格表；失败则用内置表'
-  if (s.source === 'remote')
-    return s.lastFetchAt ? `已从 GitHub 拉取 · ${s.lastFetchAt}` : '已从 GitHub 拉取'
-  if (s.source === 'cache')
+  if (!s) return '启动时自动拉仓库 prices.json（GitHub→Gitee）；失败则用本地副本/内置表。看板手动刷新用量时也会再拉；无定时轮询'
+  const src = (s.source || '').toLowerCase()
+  if (src === 'github' || src === 'gitee' || src === 'remote') {
+    const where = src === 'gitee' ? 'Gitee' : 'GitHub'
+    return s.lastFetchAt ? `已从 ${where} 拉取 · ${s.lastFetchAt}` : `已从 ${where} 拉取`
+  }
+  if (src === 'cache')
     return s.lastFetchAt
       ? `用上次拉到的本地副本 · 上次拉取 ${s.lastFetchAt}`
       : '用上次拉到的本地副本'
   if (s.lastFetchOk === false)
     return s.lastFetchError ? `用内置表 · 拉取失败：${s.lastFetchError}` : '用内置表 · 拉取失败'
-  return '用内置表 · 尚未拉到 GitHub'
+  return '用内置表 · 尚未拉到远程（启动后会自动拉）'
 }
 
 async function load() {
@@ -626,7 +629,7 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <label class="lbl" for="s-cost">成本估算</label>
-            <span class="hint">输入按总量（含缓存）× 输入单价，输出 × 输出单价。{{ priceSyncHint() }}</span>
+            <span class="hint">净输入×输入 + cache读×cache读 + cache写×cache写 + 输出×输出（缺 cache 价回退输入价）。{{ priceSyncHint() }}</span>
           </div>
           <div class="ctrl"><n-switch id="s-cost" :disabled="readonly" v-model:value="f.costEstimate" /></div>
         </div>
