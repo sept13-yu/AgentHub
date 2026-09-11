@@ -39,6 +39,15 @@ public static class LiteLlmPriceMap
             ["kimi-k3"] = "azure_ai/kimi-k2.6",
 
             ["Qwen3.8-Max"] = "dashscope/qwen3.8-max",
+            ["gpt-5.4"] = "gpt-5.4",
+            ["gpt-5.5"] = "gpt-5.5",
+            ["claude-sonnet-4-6"] = "claude-sonnet-4-6",
+            ["claude-sonnet-4-5"] = "claude-sonnet-4-5",
+            ["claude-opus-4-8"] = "claude-opus-4-8",
+            ["claude-opus-4-6"] = "claude-opus-4-6",
+            ["claude-fable-5"] = "claude-fable-5",
+            ["mimo-x-pro-preview"] = "openrouter/xiaomi/mimo-v2.5-pro",
+            ["mimo-x-flash-preview"] = "openrouter/xiaomi/mimo-v2-flash",
         };
 
     public static bool TryMap(string? model, out string liteLlmKey)

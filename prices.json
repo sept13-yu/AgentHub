@@ -1,6 +1,6 @@
 {
   "updatedAt": "2026-09-11",
-  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; unmapped models keep seed or fall back to input. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
+  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced route names (auto/unknown/agent_review/codex-auto-review/stealth/ox-alpha) stay costPartial. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
   "prices": [
     {
       "model": "cursor-grok-4.6-xhigh-fast",
@@ -195,6 +195,76 @@
       "inputPer1m": 6.0,
       "outputPer1m": 18.0,
       "currency": "CNY"
+    },
+    {
+      "model": "gpt-5.4",
+      "inputPer1m": 2.5,
+      "outputPer1m": 15.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.25
+    },
+    {
+      "model": "gpt-5.5",
+      "inputPer1m": 5.0,
+      "outputPer1m": 30.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "inputPer1m": 3.0,
+      "outputPer1m": 15.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.3,
+      "cacheWritePer1m": 3.75
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "inputPer1m": 3.0,
+      "outputPer1m": 15.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.3,
+      "cacheWritePer1m": 3.75
+    },
+    {
+      "model": "claude-opus-4-8",
+      "inputPer1m": 5.0,
+      "outputPer1m": 25.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5,
+      "cacheWritePer1m": 6.25
+    },
+    {
+      "model": "claude-opus-4-6",
+      "inputPer1m": 5.0,
+      "outputPer1m": 25.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5,
+      "cacheWritePer1m": 6.25
+    },
+    {
+      "model": "claude-fable-5",
+      "inputPer1m": 10.0,
+      "outputPer1m": 50.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0,
+      "cacheWritePer1m": 12.5
+    },
+    {
+      "model": "mimo-x-pro-preview",
+      "inputPer1m": 0.435,
+      "outputPer1m": 0.87,
+      "currency": "USD",
+      "cacheReadPer1m": 0.0036,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "mimo-x-flash-preview",
+      "inputPer1m": 0.1,
+      "outputPer1m": 0.3,
+      "currency": "USD",
+      "cacheReadPer1m": 0.01,
+      "cacheWritePer1m": 0.0
     }
   ]
 }

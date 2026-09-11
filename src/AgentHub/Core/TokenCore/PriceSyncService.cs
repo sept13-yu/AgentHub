@@ -53,6 +53,15 @@ public static class PriceSyncService
         new() { Model = "kimi-k3", InputPer1m = 20.0, OutputPer1m = 100.0, CacheReadPer1m = 3.36842, Currency = "CNY" },
         new() { Model = "Qwen3.8-Max", InputPer1m = 12.0, OutputPer1m = 36.0, CacheReadPer1m = 1.5, Currency = "CNY" },
         new() { Model = "hy4-preview", InputPer1m = 6.0, OutputPer1m = 18.0, Currency = "CNY" },
+        new() { Model = "mimo-x-flash-preview", InputPer1m = 0.1, OutputPer1m = 0.3, CacheReadPer1m = 0.01, CacheWritePer1m = 0.0, Currency = "USD" },
+        new() { Model = "mimo-x-pro-preview", InputPer1m = 0.435, OutputPer1m = 0.87, CacheReadPer1m = 0.0036, CacheWritePer1m = 0.0, Currency = "USD" },
+        new() { Model = "claude-fable-5", InputPer1m = 10.0, OutputPer1m = 50.0, CacheReadPer1m = 1.0, CacheWritePer1m = 12.5, Currency = "USD" },
+        new() { Model = "claude-opus-4-6", InputPer1m = 5.0, OutputPer1m = 25.0, CacheReadPer1m = 0.5, CacheWritePer1m = 6.25, Currency = "USD" },
+        new() { Model = "claude-opus-4-8", InputPer1m = 5.0, OutputPer1m = 25.0, CacheReadPer1m = 0.5, CacheWritePer1m = 6.25, Currency = "USD" },
+        new() { Model = "claude-sonnet-4-5", InputPer1m = 3.0, OutputPer1m = 15.0, CacheReadPer1m = 0.3, CacheWritePer1m = 3.75, Currency = "USD" },
+        new() { Model = "claude-sonnet-4-6", InputPer1m = 3.0, OutputPer1m = 15.0, CacheReadPer1m = 0.3, CacheWritePer1m = 3.75, Currency = "USD" },
+        new() { Model = "gpt-5.5", InputPer1m = 5.0, OutputPer1m = 30.0, CacheReadPer1m = 0.5, Currency = "USD" },
+        new() { Model = "gpt-5.4", InputPer1m = 2.5, OutputPer1m = 15.0, CacheReadPer1m = 0.25, Currency = "USD" },
     ];
 
     /// <summary>未做 LiteLLM 补价的 AgentHub 列表价。</summary>
