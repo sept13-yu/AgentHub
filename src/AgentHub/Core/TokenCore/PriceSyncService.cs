@@ -6,7 +6,8 @@ using AgentHub.Core.ProxyCore;
 namespace AgentHub.Core.TokenCore;
 
 /// <summary>价格表远程同步：启动与看板手动刷新成功后异步拉一份仓库 prices.json。
-/// 顺序：GitHub → 超时/失败再 Gitee → 再失败保留本地 prices.cache.json / 内置默认表。</summary>
+/// 顺序：GitHub → 超时/失败再 Gitee → 再失败保留本地 prices.cache.json / 内置默认表。
+/// 列表价以 AgentHub 价表为准；另按映射从 LiteLLM 只补 cache（缩放至本表 input）。</summary>
 public static class PriceSyncService
 {
     private static readonly string[] RemoteUrls =
@@ -54,9 +55,12 @@ public static class PriceSyncService
         new() { Model = "hy4-preview", InputPer1m = 6.0, OutputPer1m = 18.0, Currency = "CNY" },
     ];
 
+    /// <summary>未做 LiteLLM 补价的 AgentHub 列表价。</summary>
+    private static IReadOnlyList<PriceRow> _listBaseline = DefaultPrices;
+
     private static IReadOnlyList<PriceRow> _baseline = DefaultPrices;
 
-    /// <summary>远程基线；启动时 TryLoadCache()；拉取成功后替换；PriceOverrides 在其上再覆盖。</summary>
+    /// <summary>对外基线：AgentHub 列表价 + LiteLLM cache 补价。PriceOverrides 在其上再覆盖。</summary>
     public static IReadOnlyList<PriceRow> Baseline
     {
         get { lock (Gate) return _baseline; }
@@ -83,6 +87,7 @@ public static class PriceSyncService
                 lastFetchError = _lastFetchError,
                 hasDiskCache = File.Exists(CachePath),
                 cachePath = CachePath,
+                liteLlm = LiteLlmPriceEnricher.Status(),
             };
         }
     }
@@ -101,16 +106,26 @@ public static class PriceSyncService
     {
         try
         {
-            if (!File.Exists(CachePath)) return;
-            var json = File.ReadAllText(CachePath);
-            if (!TryParse(json, out var rows)) return;
-            Baseline = rows;
-            lock (Gate) _source = "cache";
+            if (File.Exists(CachePath))
+            {
+                var json = File.ReadAllText(CachePath);
+                if (TryParse(json, out var rows))
+                {
+                    lock (Gate)
+                    {
+                        _listBaseline = rows;
+                        _source = "cache";
+                    }
+                }
+            }
         }
         catch (Exception)
         {
             // 缓存损坏：保留 DefaultPrices
         }
+
+        LiteLlmPriceEnricher.TryLoadCache();
+        RebaseEnriched(notify: false);
     }
 
     public static void RefreshInBackground()
@@ -122,7 +137,7 @@ public static class PriceSyncService
         });
     }
 
-    /// <summary>PriceOverrides（按 Model，OrdinalIgnoreCase 覆盖/追加）> Baseline（远程或缓存）> DefaultPrices。
+    /// <summary>PriceOverrides（按 Model，OrdinalIgnoreCase 覆盖/追加）> Baseline（列表价+LiteLLM cache）> DefaultPrices。
     /// 算钱时的别名映射见 <see cref="PriceAliases"/>；UsageCost 先精确命中再走别名，仍没有就标未定价。</summary>
     public static IReadOnlyList<PriceRow> Resolve(IEnumerable<PriceRow>? overrides)
     {
@@ -160,13 +175,9 @@ public static class PriceSyncService
                 }
 
                 WriteCache(json);
-                var previous = Baseline;
-                var changed = !SameTable(previous, rows);
-                if (changed) Baseline = rows;
+                lock (Gate) _listBaseline = rows;
                 MarkFetch(true, null, label);
-                if (!changed) return;
-                try { OnBaselineChanged?.Invoke(); }
-                catch (Exception) { /* 上层回调失败不影响缓存 */ }
+                await AfterListRefreshAsync().ConfigureAwait(false);
                 return;
             }
             catch (OperationCanceledException)
@@ -183,8 +194,32 @@ public static class PriceSyncService
             }
         }
 
-        // 两边都失败：Baseline 仍是启动时的 disk cache / builtin，不覆盖。
+        // 两边都失败：列表价保持启动时的 disk cache / builtin；仍尝试刷新 LiteLLM cache。
         MarkFetch(false, string.Join("; ", errors));
+        await AfterListRefreshAsync().ConfigureAwait(false);
+    }
+
+    private static async Task AfterListRefreshAsync()
+    {
+        try { await LiteLlmPriceEnricher.RefreshAsync().ConfigureAwait(false); }
+        catch (Exception)
+        {
+            // LiteLLM 失败不阻断；沿用旧 LiteLLM 缓存或价表自带 cache
+        }
+        RebaseEnriched(notify: true);
+    }
+
+    private static void RebaseEnriched(bool notify)
+    {
+        IReadOnlyList<PriceRow> list;
+        lock (Gate) list = _listBaseline;
+        var enriched = LiteLlmPriceEnricher.Enrich(list);
+        var previous = Baseline;
+        var changed = !SameTable(previous, enriched);
+        if (changed) Baseline = enriched;
+        if (!notify || !changed) return;
+        try { OnBaselineChanged?.Invoke(); }
+        catch (Exception) { /* 上层回调失败不影响缓存 */ }
     }
 
     private static void MarkFetch(bool ok, string? error, string? source = null)

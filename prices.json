@@ -1,6 +1,6 @@
 {
   "updatedAt": "2026-09-11",
-  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output required; cacheReadPer1m/cacheWritePer1m optional (estimate falls back to input; rates from LiteLLM/TokenTracker map, scaled to our list input); model names case-insensitive. Domestic DeepSeek peak-hour. FX at estimate time. Variants via PriceAliases. Sync: GitHub then Gitee then prices.cache.json/builtin.",
+  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; unmapped models keep seed or fall back to input. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
   "prices": [
     {
       "model": "cursor-grok-4.6-xhigh-fast",
