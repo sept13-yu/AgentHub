@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Security.Cryptography;
@@ -49,6 +50,8 @@ public sealed class SkillManager
     }
 
     public string ActiveRoot => Path.Combine(_userProfile, ".agents", "skills");
+    /// <summary>Workbuddy 全局 skills；启用时自动 junction 到此，与其它 agent 共用同一套开关。</summary>
+    public string WorkbuddySkillsRoot => Path.Combine(_userProfile, ".workbuddy", "skills");
     public string StoreRoot => Path.Combine(_localDataRoot, "SkillStore");
     public string StatePath => Path.Combine(_localDataRoot, "skills-state.json");
     public string StagingRoot => Path.Combine(_localDataRoot, "SkillStaging");
@@ -60,6 +63,7 @@ public sealed class SkillManager
 
     public IReadOnlyList<ManagedSkillItem> List(string? query = null)
     {
+        ReconcileWorkbuddyMirrors();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         AddSkillDirs(ActiveRoot, names);
         AddSkillDirs(StoreRoot, names);
@@ -118,6 +122,7 @@ public sealed class SkillManager
             LastDeployedHash = HashDirectory(active),
         };
         SaveState(state);
+        EnsureWorkbuddyMirror(name);
         return Success(name, "已收进仓库");
     }
 
@@ -133,6 +138,7 @@ public sealed class SkillManager
         var state = LoadState();
         state.Skills[name] = new SkillStateEntry { Enabled = true, LastDeployedHash = hash };
         SaveState(state);
+        EnsureWorkbuddyMirror(name);
         return Success(name, "已启用真实副本");
     });
 
@@ -151,6 +157,7 @@ public sealed class SkillManager
         Directory.Delete(active, recursive: true);
         entry.Enabled = false;
         SaveState(state);
+        TryRemoveWorkbuddyMirror(name);
         return Success(name, "已停用，持久仓仍保留");
     });
 
@@ -247,6 +254,7 @@ public sealed class SkillManager
                 return new(false, "启用目录或持久仓仍是联接，未继续删除");
             if (IsRealSkill(active)) Directory.Delete(active, recursive: true);
             if (IsRealSkill(store)) Directory.Delete(store, recursive: true);
+            TryRemoveWorkbuddyMirror(name);
 
             state.Skills.Remove(name);
             SaveState(state);
@@ -299,6 +307,7 @@ public sealed class SkillManager
         var state = LoadState();
         state.Skills[name] = new SkillStateEntry { Enabled = true, LastDeployedHash = hash };
         SaveState(state);
+        EnsureWorkbuddyMirror(name);
         return Success(name, resolution == ModifiedResolution.KeepLocalAsStore
             ? "已保留本地版本并备份旧仓库"
             : "已恢复仓库版本并备份本地版本");
@@ -539,6 +548,7 @@ public sealed class SkillManager
             LastDeployedHash = HashDirectory(store),
         };
         SaveState(state);
+        EnsureWorkbuddyMirror(name);
         return Success(name, "已启用");
     });
 
@@ -567,6 +577,7 @@ public sealed class SkillManager
             LastUpdatedUtc = DateTime.UtcNow,
         };
         SaveState(state);
+        EnsureWorkbuddyMirror(name);
         return true;
     }
 
@@ -965,4 +976,148 @@ public sealed class SkillManager
         try { if (Directory.Exists(path) && !IsReparsePoint(path)) Directory.Delete(path, true); }
         catch (Exception) { }
     }
+
+    /// <summary>
+    /// 把已启用真实副本同步到 Workbuddy 全局 skills：缺则建 junction，多余托管链接则删。
+    /// 不碰实体目录与 skills-marketplace。
+    /// </summary>
+    private void ReconcileWorkbuddyMirrors()
+    {
+        try
+        {
+            if (Directory.Exists(ActiveRoot))
+            {
+                foreach (var dir in Directory.EnumerateDirectories(ActiveRoot))
+                {
+                    var name = Path.GetFileName(dir);
+                    if (name.Contains(".agenthub-old", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (IsRealSkill(dir)) EnsureWorkbuddyMirror(name);
+                }
+            }
+
+            if (!Directory.Exists(WorkbuddySkillsRoot)) return;
+            foreach (var dir in Directory.EnumerateDirectories(WorkbuddySkillsRoot))
+            {
+                if (!IsReparsePoint(dir)) continue;
+                var name = Path.GetFileName(dir);
+                var active = Path.Combine(ActiveRoot, name);
+                if (IsRealSkill(active)) continue;
+                var target = ResolveLink(dir);
+                var store = Path.Combine(StoreRoot, name);
+                if (target is null) continue;
+                if (SamePath(target, active) || SamePath(target, store))
+                    TryRemoveWorkbuddyMirror(name);
+            }
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[skills] Workbuddy 对账失败：{ex.Message}");
+        }
+    }
+
+    private void EnsureWorkbuddyMirror(string name)
+    {
+        try
+        {
+            GuardName(name);
+            var active = Path.Combine(ActiveRoot, name);
+            if (!IsRealSkill(active))
+            {
+                TryRemoveWorkbuddyMirror(name);
+                return;
+            }
+
+            var link = Path.Combine(WorkbuddySkillsRoot, name);
+            var target = NormalizePath(active);
+            if (PathExists(link))
+            {
+                if (IsReparsePoint(link) && SamePath(ResolveLink(link), target))
+                    return;
+                if (IsReparsePoint(link))
+                {
+                    Directory.Delete(link);
+                }
+                else
+                {
+                    _log?.Invoke($"[skills] Workbuddy 已有实体目录，跳过镜像：{link}");
+                    return;
+                }
+            }
+
+            Directory.CreateDirectory(WorkbuddySkillsRoot);
+            CreateDirectoryJunction(link, target);
+            _log?.Invoke($"[skills] 已镜像到 Workbuddy：{name}");
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[skills] Workbuddy 镜像失败 {name}：{ex.Message}");
+        }
+    }
+
+    private void TryRemoveWorkbuddyMirror(string name)
+    {
+        try
+        {
+            var link = Path.Combine(WorkbuddySkillsRoot, name);
+            if (!PathExists(link)) return;
+            if (!IsReparsePoint(link))
+            {
+                _log?.Invoke($"[skills] Workbuddy 下是实体目录，未删除：{link}");
+                return;
+            }
+
+            var target = ResolveLink(link);
+            var active = Path.Combine(ActiveRoot, name);
+            var store = Path.Combine(StoreRoot, name);
+            if (target is not null
+                && !SamePath(target, active)
+                && !SamePath(target, store))
+            {
+                _log?.Invoke($"[skills] Workbuddy 链接指向外部，未删除：{link} → {target}");
+                return;
+            }
+
+            Directory.Delete(link);
+            _log?.Invoke($"[skills] 已移除 Workbuddy 镜像：{name}");
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[skills] 移除 Workbuddy 镜像失败 {name}：{ex.Message}");
+        }
+    }
+
+    private static void CreateDirectoryJunction(string linkPath, string targetPath)
+    {
+        if (PathExists(linkPath))
+            throw new IOException("联接目标已存在：" + linkPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(linkPath)!);
+
+        if (OperatingSystem.IsWindows())
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/c mklink /J \"" + linkPath + "\" \"" + targetPath + "\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            using var process = Process.Start(psi)
+                ?? throw new InvalidOperationException("无法启动 mklink");
+            var stdout = process.StandardOutput.ReadToEnd();
+            var stderr = process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(15000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch (Exception) { }
+                throw new TimeoutException("mklink 超时");
+            }
+            if (process.ExitCode != 0 || !IsReparsePoint(linkPath))
+                throw new IOException("创建目录联接失败：" + (string.IsNullOrWhiteSpace(stderr) ? stdout : stderr).Trim());
+            return;
+        }
+
+        Directory.CreateSymbolicLink(linkPath, targetPath);
+    }
+
 }
