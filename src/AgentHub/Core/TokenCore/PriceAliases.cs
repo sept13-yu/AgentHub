@@ -40,6 +40,7 @@ public static class PriceAliases
             ["claude-opus-4-8-thinking-medium"] = "claude-opus-4-8",
             ["claude-4.6-opus-high-thinking"] = "claude-opus-4-6",
             ["claude-fable-5-thinking-high"] = "claude-fable-5",
+            ["claude-fable-5-1-thinking-high"] = "claude-fable-5-1",
             ["claude-4.5-sonnet"] = "claude-sonnet-4-5",
             ["stealth/ox-alpha"] = "GLM-5.3-Flash",
             ["codex-auto-review"] = "gpt-5.6-luna",

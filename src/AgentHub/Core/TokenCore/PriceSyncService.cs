@@ -55,6 +55,7 @@ public static class PriceSyncService
         new() { Model = "hy4-preview", InputPer1m = 6.0, OutputPer1m = 18.0, Currency = "CNY" },
 
         new() { Model = "claude-fable-5", InputPer1m = 10.0, OutputPer1m = 50.0, CacheReadPer1m = 1.0, CacheWritePer1m = 12.5, Currency = "USD" },
+        new() { Model = "claude-fable-5-1", InputPer1m = 10.0, OutputPer1m = 50.0, CacheReadPer1m = 0.25, CacheWritePer1m = 12.5, Currency = "USD" },
         new() { Model = "claude-opus-4-6", InputPer1m = 5.0, OutputPer1m = 25.0, CacheReadPer1m = 0.5, CacheWritePer1m = 6.25, Currency = "USD" },
         new() { Model = "claude-opus-4-8", InputPer1m = 5.0, OutputPer1m = 25.0, CacheReadPer1m = 0.5, CacheWritePer1m = 6.25, Currency = "USD" },
         new() { Model = "claude-sonnet-4-5", InputPer1m = 3.0, OutputPer1m = 15.0, CacheReadPer1m = 0.3, CacheWritePer1m = 3.75, Currency = "USD" },

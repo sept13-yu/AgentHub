@@ -29,7 +29,7 @@ public static class UsageCost
         foreach (var row in rows)
         {
             var name = row.Model.Trim();
-            // Exact hit first; then PriceAliases; still missing -> costPartial.
+            // Exact hit → PriceAliases → LiteLLM fallback; still missing -> costPartial.
             if (!TryResolve(name, table, out var p))
             {
                 missed = true;
@@ -61,16 +61,16 @@ public static class UsageCost
 
     private static double NormalizeRate(double rate) => rate > 0 ? rate : 1;
 
-    /// <summary>Exact name then <see cref="PriceAliases"/>; same lookup as <see cref="Estimate"/>.</summary>
+    /// <summary>Exact name then <see cref="PriceAliases"/> then LiteLLM fallback; same lookup as <see cref="Estimate"/>.</summary>
     public static bool HasPrice(string? model, IEnumerable<PriceRow> prices, string? defaultCurrency)
         => HasPrice(model, BuildPriceTable(prices, defaultCurrency));
 
-    /// <summary>Exact name then <see cref="PriceAliases"/> against a pre-built table.</summary>
+    /// <summary>Exact / alias / LiteLLM fallback against a pre-built table.</summary>
     public static bool HasPrice(
         string? model,
         IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> table)
     {
-        if (table.Count == 0) return false;
+        // Empty AgentHub table still allows LiteLLM TryGetPrice via TryResolve.
         return TryResolve(model, table, out _);
     }
 
@@ -88,7 +88,21 @@ public static class UsageCost
         var name = (model ?? "").Trim();
         if (name.Length == 0) return false;
         if (table.TryGetValue(name, out price)) return true;
-        return PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out price);
+        if (PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out price))
+            return true;
+        // Unlisted model: LiteLLM list-price fallback (USD). Keeps settings table lean.
+        if (LiteLlmPriceEnricher.TryGetPrice(name, out var lite)
+            && lite.InputPer1m is { } inn and > 0
+            && lite.OutputPer1m is { } outt and > 0
+            && double.IsFinite(inn) && double.IsFinite(outt))
+        {
+            double? cr = lite.CacheReadPer1m is { } crr && double.IsFinite(crr) ? crr : null;
+            double? cw = lite.CacheWritePer1m is { } cww && double.IsFinite(cww) ? cww : null;
+            var isCny = string.Equals(lite.Currency, "CNY", StringComparison.OrdinalIgnoreCase);
+            price = (inn, outt, cr, cw, isCny);
+            return true;
+        }
+        return false;
     }
 
     private static Dictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> BuildTable(

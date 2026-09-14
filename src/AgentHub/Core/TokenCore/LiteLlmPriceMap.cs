@@ -47,6 +47,7 @@ public static class LiteLlmPriceMap
             ["claude-opus-4-8"] = "claude-opus-4-8",
             ["claude-opus-4-6"] = "claude-opus-4-6",
             ["claude-fable-5"] = "claude-fable-5",
+            ["claude-fable-5-1"] = "claude-fable-5-1",
         };
 
     public static bool TryMap(string? model, out string liteLlmKey)

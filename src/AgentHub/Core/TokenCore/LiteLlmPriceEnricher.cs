@@ -5,15 +5,33 @@ using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.TokenCore;
 
-/// <summary>从 LiteLLM model_prices 只补 cache 单价到 AgentHub 价表行。
-/// 列表价（input/output/币种/模型名）仍以 AgentHub prices 为准；按 LiteLLM.input 比例缩放到本表 input，
-/// 这样 Cursor *-fast 加价会一起反映到 cache 上。GitHub → jsDelivr → 本地缓存。</summary>
+/// <summary>从 LiteLLM model_prices 取 cache 单价并按 AgentHub 列表价缩放；
+/// 同时提供 <see cref="TryGetPrice"/>：未上架模型在估价时按 LiteLLM 原价（USD）回退，避免 noPrice。
+/// 列表价（input/output/币种/模型名）仍以 AgentHub prices 为准；Enrich 只改 cache。
+/// 来源：GitHub → jsDelivr → 本地缓存。</summary>
 public static class LiteLlmPriceEnricher
 {
     private static readonly string[] RemoteUrls =
     [
         "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
         "https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json",
+    ];
+
+    /// <summary>Cursor / 用量日志常见后缀，从长到短剥离后重试 LiteLLM 键。</summary>
+    private static readonly string[] CursorSuffixes =
+    [
+        "-thinking-high",
+        "-thinking-medium",
+        "-high-thinking",
+        "-medium-thinking",
+        "-xhigh-fast",
+        "-high-fast",
+        "-xhigh",
+        "-ultra",
+        "-fast",
+        "-high",
+        "-medium",
+        "-max",
     ];
 
     private static readonly string CachePath = Path.Combine(AgentHubConfig.Dir, "litellm.prices.cache.json");
@@ -60,11 +78,11 @@ public static class LiteLlmPriceEnricher
         }
         catch (Exception)
         {
-            // 损坏则等网络刷新
+            // 下次刷新再试
         }
     }
 
-    /// <summary>磁盘缓存未满 24h 则直接用缓存；否则 GitHub → jsDelivr；都失败保留旧缓存。</summary>
+    /// <summary>磁盘缓存未满 24h 则直接用缓存；否则 GitHub → jsDelivr，都失败保留旧缓存。</summary>
     public static async Task RefreshAsync(bool force = false)
     {
         if (!force && IsFreshDiskCache())
@@ -128,7 +146,7 @@ public static class LiteLlmPriceEnricher
         }
     }
 
-    /// <summary>克隆列表行并写入缩放后的 cache 单价；未映射或 LiteLLM 缺字段则保留原行 cache。</summary>
+    /// <summary>克隆列表并写回按比例缩放后的 cache 单价；未映射或 LiteLLM 缺字段则保留原有 cache。</summary>
     public static IReadOnlyList<PriceRow> Enrich(IReadOnlyList<PriceRow> list)
     {
         Dictionary<string, LiteRates>? rates;
@@ -156,6 +174,85 @@ public static class LiteLlmPriceEnricher
         return result;
     }
 
+    /// <summary>
+    /// 未上架 AgentHub 列表时的 LiteLLM 原价回退（USD）。
+    /// 查找顺序：精确键 → LiteLlmPriceMap → PriceAliases → 剥离 Cursor 后缀后重试。
+    /// 不把全量 LiteLLM 键并入 UI 列表；仅在估价 / HasPrice 路径使用。
+    /// </summary>
+    public static bool TryGetPrice(string? model, out PriceRow row)
+    {
+        row = null!;
+        var name = (model ?? "").Trim();
+        if (name.Length == 0) return false;
+
+        Dictionary<string, LiteRates>? rates;
+        lock (Gate) rates = _rates;
+        if (rates is null || rates.Count == 0) return false;
+
+        if (TryResolveKey(rates, name, out row)) return true;
+
+        if (PriceAliases.TryMap(name, out var aliased) && TryResolveKey(rates, aliased, out row))
+            return true;
+
+        var cursor = name;
+        while (TryStripCursorSuffix(cursor, out var next))
+        {
+            cursor = next;
+            if (TryResolveKey(rates, cursor, out row)) return true;
+            if (PriceAliases.TryMap(cursor, out aliased) && TryResolveKey(rates, aliased, out row))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveKey(Dictionary<string, LiteRates> rates, string name, out PriceRow row)
+    {
+        row = null!;
+        if (TryMakeRow(rates, name, name, out row)) return true;
+        if (LiteLlmPriceMap.TryMap(name, out var key) && TryMakeRow(rates, key, name, out row))
+            return true;
+        return false;
+    }
+
+    private static bool TryMakeRow(
+        Dictionary<string, LiteRates> rates,
+        string liteKey,
+        string modelName,
+        out PriceRow row)
+    {
+        row = null!;
+        if (!rates.TryGetValue(liteKey, out var lite)) return false;
+        if (lite.InputPer1m <= 0 || lite.OutputPer1m is not { } outt || outt <= 0) return false;
+        if (!double.IsFinite(lite.InputPer1m) || !double.IsFinite(outt)) return false;
+
+        row = new PriceRow
+        {
+            Model = modelName,
+            InputPer1m = Round(lite.InputPer1m),
+            OutputPer1m = Round(outt),
+            CacheReadPer1m = lite.CacheReadPer1m is { } cr && double.IsFinite(cr) ? Round(cr) : null,
+            CacheWritePer1m = lite.CacheWritePer1m is { } cw && double.IsFinite(cw) ? Round(cw) : null,
+            Currency = "USD",
+        };
+        return true;
+    }
+
+    private static bool TryStripCursorSuffix(string name, out string stripped)
+    {
+        stripped = name;
+        foreach (var suffix in CursorSuffixes)
+        {
+            if (name.Length > suffix.Length
+                && name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                stripped = name[..^suffix.Length];
+                return stripped.Length > 0;
+            }
+        }
+        return false;
+    }
+
     private static bool IsFreshDiskCache()
     {
         try
@@ -170,6 +267,10 @@ public static class LiteLlmPriceEnricher
         }
     }
 
+    /// <summary>
+    /// 加载有 input+output 的条目（cache 可选）。无价回退需要 output；
+    /// Enrich 仍只在有 cache 字段时覆盖列表 cache。
+    /// </summary>
     private static bool TryParse(string json, out Dictionary<string, LiteRates> rates)
     {
         rates = new Dictionary<string, LiteRates>(StringComparer.OrdinalIgnoreCase);
@@ -182,6 +283,9 @@ public static class LiteLlmPriceEnricher
                 if (prop.Value.ValueKind != JsonValueKind.Object) continue;
                 if (!TryReadPer1m(prop.Value, "input_cost_per_token", out var input) || input <= 0)
                     continue;
+                if (!TryReadPer1m(prop.Value, "output_cost_per_token", out var output) || output <= 0)
+                    continue;
+
                 double? cacheRead = null;
                 double? cacheWrite = null;
                 if (TryReadPer1m(prop.Value, "cache_read_input_token_cost", out var cr))
@@ -193,8 +297,7 @@ public static class LiteLlmPriceEnricher
                     && double.IsFinite(cwRaw))
                     cacheWrite = cwRaw * 1_000_000d;
 
-                if (cacheRead is null && cacheWrite is null) continue;
-                rates[prop.Name] = new LiteRates(input, cacheRead, cacheWrite);
+                rates[prop.Name] = new LiteRates(input, output, cacheRead, cacheWrite);
             }
             return rates.Count > 0;
         }
@@ -254,5 +357,9 @@ public static class LiteLlmPriceEnricher
 
     private static double Round(double value) => Math.Round(value, 6, MidpointRounding.AwayFromZero);
 
-    private readonly record struct LiteRates(double InputPer1m, double? CacheReadPer1m, double? CacheWritePer1m);
+    private readonly record struct LiteRates(
+        double InputPer1m,
+        double OutputPer1m,
+        double? CacheReadPer1m,
+        double? CacheWritePer1m);
 }

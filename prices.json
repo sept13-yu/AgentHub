@@ -257,6 +257,14 @@
       "currency": "USD",
       "cacheReadPer1m": 1.0,
       "cacheWritePer1m": 12.5
+    },
+    {
+      "model": "claude-fable-5-1",
+      "inputPer1m": 10.0,
+      "outputPer1m": 50.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.25,
+      "cacheWritePer1m": 12.5
     }
   ]
 }
