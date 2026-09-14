@@ -37,7 +37,20 @@ interface AgentRulesStatus {
   enabled: boolean
   source: SharedSource
 }
-interface HubPayload { path: string; exists: boolean; enabled: boolean; content: string }
+interface AgentChip {
+  agentId: string
+  displayName: string
+}
+interface StructuredHub {
+  path: string
+  exists: boolean
+  enabled: boolean
+  valid: boolean
+  shared: string
+  extras: Record<string, string>
+  orphans: Record<string, string>
+  agents: AgentChip[]
+}
 interface ApplyResult { ok: boolean; items: { ok: boolean; message: string }[] }
 
 const loaded = ref(false)
@@ -45,26 +58,63 @@ const loadError = ref('')
 const busy = ref(false)
 const status = ref<AgentRulesStatus | null>(null)
 const hubPath = ref('')
-const draft = ref('')
-const snapshot = ref('')
+const sharedDraft = ref('')
+const sharedSnapshot = ref('')
+const extrasDraft = ref<Record<string, string>>({})
+const extrasSnapshot = ref<Record<string, string>>({})
+const orphansDraft = ref<Record<string, string>>({})
+const orphansSnapshot = ref<Record<string, string>>({})
+const chips = ref<AgentChip[]>([])
+const selectedAgent = ref('')
 const libDraft = ref('')
 const libSaved = ref('')
-const confirmKind = ref<'enable' | 'disable' | 'move' | 'leave' | 'reload' | ''>('')
+const sharedMarkError = ref(false)
+const extraMarkError = ref(false)
+const confirmKind = ref<'enable' | 'disable' | 'move' | 'leave' | 'reload' | 'restore' | ''>('')
 const pendingLib = ref('')
 let leaveResolve: ((ok: boolean) => void) | null = null
 let ignoreFocusUntil = 0
 
+const EXTRA_MARK_RE = /<!--\s*extra:[a-z][a-z0-9]*\s*-->/i
+
 const enabled = computed(() => !!status.value?.enabled)
-const dirty = computed(() => loaded.value && draft.value !== snapshot.value)
+const dirty = computed(() => {
+  if (!loaded.value) return false
+  if (sharedDraft.value !== sharedSnapshot.value) return true
+  const ids = new Set([...Object.keys(extrasDraft.value), ...Object.keys(extrasSnapshot.value)])
+  for (const id of ids) {
+    if ((extrasDraft.value[id] ?? '') !== (extrasSnapshot.value[id] ?? '')) return true
+  }
+  const oids = new Set([...Object.keys(orphansDraft.value), ...Object.keys(orphansSnapshot.value)])
+  for (const id of oids) {
+    if ((orphansDraft.value[id] ?? '') !== (orphansSnapshot.value[id] ?? '')) return true
+  }
+  return false
+})
 const pageDirty = computed(() => dirty.value)
 const libDirty = computed(() => loaded.value && normalizePath(libDraft.value) !== normalizePath(libSaved.value))
 const canEdit = computed(() => enabled.value && !readonly)
-const updateDisabled = computed(() => readonly || !enabled.value || busy.value || !status.value?.hasChanges)
+const updateDisabled = computed(() =>
+  readonly || !enabled.value || busy.value || dirty.value || !status.value?.hasChanges)
 const sourceBad = computed(() => {
   const s = status.value?.source
   return !!s && s.exists && !s.valid && !s.willMigrate
 })
 const sourceWarnings = computed(() => status.value?.source?.warnings ?? [])
+const orphanKeys = computed(() => Object.keys(orphansDraft.value))
+const selectedChip = computed(() =>
+  chips.value.find((c) => c.agentId === selectedAgent.value) || chips.value[0] || null)
+const extraDraft = computed({
+  get() {
+    const id = selectedAgent.value
+    return id ? (extrasDraft.value[id] ?? '') : ''
+  },
+  set(v: string) {
+    const id = selectedAgent.value
+    if (!id) return
+    extrasDraft.value = { ...extrasDraft.value, [id]: v }
+  },
+})
 
 const confirmText = computed(() => ({
   enable: '打开后会改各家规则，写成母本全文加自家差异块。\n\n没有共用规则就先建一份。各家文件整份覆盖，先备份。',
@@ -72,6 +122,7 @@ const confirmText = computed(() => ({
   move: '资料目录要改位置。把旧的 Plans、SandBox 搬过去吗？同名文件跳过，不覆盖。',
   leave: '有未保存的修改。确定离开吗？未保存的修改将丢失。',
   reload: '文件在外面改过。放弃这里的修改，按磁盘上的重读？',
+  restore: '恢复后共用和各家差异都会清空（资料目录设置保留）。此操作可再编辑，但当前正文会丢。',
   '': '',
 }[confirmKind.value]))
 
@@ -81,6 +132,7 @@ const confirmOk = computed(() => ({
   move: '搬过去',
   leave: '离开',
   reload: '重读',
+  restore: '恢复空模板',
   '': '确定',
 }[confirmKind.value]))
 
@@ -99,10 +151,27 @@ function setLoading(on: boolean) {
   if (pageLoading) pageLoading.value = on
 }
 
-function applyHub(hub: HubPayload) {
+function cloneMap(m: Record<string, string> | null | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (!m) return out
+  for (const [k, v] of Object.entries(m)) out[k] = v ?? ''
+  return out
+}
+
+function applyStructured(hub: StructuredHub) {
   hubPath.value = hub.path
-  draft.value = hub.content
-  snapshot.value = hub.content
+  sharedDraft.value = hub.shared ?? ''
+  sharedSnapshot.value = hub.shared ?? ''
+  extrasDraft.value = cloneMap(hub.extras)
+  extrasSnapshot.value = cloneMap(hub.extras)
+  orphansDraft.value = cloneMap(hub.orphans)
+  orphansSnapshot.value = cloneMap(hub.orphans)
+  chips.value = hub.agents?.length ? hub.agents : []
+  if (!selectedAgent.value || !chips.value.some((c) => c.agentId === selectedAgent.value)) {
+    selectedAgent.value = chips.value[0]?.agentId || ''
+  }
+  sharedMarkError.value = false
+  extraMarkError.value = false
 }
 
 function applyStatus(s: AgentRulesStatus, keepLibDraft = false) {
@@ -112,16 +181,25 @@ function applyStatus(s: AgentRulesStatus, keepLibDraft = false) {
   if (!keep) libDraft.value = s.libraryRoot
 }
 
+function hasExtraContent(id: string) {
+  return !!(extrasDraft.value[id] ?? '').trim()
+}
+
+function selectAgent(id: string) {
+  selectedAgent.value = id
+  extraMarkError.value = false
+}
+
 async function load() {
   loadError.value = ''
   setLoading(true)
   try {
     const [st, hub] = await Promise.all([
       get<AgentRulesStatus>('/api/agent-rules/status'),
-      get<HubPayload>('/api/agent-rules/hub'),
+      get<StructuredHub>('/api/agent-rules/hub-structured'),
     ])
     applyStatus(st)
-    applyHub(hub)
+    applyStructured(hub)
     loaded.value = true
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
@@ -185,15 +263,44 @@ async function runUpdate() {
   }
 }
 
+function validateMarks(): boolean {
+  sharedMarkError.value = EXTRA_MARK_RE.test(sharedDraft.value)
+  extraMarkError.value = false
+  for (const body of Object.values(extrasDraft.value)) {
+    if (EXTRA_MARK_RE.test(body)) {
+      extraMarkError.value = true
+      break
+    }
+  }
+  if (!extraMarkError.value) {
+    for (const body of Object.values(orphansDraft.value)) {
+      if (EXTRA_MARK_RE.test(body)) {
+        extraMarkError.value = true
+        break
+      }
+    }
+  }
+  if (sharedMarkError.value || extraMarkError.value) {
+    message.error('请删掉 <!-- extra:… -->，用下方芯片编辑各家差异')
+    return false
+  }
+  return true
+}
+
 async function saveHub() {
   if (!canEdit.value || !dirty.value || busy.value) return
+  if (!validateMarks()) return
   busy.value = true
   try {
-    const hub = await put<HubPayload>('/api/agent-rules/hub', { content: draft.value })
-    applyHub(hub)
+    const hub = await put<StructuredHub>('/api/agent-rules/hub-structured', {
+      shared: sharedDraft.value,
+      extras: extrasDraft.value,
+      orphans: orphansDraft.value,
+    })
+    applyStructured(hub)
     const st = await get<AgentRulesStatus>('/api/agent-rules/status')
     applyStatus(st, true)
-    message.success('已保存')
+    message.success('母本已保存，请到右侧更新各家')
   } catch (e) {
     message.error(e instanceof Error ? e.message : '保存失败')
   } finally {
@@ -202,7 +309,30 @@ async function saveHub() {
 }
 
 function discardHub() {
-  draft.value = snapshot.value
+  sharedDraft.value = sharedSnapshot.value
+  extrasDraft.value = cloneMap(extrasSnapshot.value)
+  orphansDraft.value = cloneMap(orphansSnapshot.value)
+  sharedMarkError.value = false
+  extraMarkError.value = false
+}
+
+async function restoreEmpty() {
+  confirmKind.value = ''
+  if (!canEdit.value || busy.value) return
+  busy.value = true
+  setLoading(true)
+  try {
+    const hub = await post<StructuredHub>('/api/agent-rules/hub-restore-empty')
+    applyStructured(hub)
+    const st = await get<AgentRulesStatus>('/api/agent-rules/status')
+    applyStatus(st, true)
+    message.success('已恢复空模板，请到右侧更新各家')
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '恢复失败')
+  } finally {
+    busy.value = false
+    setLoading(false)
+  }
 }
 
 async function openHub() {
@@ -263,10 +393,10 @@ async function saveLibrary(move: boolean) {
     else message.success('资料目录已保存')
     const [st, hub] = await Promise.all([
       get<AgentRulesStatus>('/api/agent-rules/status'),
-      get<HubPayload>('/api/agent-rules/hub'),
+      get<StructuredHub>('/api/agent-rules/hub-structured'),
     ])
     status.value = st
-    if (!dirty.value) applyHub(hub)
+    if (!dirty.value) applyStructured(hub)
     else hubPath.value = hub.path
   } catch (e) {
     message.error(e instanceof Error ? e.message : '保存资料目录失败')
@@ -286,6 +416,7 @@ function onConfirm() {
   if (confirmKind.value === 'enable') return void runEnable()
   if (confirmKind.value === 'disable') return void runDisable()
   if (confirmKind.value === 'move') return void saveLibrary(true)
+  if (confirmKind.value === 'restore') return void restoreEmpty()
   if (confirmKind.value === 'leave') {
     confirmKind.value = ''
     leaveResolve?.(true)
@@ -330,15 +461,22 @@ async function onWindowFocus() {
   try {
     const [st, hub] = await Promise.all([
       get<AgentRulesStatus>('/api/agent-rules/status'),
-      get<HubPayload>('/api/agent-rules/hub'),
+      get<StructuredHub>('/api/agent-rules/hub-structured'),
     ])
     applyStatus(st, true)
-    const hubChanged = hub.content !== snapshot.value
+    const hubChanged =
+      (hub.shared ?? '') !== sharedSnapshot.value
+      || Object.keys({ ...hub.extras, ...extrasSnapshot.value }).some(
+        (k) => (hub.extras?.[k] ?? '') !== (extrasSnapshot.value[k] ?? ''),
+      )
+      || Object.keys({ ...hub.orphans, ...orphansSnapshot.value }).some(
+        (k) => (hub.orphans?.[k] ?? '') !== (orphansSnapshot.value[k] ?? ''),
+      )
     if (dirty.value && hubChanged) {
       confirmKind.value = 'reload'
       return
     }
-    if (!dirty.value) applyHub(hub)
+    if (!dirty.value) applyStructured(hub)
   } catch { /* 回页读盘失败保持现状 */ }
 }
 
@@ -376,7 +514,13 @@ onUnmounted(() => {
     </label>
   </teleport>
   <teleport defer to="#chrome-actions">
-    <n-button type="primary" :disabled="updateDisabled" :loading="busy" @click="runUpdate">
+    <n-button
+      type="primary"
+      :disabled="updateDisabled"
+      :loading="busy"
+      :title="dirty ? '母本未保存，请先保存再更新' : undefined"
+      @click="runUpdate"
+    >
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
       更新
     </n-button>
@@ -405,7 +549,10 @@ onUnmounted(() => {
 
     <div class="stage">
       <section class="card hub-card">
-        <div class="card-head">这份规则 <span class="hint">母本全文注入各家，保存后各家都按这份</span></div>
+        <div class="card-head">
+          这份规则
+          <span class="hint">共享正文注入各家；下面按 Agent 写差异。保存母本后，再点右侧「更新」。</span>
+        </div>
         <div class="card-body hub-body">
           <p class="file-path">{{ hubPath }}</p>
           <p v-if="status?.source?.willMigrate" class="src-warn">
@@ -413,31 +560,81 @@ onUnmounted(() => {
           </p>
           <p v-else-if="sourceBad" class="src-warn is-bad">母本无效（缺管理注释头），各家按内置种子渲染</p>
           <p v-for="w in sourceWarnings" :key="w" class="src-warn">{{ w }}</p>
-          <textarea
-            class="editor"
-            spellcheck="false"
-            :disabled="!canEdit || busy"
-            v-model="draft"
-          />
+          <p v-if="orphanKeys.length" class="src-warn">
+            母本含未识别差异块（{{ orphanKeys.join('、') }}），已保留，保存时写回
+          </p>
+
+          <div class="editor-block">
+            <div class="editor-label">共用</div>
+            <textarea
+              class="editor shared-editor"
+              :class="{ 'is-error': sharedMarkError }"
+              spellcheck="false"
+              :disabled="!canEdit || busy"
+              placeholder="写各家都会遵守的规则。不用写 <!-- extra --> 或管理注释。"
+              v-model="sharedDraft"
+              @input="sharedMarkError = false"
+            />
+          </div>
+
+          <div class="editor-block extras-block">
+            <div class="editor-label">各家差异</div>
+            <div class="chip-row">
+              <button
+                v-for="c in chips"
+                :key="c.agentId"
+                type="button"
+                class="agent-chip agent-chip--icon"
+                :class="{ 'is-active': c.agentId === selectedAgent }"
+                :title="c.displayName"
+                :aria-label="c.displayName"
+                :disabled="!canEdit || busy"
+                @click="selectAgent(c.agentId)"
+              >
+                <AgentMark :id="c.agentId" />
+                
+                <span v-if="hasExtraContent(c.agentId)" class="chip-dot" title="有差异" />
+              </button>
+            </div>
+            <div class="editor-label sub">
+              {{ selectedChip ? selectedChip.displayName : '选中 Agent' }} 的附加条款
+            </div>
+            <textarea
+              class="editor extra-editor"
+              :class="{ 'is-error': extraMarkError }"
+              spellcheck="false"
+              :disabled="!canEdit || busy || !selectedAgent"
+              placeholder="留空表示这家没有额外条款"
+              v-model="extraDraft"
+              @input="extraMarkError = false"
+            />
+          </div>
+
           <div class="hub-acts">
             <n-button :disabled="readonly || busy" @click="openHub">
               <template #icon><n-icon><ExternalLink :size="16" :stroke-width="1.8" /></n-icon></template>
               打开
             </n-button>
+            <n-button
+              :disabled="!canEdit || busy"
+              @click="confirmKind = 'restore'"
+            >
+              恢复空模板…
+            </n-button>
             <n-button v-if="dirty" :disabled="readonly || busy" @click="discardHub">
               <template #icon><n-icon><X :size="16" :stroke-width="1.8" /></n-icon></template>
               放弃修改
             </n-button>
-            <n-button v-if="dirty" type="primary" :disabled="!canEdit || busy" @click="saveHub">
+            <n-button type="primary" :disabled="!canEdit || busy || !dirty" @click="saveHub">
               <template #icon><n-icon><Save :size="16" :stroke-width="1.8" /></n-icon></template>
-              保存
+              保存母本
             </n-button>
           </div>
         </div>
       </section>
 
       <section class="card list-card">
-        <div class="card-head">各家规则 <span class="hint">改这份后点更新才写入</span></div>
+        <div class="card-head">各家规则 <span class="hint">先保存母本，再点更新才写入</span></div>
         <div class="card-body">
           <div
             v-for="a in status?.agents"
@@ -462,6 +659,7 @@ onUnmounted(() => {
             <span class="rule-state" :class="'is-' + a.status">{{ ruleStateText(a.status) }}</span>
           </div>
           <p v-if="!enabled" class="off-note">关掉后不能改各家</p>
+          <p v-else-if="dirty" class="off-note">母本未保存，更新已禁用</p>
         </div>
       </section>
     </div>
@@ -572,10 +770,25 @@ onUnmounted(() => {
   color: var(--warn);
 }
 .src-warn.is-bad { color: var(--error-fg); }
+.editor-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: 0;
+}
+.editor-block:first-of-type { flex: 1 1 auto; }
+.editor-block.extras-block { flex: 0 0 auto; }
+.editor-label {
+  font-size: var(--fs-small);
+  font-weight: 500;
+  color: var(--dim);
+}
+.editor-label.sub {
+  font-weight: 400;
+  color: var(--faint);
+}
 .editor {
-  flex: 1;
   width: 100%;
-  min-height: 360px;
   resize: vertical;
   padding: 10px 12px;
   border: 1px solid var(--stroke);
@@ -586,8 +799,68 @@ onUnmounted(() => {
   font-size: var(--fs-small);
   line-height: 1.55;
 }
+.shared-editor {
+  flex: 1;
+  min-height: 200px;
+}
+.extra-editor {
+  min-height: 120px;
+}
 .editor:disabled { color: var(--disabled-fg); }
-.hub-acts { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+.editor.is-error {
+  border-color: var(--error-fg);
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--h-icon-btn);
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--dim);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  position: relative;
+}
+.agent-chip--icon {
+  width: var(--h-icon-btn);
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+.agent-chip--icon .chip-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+.agent-chip:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--wash);
+}
+.agent-chip.is-active {
+  color: var(--text);
+  border-color: var(--primary, var(--ok));
+  background: var(--wash);
+}
+.agent-chip:disabled {
+  color: var(--disabled-fg);
+  cursor: not-allowed;
+}
+.chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  flex: none;
+}
+.hub-acts { display: flex; justify-content: flex-end; gap: var(--sp-2); flex-wrap: wrap; }
 .rule-line {
   display: grid;
   grid-template-columns: 120px minmax(0, 1fr) var(--h-icon-btn) 64px;

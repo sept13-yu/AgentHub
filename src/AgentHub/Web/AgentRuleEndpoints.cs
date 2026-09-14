@@ -38,6 +38,51 @@ public static class AgentRuleEndpoints
             }
         });
 
+        app.MapGet("/api/agent-rules/hub-structured", () =>
+        {
+            var hub = service.ReadStructuredHub();
+            return Results.Json(ToStructuredPayload(hub));
+        });
+
+        app.MapPut("/api/agent-rules/hub-structured", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
+                var root = doc.RootElement;
+                var shared = root.TryGetProperty("shared", out var sharedEl)
+                    && sharedEl.ValueKind == JsonValueKind.String
+                    ? sharedEl.GetString() ?? ""
+                    : throw new ArgumentException("缺少 shared");
+                var extras = ReadStringMap(root, "extras")
+                    ?? throw new ArgumentException("缺少 extras");
+                var orphans = ReadStringMap(root, "orphans");
+                var hub = service.WriteStructuredHub(shared, extras, orphans);
+                return Results.Json(ToStructuredPayload(hub));
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 400);
+            }
+        });
+
+        app.MapPost("/api/agent-rules/hub-restore-empty", (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            try
+            {
+                var hub = service.RestoreEmptyTemplate();
+                return Results.Json(ToStructuredPayload(hub));
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 400);
+            }
+        });
+
         app.MapPost("/api/agent-rules/enable", (HttpContext ctx) =>
             WriteApply(ctx, writeAuth, service.Enable));
         app.MapPost("/api/agent-rules/disable", (HttpContext ctx) =>
@@ -145,6 +190,34 @@ public static class AgentRuleEndpoints
             status.Source.Warnings,
         },
     };
+
+    private static object ToStructuredPayload(AgentRulesStructuredHub hub) => new
+    {
+        path = hub.Path,
+        hub.Exists,
+        hub.Enabled,
+        hub.Valid,
+        hub.Shared,
+        extras = hub.Extras,
+        orphans = hub.Orphans,
+        agents = hub.Agents.Select(a => new { agentId = a.AgentId, displayName = a.DisplayName }),
+    };
+
+    private static Dictionary<string, string>? ReadStringMap(JsonElement root, string name)
+    {
+        if (!root.TryGetProperty(name, out var el) || el.ValueKind == JsonValueKind.Null)
+            return null;
+        if (el.ValueKind != JsonValueKind.Object)
+            throw new ArgumentException(name + " 必须是对象");
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var prop in el.EnumerateObject())
+        {
+            map[prop.Name] = prop.Value.ValueKind == JsonValueKind.String
+                ? prop.Value.GetString() ?? ""
+                : throw new ArgumentException($"{name}.{prop.Name} 必须是字符串");
+        }
+        return map;
+    }
 
     private static string Name(AgentRuleStatus status) => status.ToString() switch
     {

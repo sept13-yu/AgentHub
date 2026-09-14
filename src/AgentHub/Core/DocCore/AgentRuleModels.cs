@@ -41,6 +41,19 @@ public sealed record AgentRulesStatus(
 
 public sealed record AgentRulesHub(string Path, bool Exists, bool Enabled, string Content);
 
+/// <summary>结构化母本：共享正文 + 各家差异 + 未知 orphan 块（保存时原样写回）。</summary>
+public sealed record AgentRulesStructuredHub(
+    string Path,
+    bool Exists,
+    bool Enabled,
+    bool Valid,
+    string Shared,
+    IReadOnlyDictionary<string, string> Extras,
+    IReadOnlyDictionary<string, string> Orphans,
+    IReadOnlyList<AgentRuleChip> Agents);
+
+public sealed record AgentRuleChip(string AgentId, string DisplayName);
+
 public sealed record AgentRulesLibraryResult(string Path, bool Moved, IReadOnlyList<string> Notes);
 
 public sealed record AgentRulesPreview(

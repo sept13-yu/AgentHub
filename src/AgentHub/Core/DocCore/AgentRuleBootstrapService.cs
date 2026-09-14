@@ -136,6 +136,65 @@ public sealed class AgentRuleBootstrapService
         finally { _applyGate.Release(); }
     }
 
+    public AgentRulesStructuredHub ReadStructuredHub()
+    {
+        var hub = ReadHub();
+        var (shared, extras, orphans) = AgentRuleTemplates.SplitMaster(hub.Content);
+        var diskValid = hub.Exists && AgentRuleTemplates.IsValidMaster(ReadText(SharedRulesPath));
+        // 编辑器可能展示迁移预览（内容已带管理头）；Valid 表示磁盘原文或预览可用
+        var valid = !hub.Exists || diskValid || AgentRuleTemplates.IsValidMaster(hub.Content);
+        var chips = Descriptors().Select(d => new AgentRuleChip(d.Id, d.DisplayName)).ToList();
+        return new(hub.Path, hub.Exists, hub.Enabled, valid, shared, extras, orphans, chips);
+    }
+
+    public AgentRulesStructuredHub WriteStructuredHub(
+        string shared,
+        IReadOnlyDictionary<string, string> extras,
+        IReadOnlyDictionary<string, string>? orphans)
+    {
+        if (!Enabled) throw new InvalidOperationException("关掉统一管理时不能改共用规则");
+        ValidateStructuredBodies(shared, extras, orphans);
+        var known = new HashSet<string>(AgentRuleTemplates.KnownAgentIds, StringComparer.OrdinalIgnoreCase);
+        foreach (var key in extras.Keys)
+        {
+            if (!known.Contains(key))
+                throw new ArgumentException("未知的 Agent：" + key);
+        }
+        var libraryRoot = NormalizeLibraryRoot();
+        var content = AgentRuleTemplates.AssembleMaster(shared, extras, orphans, libraryRoot);
+        WriteHub(content);
+        return ReadStructuredHub();
+    }
+
+    public AgentRulesStructuredHub RestoreEmptyTemplate()
+    {
+        if (!Enabled) throw new InvalidOperationException("关掉统一管理时不能改共用规则");
+        var libraryRoot = NormalizeLibraryRoot();
+        var content = AgentRuleTemplates.RenderShared(libraryRoot);
+        WriteHub(content);
+        return ReadStructuredHub();
+    }
+
+    private static void ValidateStructuredBodies(
+        string shared,
+        IReadOnlyDictionary<string, string> extras,
+        IReadOnlyDictionary<string, string>? orphans)
+    {
+        if (AgentRuleTemplates.ContainsExtraMark(shared))
+            throw new ArgumentException("共享正文不能含 <!-- extra:… -->，请用各家差异编辑");
+        foreach (var (key, body) in extras)
+        {
+            if (AgentRuleTemplates.ContainsExtraMark(body))
+                throw new ArgumentException($"「{key}」差异正文不能含 <!-- extra:… -->");
+        }
+        if (orphans is null) return;
+        foreach (var (key, body) in orphans)
+        {
+            if (AgentRuleTemplates.ContainsExtraMark(body))
+                throw new ArgumentException($"未识别差异块「{key}」不能含嵌套 <!-- extra:… -->");
+        }
+    }
+
     public void OpenHub()
     {
         if (!File.Exists(SharedRulesPath))
