@@ -196,7 +196,8 @@ function Get-GiteeAttachNames([long]$releaseId) {
         }
         $page++
     } while ($items.Count -ge 100)
-    return $names
+    # PowerShell 会对集合解包；空 HashSet 会变成 $null，导致后面 Contains 空引用。
+    return ,$names
 }
 
 function Send-GiteeAttach([long]$releaseId, [System.IO.FileInfo]$file) {
