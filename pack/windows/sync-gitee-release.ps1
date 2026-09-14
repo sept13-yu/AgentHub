@@ -84,21 +84,34 @@ function Invoke-Gitee {
         [Parameter(Mandatory = $true)][string]$PathAndQuery,
         [System.Net.Http.HttpContent]$Content
     )
-    $req = [System.Net.Http.HttpRequestMessage]::new($Method, (New-GiteeUri $PathAndQuery))
+    $maxAttempts = 4
     $resp = $null
     $status = 0
     $text = $null
-    try {
-        if ($Content) { $req.Content = $Content }
-        $resp = $http.SendAsync($req).GetAwaiter().GetResult()
-        $status = [int]$resp.StatusCode
-        $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
-    }
-    finally {
-        # 不要 Dispose Content，避免连带释放调用方传入的 Form/Multipart
-        $req.Content = $null
-        $req.Dispose()
-        if ($resp) { $resp.Dispose() }
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $req = [System.Net.Http.HttpRequestMessage]::new($Method, (New-GiteeUri $PathAndQuery))
+        $resp = $null
+        try {
+            if ($Content) { $req.Content = $Content }
+            $resp = $http.SendAsync($req).GetAwaiter().GetResult()
+            $status = [int]$resp.StatusCode
+            $text = $resp.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+            break
+        }
+        catch {
+            $msg = [string]$_.Exception.Message
+            $transient = $msg -match 'SSL|TLS|timeout|timed out|connection|temporarily|NameResolution|Socket'
+            if (-not $transient -or $attempt -ge $maxAttempts) { throw }
+            $wait = 2 * $attempt
+            Write-Warning "Gitee 请求瞬时失败 ($msg)；${wait}s 后重试 ($attempt/$maxAttempts)"
+            Start-Sleep -Seconds $wait
+        }
+        finally {
+            # 不要 Dispose Content，避免连带释放调用方传入的 Form/Multipart
+            $req.Content = $null
+            $req.Dispose()
+            if ($resp) { $resp.Dispose(); $resp = $null }
+        }
     }
     if ($status -in 401, 403) {
         throw "GITEE_TOKEN 无效或缺少 projects 权限 (HTTP $status)。请检查仓库 Secrets 中的 GITEE_TOKEN。"
@@ -118,7 +131,8 @@ function Get-GiteeErrorMessage($result) {
     $j = $result.Json
     if ($j -and $j.message) { return [string]$j.message }
     if ($j -and $j.error) { return [string]$j.error }
-    return $result.Text
+    if ($null -eq $result.Text) { return '' }
+    return [string]$result.Text
 }
 
 function Get-GiteeReleaseByTag([string]$tagName) {
@@ -161,10 +175,10 @@ function New-GiteeRelease {
             return $r.Json
         }
 
-        $existing = Get-GiteeReleaseByTag $Tag
-        if ($existing) {
-            Write-Host "Gitee Release 已存在，复用 id=$($existing.id)"
-            return $existing
+        $existingRelease = Get-GiteeReleaseByTag $Tag
+        if ($existingRelease) {
+            Write-Host "Gitee Release 已存在，复用 id=$($existingRelease.id)"
+            return $existingRelease
         }
 
         $msg = Redact (Get-GiteeErrorMessage $r)
@@ -180,24 +194,27 @@ function New-GiteeRelease {
     throw "创建 Gitee Release 失败：超过重试次数。"
 }
 
-function Get-GiteeAttachNames([long]$releaseId) {
-    $names = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+# 不把 HashSet/List 当返回值：PowerShell 会解包集合，空集合变成 $null，有元素变成 Object[]，
+# 后面 Contains/Add 都会坏。改为写入调用方传入的集合。
+function Add-GiteeAttachNames {
+    param(
+        [Parameter(Mandatory = $true)][long]$ReleaseId,
+        [Parameter(Mandatory = $true)][System.Collections.Generic.HashSet[string]]$Names
+    )
     $page = 1
-    $items = @()
     do {
-        $r = Invoke-Gitee -Method ([System.Net.Http.HttpMethod]::Get) -PathAndQuery "/releases/$releaseId/attach_files?page=$page&per_page=100"
+        $r = Invoke-Gitee -Method ([System.Net.Http.HttpMethod]::Get) -PathAndQuery "/releases/$ReleaseId/attach_files?page=$page&per_page=100"
         if ($r.Status -ne 200) {
             throw "列出 Gitee 附件失败 (HTTP $($r.Status)): $(Redact (Get-GiteeErrorMessage $r))"
         }
-        if ($null -eq $r.Json) { break }
-        $items = @($r.Json)
+        # [] / null / 单对象 都收成数组；空页结束翻页。
+        $items = @()
+        if ($null -ne $r.Json) { $items = @($r.Json) }
         foreach ($item in $items) {
-            if ($item -and $item.name) { [void]$names.Add([string]$item.name) }
+            if ($item -and $item.name) { [void]$Names.Add([string]$item.name) }
         }
         $page++
     } while ($items.Count -ge 100)
-    # PowerShell 会对集合解包；空 HashSet 会变成 $null，导致后面 Contains 空引用。
-    return ,$names
 }
 
 function Send-GiteeAttach([long]$releaseId, [System.IO.FileInfo]$file) {
@@ -238,8 +255,12 @@ try {
     else {
         $release = New-GiteeRelease
     }
+    if (-not $release -or -not $release.id) {
+        throw "未能获得有效的 Gitee Release（缺少 id）。"
+    }
     $releaseId = [long]$release.id
-    $existing = Get-GiteeAttachNames $releaseId
+    $existing = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    Add-GiteeAttachNames -ReleaseId $releaseId -Names $existing
     $uploaded = 0
     $skipped = 0
     foreach ($file in $toUpload) {
