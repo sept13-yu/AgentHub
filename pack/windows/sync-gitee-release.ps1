@@ -183,6 +183,7 @@ function New-GiteeRelease {
 function Get-GiteeAttachNames([long]$releaseId) {
     $names = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     $page = 1
+    $items = @()
     do {
         $r = Invoke-Gitee -Method ([System.Net.Http.HttpMethod]::Get) -PathAndQuery "/releases/$releaseId/attach_files?page=$page&per_page=100"
         if ($r.Status -ne 200) {
