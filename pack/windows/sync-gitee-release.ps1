@@ -199,7 +199,10 @@ function New-GiteeRelease {
 function Add-GiteeAttachNames {
     param(
         [Parameter(Mandatory = $true)][long]$ReleaseId,
-        [Parameter(Mandatory = $true)][System.Collections.Generic.HashSet[string]]$Names
+        # 空 HashSet 在 PowerShell 里算 “empty collection”，不加 AllowEmptyCollection 会拒绑。
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [System.Collections.Generic.HashSet[string]]$Names
     )
     $page = 1
     do {
