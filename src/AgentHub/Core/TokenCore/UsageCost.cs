@@ -30,8 +30,7 @@ public static class UsageCost
         {
             var name = row.Model.Trim();
             // Exact hit first; then PriceAliases; still missing -> costPartial.
-            if (!table.TryGetValue(name, out var p)
-                && !(PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out p)))
+            if (!TryResolve(name, table, out var p))
             {
                 missed = true;
                 continue;
@@ -61,6 +60,36 @@ public static class UsageCost
     }
 
     private static double NormalizeRate(double rate) => rate > 0 ? rate : 1;
+
+    /// <summary>Exact name then <see cref="PriceAliases"/>; same lookup as <see cref="Estimate"/>.</summary>
+    public static bool HasPrice(string? model, IEnumerable<PriceRow> prices, string? defaultCurrency)
+        => HasPrice(model, BuildPriceTable(prices, defaultCurrency));
+
+    /// <summary>Exact name then <see cref="PriceAliases"/> against a pre-built table.</summary>
+    public static bool HasPrice(
+        string? model,
+        IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> table)
+    {
+        if (table.Count == 0) return false;
+        return TryResolve(model, table, out _);
+    }
+
+    /// <summary>Build the price lookup once for repeated <see cref="HasPrice"/> checks.</summary>
+    public static Dictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> BuildPriceTable(
+        IEnumerable<PriceRow> prices, string? defaultCurrency)
+        => BuildTable(prices, defaultCurrency);
+
+    private static bool TryResolve(
+        string? model,
+        IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> table,
+        out (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny) price)
+    {
+        price = default;
+        var name = (model ?? "").Trim();
+        if (name.Length == 0) return false;
+        if (table.TryGetValue(name, out price)) return true;
+        return PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out price);
+    }
 
     private static Dictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> BuildTable(
         IEnumerable<PriceRow> prices, string? defaultCurrency)

@@ -14,6 +14,8 @@ export interface UsageModel {
   name: string
   tokens: number
   pct: number
+  /** True when cost estimate is on and this model has no list price. */
+  noPrice?: boolean
 }
 
 export interface UsageAgent {
@@ -81,7 +83,10 @@ export function visibleModels(agent: UsageAgent): UsageModel[] {
   const rest = agent.models.slice(3)
   const tokens = rest.reduce((sum, m) => sum + m.tokens, 0)
   const pct = rest.reduce((sum, m) => sum + m.pct, 0)
-  return [...agent.models.slice(0, 3), { name: '其他', tokens, pct }]
+  const noPrice = rest.some((m) => m.noPrice === true)
+  const other: UsageModel = { name: '其他', tokens, pct }
+  if (noPrice) other.noPrice = true
+  return [...agent.models.slice(0, 3), other]
 }
 
 export function toUsageView(raw: unknown, range: RangeKey = 'today'): UsageView {
@@ -138,14 +143,16 @@ function readAgents(raw: unknown): UsageAgent[] {
 
 function readModels(raw: unknown): UsageModel[] {
   if (!Array.isArray(raw)) return []
-  const rows: { name: string; tokens: number }[] = []
+  const rows: { name: string; tokens: number; noPrice?: boolean }[] = []
   for (const item of raw) {
     const rec = asRecord(item)
     if (!rec) continue
     const name = str(rec.name) || 'unknown'
     const tokens = num(rec.tokens)
     if (tokens <= 0) continue
-    rows.push({ name, tokens })
+    const row: { name: string; tokens: number; noPrice?: boolean } = { name, tokens }
+    if (rec.noPrice === true) row.noPrice = true
+    rows.push(row)
   }
   rows.sort((a, b) => b.tokens - a.tokens)
   const shares = pctShares(rows.map((r) => r.tokens))

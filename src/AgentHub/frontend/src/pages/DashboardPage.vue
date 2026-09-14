@@ -591,8 +591,16 @@ onUnmounted(() => {
           <template v-if="openAgent">
             <div class="models-label">{{ openAgent.name }} 的模型</div>
             <div ref="modelsEl" class="models">
-              <span v-for="m in shownModels" :key="m.name" class="model">
-                <i :style="{ '--c': openAgent.color }" />{{ m.name }} {{ m.pct }}% · {{ formatTokens(m.tokens) }}
+              <span
+                v-for="m in shownModels"
+                :key="m.name"
+                class="model"
+                :class="{ 'is-no-price': m.noPrice }"
+                :title="m.noPrice ? '暂无牌价' : undefined"
+              >
+                <i :style="{ '--c': openAgent.color }" />
+                <b v-if="m.noPrice" class="no-price-dot" aria-label="暂无牌价" />
+                {{ m.name }} {{ m.pct }}% · {{ formatTokens(m.tokens) }}
               </span>
             </div>
           </template>
@@ -967,6 +975,19 @@ button.cost:focus-visible {
   border-radius: 50%;
   background: var(--c);
   box-shadow: 0 0 0 1px var(--dot-ring);
+}
+.model.is-no-price {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--stroke));
+}
+.model .no-price-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--danger);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--danger) 28%, transparent),
+    0 0 0 1px var(--danger);
 }
 
 :global(html.ah-tile-sorting) {

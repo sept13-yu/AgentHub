@@ -231,7 +231,14 @@ public sealed class TokenService
 
         var filter = UsageToolFilter();
         var rows = ReadModelRows(conn, from, to, filter);
-        var byAgent = BuildByAgent(rows);
+        var prices = PriceSyncService.Resolve(_config.Dashboard.PriceOverrides);
+        IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)>? priceTable = null;
+        if (_config.Dashboard.CostEstimate)
+        {
+            var built = UsageCost.BuildPriceTable(prices, _config.Dashboard.CostCurrency);
+            if (built.Count > 0) priceTable = built;
+        }
+        var byAgent = BuildByAgent(rows, priceTable);
         var total = byAgent.Sum(a => (long)a["tokens"]!);
         var prev = SumBilled(conn, prevFrom, prevTo, filter);
         var fx = _config.Dashboard.FxFallbackRate;
@@ -242,7 +249,7 @@ public sealed class TokenService
         }
         var (cost, partial, currency) = UsageCost.Estimate(
             rows.Select(r => (r.Model, r.Input, r.Output, r.Cached, r.CacheWrite)),
-            PriceSyncService.Resolve(_config.Dashboard.PriceOverrides),
+            prices,
             _config.Dashboard.CostEstimate,
             _config.Dashboard.CostCurrency,
             fx);
@@ -362,7 +369,9 @@ public sealed class TokenService
         return (long)cmd.ExecuteScalar()!;
     }
 
-    private static List<Dictionary<string, object?>> BuildByAgent(List<ModelRow> rows)
+    private static List<Dictionary<string, object?>> BuildByAgent(
+        List<ModelRow> rows,
+        IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)>? priceTable)
     {
         var byTool = new Dictionary<string, List<ModelRow>>(StringComparer.Ordinal);
         foreach (var row in rows)
@@ -381,7 +390,14 @@ public sealed class TokenService
             var tokens = list.Sum(x => x.Tokens);
             if (tokens <= 0) continue;
             var models = list
-                .Select(x => new Dictionary<string, object?> { ["name"] = x.Model, ["tokens"] = x.Tokens })
+                .Select(x =>
+                {
+                    var m = new Dictionary<string, object?> { ["name"] = x.Model, ["tokens"] = x.Tokens };
+                    // Cost estimate on + non-empty table: flag models missing from exact/alias lookup.
+                    if (priceTable is not null && !UsageCost.HasPrice(x.Model, priceTable))
+                        m["noPrice"] = true;
+                    return m;
+                })
                 .OrderByDescending(m => (long)m["tokens"]!)
                 .ToList();
             agents.Add(new Dictionary<string, object?>
