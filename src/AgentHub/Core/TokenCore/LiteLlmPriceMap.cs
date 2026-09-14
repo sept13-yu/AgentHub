@@ -41,6 +41,7 @@ public static class LiteLlmPriceMap
             ["Qwen3.8-Max"] = "dashscope/qwen3.8-max",
             ["gpt-5.4"] = "gpt-5.4",
             ["gpt-5.5"] = "gpt-5.5",
+            ["gpt-6-astra"] = "gpt-6-astra",
             ["claude-sonnet-4-6"] = "claude-sonnet-4-6",
             ["claude-sonnet-4-5"] = "claude-sonnet-4-5",
             ["claude-opus-4-8"] = "claude-opus-4-8",

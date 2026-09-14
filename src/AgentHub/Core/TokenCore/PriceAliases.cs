@@ -43,6 +43,12 @@ public static class PriceAliases
             ["claude-4.5-sonnet"] = "claude-sonnet-4-5",
             ["stealth/ox-alpha"] = "GLM-5.3-Flash",
             ["codex-auto-review"] = "gpt-5.6-luna",
+
+            ["gpt-6-astra-high"] = "gpt-6-astra",
+            ["gpt-6-astra-xhigh"] = "gpt-6-astra",
+            ["gpt-6-astrahigh"] = "gpt-6-astra",
+            ["gpt-6-astra-ultra"] = "gpt-6-astra",
+            ["openai/gpt-6-astra"] = "gpt-6-astra",
         };
 
     /// <summary>当 model 是别名时返回 true；精确命中应先查价表，不要先走这里。</summary>

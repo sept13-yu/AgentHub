@@ -60,6 +60,7 @@ public static class PriceSyncService
         new() { Model = "claude-sonnet-4-5", InputPer1m = 3.0, OutputPer1m = 15.0, CacheReadPer1m = 0.3, CacheWritePer1m = 3.75, Currency = "USD" },
         new() { Model = "claude-sonnet-4-6", InputPer1m = 3.0, OutputPer1m = 15.0, CacheReadPer1m = 0.3, CacheWritePer1m = 3.75, Currency = "USD" },
         new() { Model = "gpt-5.5", InputPer1m = 5.0, OutputPer1m = 30.0, CacheReadPer1m = 0.5, Currency = "USD" },
+        new() { Model = "gpt-6-astra", InputPer1m = 10.0, OutputPer1m = 50.0, CacheReadPer1m = 1.0, CacheWritePer1m = 12.5, Currency = "USD" },
         new() { Model = "gpt-5.4", InputPer1m = 2.5, OutputPer1m = 15.0, CacheReadPer1m = 0.25, Currency = "USD" },
     ];
 

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using ZstdSharp;
 
@@ -15,7 +16,10 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
     private static readonly string Root = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
 
-    private const string SessionFile = "session.jsonl.zstd";
+    // TokenTracker: /^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/i
+    private static readonly Regex SessionLogName = new(
+        @"^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly byte[] ZstdMagic = [0x28, 0xB5, 0x2F, 0xFD];
     private const long MaxFrameOut = 64L * 1024 * 1024;
 
@@ -29,8 +33,8 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
         {
             foreach (var sessionDir in Directory.EnumerateDirectories(dir))
             {
-                var file = Path.Combine(sessionDir, SessionFile);
-                if (!File.Exists(file)) continue;   // .dsh-mkdir-* 临时目录没有该文件，自然跳过
+                var file = PickSessionLog(sessionDir);
+                if (file is null) continue;   // .dsh-mkdir-* 临时目录没有该文件，自然跳过
                 var id = NormalizeSessionId(Path.GetFileName(sessionDir));
                 var (title, cwd, count, lastTs, truncated) = Scan(file);
                 list.Add(new ConversationSummary
@@ -78,11 +82,11 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
                     var type = typeEl.GetString();
                     var data = root.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.Object ? d : (JsonElement?)null;
 
-                    if (type == "session" && data is null)
+                    if (type is "session" or "session/start")
                     {
                         // 首帧 session 头：字段在顶层（实测形状）
-                        sessionId = CodexProvider.GetString(root, "id") ?? sessionId;
-                        cwd = CodexProvider.GetString(root, "cwd") ?? cwd;
+                        sessionId = CodexProvider.GetString(root, "id") ?? CodexProvider.GetString(data, "id") ?? CodexProvider.GetString(data, "sessionId") ?? sessionId;
+                        cwd = CodexProvider.GetString(root, "cwd") ?? CodexProvider.GetString(data, "cwd") ?? cwd;
                         continue;
                     }
                     if (type == "session/title")
@@ -91,10 +95,10 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
                              ?? CodexProvider.GetString(data, "text") ?? title;
                         continue;
                     }
-                    if (type is not ("user/message" or "assistant/message") || data is null) continue;
+                    if (type is not ("user/message" or "assistant/message" or "message/user" or "message/assistant") || data is null) continue;
 
                     var role = CodexProvider.GetString(data, "role")
-                            ?? (type == "user/message" ? "user" : "assistant");
+                            ?? (type is "user/message" or "message/user" ? "user" : "assistant");
                     if (role is not ("user" or "assistant")) continue;
                     var text = ExtractText(data);
                     if (text.Length == 0) continue;
@@ -177,7 +181,8 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
     internal static (string Text, int FramesOk, int FramesSeen, bool Truncated) DecompressAll(byte[] data)
     {
         var offsets = FrameOffsets(data);
-        if (offsets.Count == 0) return ("", 0, 0, false);
+        // TokenTracker / DSH v3: compression:none writes session.v3.jsonl (no zstd frames)
+        if (offsets.Count == 0) return (Encoding.UTF8.GetString(data), 0, 0, false);
 
         var payload = new MemoryStream();
         int ok = 0;
@@ -238,13 +243,44 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
         return dirName.StartsWith("session-") ? dirName["session-".Length..] : dirName;
     }
 
+    /// <summary>
+    /// Per session dir, if multiple logs exist pick one: newest mtime, then higher .vN, then prefer .zstd (TokenTracker).
+    /// </summary>
+    internal static string? PickSessionLog(string sessionDir)
+    {
+        if (!Directory.Exists(sessionDir)) return null;
+        var candidates = new List<(string Path, DateTime MtimeUtc, int Version, bool IsZstd)>();
+        foreach (var path in Directory.EnumerateFiles(sessionDir))
+        {
+            var name = Path.GetFileName(path);
+            if (!SessionLogName.IsMatch(name)) continue;
+            var mtime = File.GetLastWriteTimeUtc(path);
+            var ver = 0;
+            var vm = Regex.Match(name, @"\.v(\d+)\.jsonl", RegexOptions.IgnoreCase);
+            if (vm.Success) int.TryParse(vm.Groups[1].Value, out ver);
+            var isZstd = name.EndsWith(".zstd", StringComparison.OrdinalIgnoreCase);
+            candidates.Add((path, mtime, ver, isZstd));
+        }
+        if (candidates.Count == 0) return null;
+        if (candidates.Count == 1) return candidates[0].Path;
+        candidates.Sort((a, b) =>
+        {
+            var c = b.MtimeUtc.CompareTo(a.MtimeUtc);
+            if (c != 0) return c;
+            c = b.Version.CompareTo(a.Version);
+            if (c != 0) return c;
+            return (b.IsZstd ? 1 : 0).CompareTo(a.IsZstd ? 1 : 0);
+        });
+        return candidates[0].Path;
+    }
+
     private static string? FindFile(string id)
     {
         if (!Directory.Exists(Root)) return null;
         foreach (var dir in Directory.EnumerateDirectories(Root))
             foreach (var sessionDir in Directory.EnumerateDirectories(dir))
                 if (NormalizeSessionId(Path.GetFileName(sessionDir)) == id.ToLowerInvariant())
-                    return Path.Combine(sessionDir, SessionFile);
+                    return PickSessionLog(sessionDir);
         return null;
     }
 
@@ -266,7 +302,7 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
                 var root = doc.RootElement;
                 if (!root.TryGetProperty("type", out var typeEl)) continue;
                 var type = typeEl.GetString();
-                if (type == "session")
+                if (type is "session" or "session/start")
                 {
                     cwd = CodexProvider.GetString(root, "cwd") ?? cwd;
                     continue;
@@ -277,7 +313,7 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
                     title = CodexProvider.GetString(data, "title") ?? CodexProvider.GetString(data, "text") ?? title;
                     continue;
                 }
-                if (type is "user/message" or "assistant/message")
+                if (type is "user/message" or "assistant/message" or "message/user" or "message/assistant")
                 {
                     count++;
                     if (root.TryGetProperty("time", out var tEl) && tEl.TryGetInt64(out var ms))

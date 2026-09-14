@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-09-11",
+  "updatedAt": "2026-09-14",
   "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced: auto/unknown/agent_review; mimo-x-*-preview (closed beta, no public list price). codex-auto-review aliases to gpt-5.6-luna (OpenAI auto-review backend since ~2026-07); stealth/ox-alpha aliases to GLM-5.3-Flash. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
   "prices": [
     {
@@ -209,6 +209,14 @@
       "outputPer1m": 30.0,
       "currency": "USD",
       "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "gpt-6-astra",
+      "inputPer1m": 10.0,
+      "outputPer1m": 50.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0,
+      "cacheWritePer1m": 12.5
     },
     {
       "model": "claude-sonnet-4-6",

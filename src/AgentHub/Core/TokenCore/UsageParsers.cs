@@ -217,13 +217,14 @@ public static class UsageParsers
     }
 
     // ------------------------------------------------------------------
-    // DSH：assistant/chunk 的 usage（每请求增量）；同 (turn,step) 取末条
-    // （assistant/message.data.usage 是镜像，再加翻倍）；inputTokens 不含缓存原样用。
+    // DSH: legacy assistant/chunk.usage + v3 assistant/message|message/assistant.data.usage;
+    // same request key (seq preferred, else turn:step) keeps last. inputTokens excludes cache as-is;
+    // reasoningTokens -> ReasoningTokens, NOT folded into OutputTokens (TokenTracker disjoint columns).
     // ------------------------------------------------------------------
 
     public static IEnumerable<UsageRecord> ParseDsh(string plainText, string sessionId, string? project)
     {
-        var lastByStep = new List<(int Turn, int Step, long In, long Out, long Cached, long CacheWrite, string? Model, long TsMs)>();
+        var lastByKey = new Dictionary<string, (long In, long Out, long Cached, long CacheWrite, long Reasoning, string? Model, long TsMs)>(StringComparer.Ordinal);
         bool isSubagent = false;
         string? currentModel = null;
         var cwd = project;
@@ -239,57 +240,95 @@ public static class UsageParsers
             {
                 var root = doc.RootElement;
                 var type = GetStr(root, "type");
-                if (type == "session")
+                if (type is "session" or "session/start")
                 {
-                    isSubagent = GetNum(root, "delegationDepth") > 0;
-                    cwd ??= GetStr(root, "cwd");
+                    isSubagent = GetNum(root, "delegationDepth") > 0
+                        || GetNum(GetObj(root, "data"), "delegationDepth") > 0;
+                    cwd ??= GetStr(root, "cwd") ?? GetStr(GetObj(root, "data"), "cwd");
                     continue;
                 }
-                // 模型写在 request/header.data.header.config.model，不在 usage chunk 上
                 if (type == "request/header")
                 {
                     var header = GetObj(GetObj(root, "data"), "header");
                     var config = GetObj(header, "config");
-                    currentModel = GetStr(config, "model") ?? currentModel;
+                    currentModel = StripModelPath(GetStr(config, "model")) ?? currentModel;
                     continue;
                 }
-                if (type != "assistant/chunk") continue;
-                var data = GetObj(root, "data");
-                if (data is null) continue;
-                var chunk = GetObj(data, "chunk");
-                if (chunk is null || GetStr(chunk, "type") != "usage") continue;
-                var usage = GetObj(chunk, "usage");
-                if (usage is null) continue;
 
-                long turn = GetNum(data, "turn"), step = GetNum(data, "step");
-                long ts = GetNum(root, "time") != 0 ? GetNum(root, "time") : GetNum(root, "time0");
-                var model = GetStr(data, "model") ?? GetStr(chunk, "model") ?? currentModel;
-                lastByStep.RemoveAll(x => x.Turn == turn && x.Step == step);
-                lastByStep.Add(((int)turn, (int)step,
-                    GetInt(usage, "inputTokens") + GetInt(usage, "input_tokens"),
-                    GetInt(usage, "outputTokens") + GetInt(usage, "output_tokens"),
-                    GetInt(usage, "cacheReadTokens") + GetInt(usage, "cache_read_tokens"),
-                    GetInt(usage, "cacheWriteTokens") + GetInt(usage, "cacheCreationTokens")
-                        + GetInt(usage, "cache_write_tokens") + GetInt(usage, "cache_creation_tokens"),
-                    model, ts));
+                long seq = GetNum(root, "seq");
+                var dataEl = GetObj(root, "data");
+                long ts = GetNum(root, "time") != 0 ? GetNum(root, "time")
+                    : GetNum(root, "timestamp") != 0 ? GetNum(root, "timestamp")
+                    : GetNum(dataEl, "time") != 0 ? GetNum(dataEl, "time")
+                    : GetNum(dataEl, "timestamp");
+                if (ts == 0) ts = GetNum(root, "time0");
+
+                if (type == "assistant/chunk")
+                {
+                    if (dataEl is null) continue;
+                    var chunk = GetObj(dataEl, "chunk");
+                    if (chunk is null || GetStr(chunk, "type") != "usage") continue;
+                    var usage = GetObj(chunk, "usage");
+                    if (usage is null) continue;
+
+                    long turn = GetNum(dataEl, "turn"), step = GetNum(dataEl, "step");
+                    var key = seq > 0 ? seq.ToString() : $"{turn}:{step}";
+                    var model = StripModelPath(GetStr(dataEl, "model") ?? GetStr(chunk, "model") ?? currentModel);
+                    lastByKey[key] = (
+                        GetInt(usage, "inputTokens") + GetInt(usage, "input_tokens"),
+                        GetInt(usage, "outputTokens") + GetInt(usage, "output_tokens"),
+                        GetInt(usage, "cacheReadTokens") + GetInt(usage, "cache_read_tokens"),
+                        GetInt(usage, "cacheWriteTokens") + GetInt(usage, "cacheCreationTokens")
+                            + GetInt(usage, "cache_write_tokens") + GetInt(usage, "cache_creation_tokens"),
+                        GetInt(usage, "reasoningTokens") + GetInt(usage, "reasoning_tokens"),
+                        model, ts);
+                    continue;
+                }
+
+                // v3: assistant/message or message/assistant; usage under data.usage
+                if (type is not ("assistant/message" or "message/assistant")) continue;
+                {
+                    var usage = GetObj(dataEl, "usage") ?? GetObj(root, "usage");
+                    if (usage is null) continue;
+
+                    var msg = GetObj(dataEl, "message");
+                    var source = GetObj(msg, "source");
+                    var model = StripModelPath(
+                        GetStr(source, "model") ?? GetStr(dataEl, "model") ?? currentModel);
+
+                    long turn = GetNum(dataEl, "turn"), step = GetNum(dataEl, "step");
+                    var key = seq > 0 ? seq.ToString()
+                        : (turn != 0 || step != 0) ? $"{turn}:{step}"
+                        : $"msg:{lastByKey.Count}";
+
+                    lastByKey[key] = (
+                        GetInt(usage, "inputTokens") + GetInt(usage, "input_tokens"),
+                        GetInt(usage, "outputTokens") + GetInt(usage, "output_tokens"),
+                        GetInt(usage, "cacheReadTokens") + GetInt(usage, "cache_read_tokens"),
+                        GetInt(usage, "cacheWriteTokens") + GetInt(usage, "cacheCreationTokens")
+                            + GetInt(usage, "cache_write_tokens") + GetInt(usage, "cache_creation_tokens"),
+                        GetInt(usage, "reasoningTokens") + GetInt(usage, "reasoning_tokens"),
+                        model, ts);
+                }
             }
         }
 
-        foreach (var s in lastByStep)
+        foreach (var (key, s) in lastByKey)
         {
-            if (s.In == 0 && s.Out == 0 && s.Cached == 0 && s.CacheWrite == 0) continue;
+            if (s.In == 0 && s.Out == 0 && s.Cached == 0 && s.CacheWrite == 0 && s.Reasoning == 0) continue;
             if (s.TsMs == 0) continue;
-            var ts = DateTimeOffset.FromUnixTimeMilliseconds(s.TsMs).UtcDateTime;
+            var tsUtc = DateTimeOffset.FromUnixTimeMilliseconds(s.TsMs).UtcDateTime;
             yield return new UsageRecord
             {
                 Tool = "dsh",
                 SessionId = sessionId,
-                RequestKey = $"{s.Turn}:{s.Step}",
-                TsUtc = ts,
+                RequestKey = key,
+                TsUtc = tsUtc,
                 InputTokens = s.In,
                 OutputTokens = s.Out,
                 CachedInputTokens = s.Cached,
                 CacheWriteTokens = s.CacheWrite,
+                ReasoningTokens = s.Reasoning,
                 IsSubagent = isSubagent,
                 Model = s.Model ?? "unknown",
                 Project = cwd,
@@ -297,7 +336,14 @@ public static class UsageParsers
         }
     }
 
-    // ------------------------------------------------------------------
+    /// <summary>provider/model -> model (TokenTracker normalizeDshModelName).</summary>
+    private static string? StripModelPath(string? model)
+    {
+        if (string.IsNullOrWhiteSpace(model)) return null;
+        var t = model.Trim();
+        var slash = t.LastIndexOf('/');
+        return slash >= 0 ? t[(slash + 1)..] : t;
+    }
     // Cursor CSV：GET cursor.com/api/dashboard/export-usage-events-csv?strategy=tokens
     // 按表头名取列（列序会变）。四列并列：Input (w/o Cache Write)=净新增，
     // Input (w/ Cache Write)=cache write（不是合计，禁止相减），Cache Read，Output。

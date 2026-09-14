@@ -591,8 +591,8 @@ public sealed class TokenService
         foreach (var dir in Directory.EnumerateDirectories(root))
             foreach (var sessionDir in Directory.EnumerateDirectories(dir))
             {
-                var file = Path.Combine(sessionDir, "session.jsonl.zstd");
-                if (!File.Exists(file)) continue;
+                var file = DshProvider.PickSessionLog(sessionDir);
+                if (file is null) continue;
                 yield return (file, DshProvider.NormalizeSessionId(Path.GetFileName(sessionDir)), null);
             }
     }

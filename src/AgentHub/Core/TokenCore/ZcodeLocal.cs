@@ -104,7 +104,8 @@ internal static class ZcodeLocal
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT logical_request_id, session_id, model_id, started_at, completed_at,
-                   input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens
+                   input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens,
+                   reasoning_tokens
             FROM model_usage
             WHERE status = 'completed'
             """;
@@ -126,7 +127,10 @@ internal static class ZcodeLocal
             var output = ReadLong(r, 6);
             var cacheRead = ReadLong(r, 7);
             var cacheWrite = ReadLong(r, 8);
+            var reasoning = ReadLong(r, 9);
+            // TT v0.96.0 inclusive-token correction: ZCode input includes cache read AND write.
             var netIn = cacheRead > 0 && cacheRead <= input ? input - cacheRead : input;
+            if (cacheWrite > 0 && cacheWrite <= netIn) netIn -= cacheWrite;
 
             list.Add(new UsageRecord
             {
@@ -138,6 +142,7 @@ internal static class ZcodeLocal
                 OutputTokens = output,
                 CachedInputTokens = cacheRead,
                 CacheWriteTokens = cacheWrite,
+                ReasoningTokens = reasoning,
                 Model = model,
             });
         }
