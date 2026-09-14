@@ -106,17 +106,52 @@ public sealed class GithubApiUpdateSource : IUpdateSource
             catch (Exception) { /* 下一个地址 */ }
         }
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, ApiLatest);
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(15));
-        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
-        var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
-        if (string.IsNullOrWhiteSpace(tag)) return null;
-        return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, ApiLatest);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(15));
+            using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
+            if (resp.IsSuccessStatusCode)
+            {
+                await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
+                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
+                var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(tag))
+                    return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
+            }
+        }
+        catch (Exception) { /* 回落到 releases 列表按版本号取最大 */ }
+
+        using var listReq = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
+        listReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        using var listCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        listCts.CancelAfter(TimeSpan.FromSeconds(15));
+        using var listResp = await Http.SendAsync(listReq, listCts.Token).ConfigureAwait(false);
+        listResp.EnsureSuccessStatusCode();
+        await using var listStream = await listResp.Content.ReadAsStreamAsync(listCts.Token).ConfigureAwait(false);
+        using var listDoc = await JsonDocument.ParseAsync(listStream, cancellationToken: listCts.Token).ConfigureAwait(false);
+        string? best = null;
+        Version? bestVer = null;
+        foreach (var rel in listDoc.RootElement.EnumerateArray())
+        {
+            if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
+                continue;
+            var tag = rel.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
+            if (string.IsNullOrWhiteSpace(tag)) continue;
+            var norm = tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
+            var core = norm;
+            var cut = core.IndexOfAny(['-', '+']);
+            if (cut >= 0) core = core[..cut];
+            if (!Version.TryParse(core, out var ver)) continue;
+            if (bestVer is null || ver > bestVer)
+            {
+                bestVer = ver;
+                best = norm;
+            }
+        }
+        return best;
     }
 
     static async Task<string?> ReadVersionManifestAsync(string url, CancellationToken ct)
@@ -281,11 +316,11 @@ public sealed class GiteeApiUpdateSource : IUpdateSource
                 await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
                 using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
                 var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
-                if (!string.IsNullOrWhiteSpace(tag))
-                    return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
+                var normalized = NormalizeReleaseTag(tag);
+                if (normalized is not null) return normalized;
             }
         }
-        catch (Exception) { /* 回落到列表首个非预发布 */ }
+        catch (Exception) { /* 回落到 releases 列表，按版本号取最大 */ }
 
         using var listReq = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
         using var listCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -294,15 +329,41 @@ public sealed class GiteeApiUpdateSource : IUpdateSource
         listResp.EnsureSuccessStatusCode();
         await using var listStream = await listResp.Content.ReadAsStreamAsync(listCts.Token).ConfigureAwait(false);
         using var listDoc = await JsonDocument.ParseAsync(listStream, cancellationToken: listCts.Token).ConfigureAwait(false);
-        foreach (var rel in listDoc.RootElement.EnumerateArray())
+        // Gitee 列表不保证新到旧，不能取第一个。
+        return PickNewestReleaseTag(listDoc.RootElement);
+    }
+
+    static string? NormalizeReleaseTag(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return null;
+        var t = tag.Trim();
+        if (t.StartsWith('v') || t.StartsWith('V')) t = t[1..];
+        return string.IsNullOrWhiteSpace(t) ? null : t;
+    }
+
+    /// <summary>从 releases JSON 数组里按 Version 取最大非预发布 tag（去掉 v 前缀）。</summary>
+    static string? PickNewestReleaseTag(JsonElement releases)
+    {
+        if (releases.ValueKind != JsonValueKind.Array) return null;
+        string? best = null;
+        Version? bestVer = null;
+        foreach (var rel in releases.EnumerateArray())
         {
             if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
                 continue;
-            var tag = rel.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
-            if (string.IsNullOrWhiteSpace(tag)) continue;
-            return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
+            var tag = NormalizeReleaseTag(rel.TryGetProperty("tag_name", out var t) ? t.GetString() : null);
+            if (tag is null) continue;
+            var core = tag;
+            var cut = core.IndexOfAny(['-', '+']);
+            if (cut >= 0) core = core[..cut];
+            if (!Version.TryParse(core, out var ver)) continue;
+            if (bestVer is null || ver > bestVer)
+            {
+                bestVer = ver;
+                best = tag;
+            }
         }
-        return null;
+        return best;
     }
 
     public async Task<VelopackAssetFeed> FetchFeedAsync(string? channel, CancellationToken ct = default)
@@ -425,12 +486,7 @@ public sealed record UpdateProgressSnapshot
 public static class AppUpdate
 {
     static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(25);
-    static readonly TimeSpan LatestTtl = TimeSpan.FromMinutes(30);
-    static readonly string LatestCachePath = Path.Combine(AgentHubConfig.Dir, "update.latest.json");
-    static readonly object CacheGate = new();
     static readonly object ProgressGate = new();
-    static string? _cachedLatest;
-    static DateTimeOffset _cachedAt;
     static int _busy;
     static UpdateProgressSnapshot _progress = new();
 
@@ -579,18 +635,13 @@ public static class AppUpdate
 
     static async Task<(string? latest, string? error)> ProbeLatestAsync()
     {
-        if (TryReadCache(out var cached, stale: false))
-            return (cached, null);
-
+        // 每次检查都打远端：Gitee 优先，失败再弱回落 GitHub。不再写本地 latest 缓存。
         try
         {
             var latest = await AwaitTimeout(GiteeApiUpdateSource.FetchLatestTagAsync(), CheckTimeout)
                 .ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(latest))
-            {
-                RememberLatest(latest);
                 return (latest, null);
-            }
         }
         catch (Exception)
         {
@@ -602,69 +653,13 @@ public static class AppUpdate
             var latest = await AwaitTimeout(GithubApiUpdateSource.FetchLatestTagAsync(), CheckTimeout)
                 .ConfigureAwait(false);
             if (string.IsNullOrWhiteSpace(latest))
-                return TryReadCache(out cached, stale: true) ? (cached, null) : (null, "没有查到可用版本。");
-            RememberLatest(latest);
+                return (null, "没有查到可用版本。");
             return (latest, null);
         }
         catch (Exception ex)
         {
-            return TryReadCache(out cached, stale: true)
-                ? (cached, null)
-                : (null, Humanize(ex));
+            return (null, Humanize(ex));
         }
-    }
-
-    static bool TryReadCache(out string? latest, bool stale)
-    {
-        lock (CacheGate)
-        {
-            if (_cachedLatest is not null && (stale || DateTimeOffset.UtcNow - _cachedAt < LatestTtl))
-            {
-                latest = _cachedLatest;
-                return true;
-            }
-        }
-
-        try
-        {
-            if (!File.Exists(LatestCachePath)) { latest = null; return false; }
-            using var doc = JsonDocument.Parse(File.ReadAllText(LatestCachePath));
-            var tag = doc.RootElement.TryGetProperty("latest", out var l) ? l.GetString() : null;
-            var at = doc.RootElement.TryGetProperty("fetchedAt", out var t) &&
-                     DateTimeOffset.TryParse(t.GetString(), out var parsed)
-                ? parsed : DateTimeOffset.MinValue;
-            if (string.IsNullOrWhiteSpace(tag)) { latest = null; return false; }
-            lock (CacheGate)
-            {
-                _cachedLatest = tag;
-                _cachedAt = at;
-            }
-            if (!stale && DateTimeOffset.UtcNow - at >= LatestTtl) { latest = null; return false; }
-            latest = tag;
-            return true;
-        }
-        catch (Exception)
-        {
-            latest = null;
-            return false;
-        }
-    }
-
-    static void RememberLatest(string latest)
-    {
-        var now = DateTimeOffset.UtcNow;
-        lock (CacheGate)
-        {
-            _cachedLatest = latest;
-            _cachedAt = now;
-        }
-        try
-        {
-            Directory.CreateDirectory(AgentHubConfig.Dir);
-            File.WriteAllText(LatestCachePath,
-                "{\"latest\":\"" + latest + "\",\"fetchedAt\":\"" + now.ToString("o") + "\"}");
-        }
-        catch (Exception) { /* 缓存写失败不影响检查结果 */ }
     }
 
     static AppUpdateStatus Compose(bool installed, string? current, string latest)
