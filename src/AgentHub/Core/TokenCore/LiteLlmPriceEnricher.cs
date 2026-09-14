@@ -223,14 +223,14 @@ public static class LiteLlmPriceEnricher
     {
         row = null!;
         if (!rates.TryGetValue(liteKey, out var lite)) return false;
-        if (lite.InputPer1m <= 0 || lite.OutputPer1m is not { } outt || outt <= 0) return false;
-        if (!double.IsFinite(lite.InputPer1m) || !double.IsFinite(outt)) return false;
+        if (lite.InputPer1m <= 0 || lite.OutputPer1m <= 0) return false;
+        if (!double.IsFinite(lite.InputPer1m) || !double.IsFinite(lite.OutputPer1m)) return false;
 
         row = new PriceRow
         {
             Model = modelName,
             InputPer1m = Round(lite.InputPer1m),
-            OutputPer1m = Round(outt),
+            OutputPer1m = Round(lite.OutputPer1m),
             CacheReadPer1m = lite.CacheReadPer1m is { } cr && double.IsFinite(cr) ? Round(cr) : null,
             CacheWritePer1m = lite.CacheWritePer1m is { } cw && double.IsFinite(cw) ? Round(cw) : null,
             Currency = "USD",
