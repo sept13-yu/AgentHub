@@ -125,7 +125,9 @@ function Get-GiteeReleaseByTag([string]$tagName) {
     $encoded = [uri]::EscapeDataString($tagName)
     $r = Invoke-Gitee -Method ([System.Net.Http.HttpMethod]::Get) -PathAndQuery "/releases/tags/$encoded"
     if ($r.Status -eq 200 -and $r.Json -and $r.Json.id) { return $r.Json }
+    # Gitee 对不存在的 tag 可能回 404，也可能 200 + 空 body / 无 id；都按未找到处理，交给创建逻辑。
     if ($r.Status -eq 404) { return $null }
+    if ($r.Status -eq 200 -and (-not $r.Json -or -not $r.Json.id)) { return $null }
     throw "查询 Gitee Release $tagName 失败 (HTTP $($r.Status)): $(Redact (Get-GiteeErrorMessage $r))"
 }
 
