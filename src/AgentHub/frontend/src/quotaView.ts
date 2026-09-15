@@ -13,7 +13,6 @@ export type QuotaTile =
 
 /** remain 条目归属的 Agent 组与短名（同组可多窗拼成一块砖）。 */
 const WINDOW_META: Record<string, { group: string; short: string }> = {
-  'cursor-total': { group: 'cursor', short: '总用量' },
   'cursor-auto': { group: 'cursor', short: 'Auto' },
   'cursor-api': { group: 'cursor', short: 'API' },
   'cursor-grok': { group: 'cursor', short: 'Grok Bot' },
@@ -66,7 +65,7 @@ export function toQuotaTiles(raw: unknown): QuotaTile[] {
       id: meta.group,
       name: AGENT_NAME[meta.group] ?? meta.group,
       color: AGENT_COLOR[meta.group] ?? 'var(--idle)',
-      span: windows.length >= 2 ? 2 : 1,
+      span: meta.group === 'cursor' ? 1 : windows.length >= 2 ? 2 : 1,
       windows,
       plan: subscriptionPlan(str(rec.plan)) || undefined,
     })
