@@ -37,8 +37,12 @@ public partial class MainWindow : Window
         // 首帧主题来自配置而非 localStorage（UI_RULES §7.2）：窗体底、启动层、WebView 底在显示前就位
         _theme = NormalizeTheme(_config.App.Theme);
         ApplyShellTheme(_theme);
+        RestoreWindowBounds();
         SourceInitialized += (_, _) => ApplyTitleBar(dark: !IsLight(_theme));
         Loaded += OnLoaded;
+        SizeChanged += (_, _) => PersistWindowBounds();
+        LocationChanged += (_, _) => PersistWindowBounds();
+        StateChanged += (_, _) => PersistWindowBounds();
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -110,6 +114,7 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(CancelEventArgs e)
     {
+        PersistWindowBounds();
         if (!ReallyExit)
         {
             e.Cancel = true;
@@ -182,6 +187,68 @@ public partial class MainWindow : Window
         Icon = AppIcon.CreateImageSource(light);
         (Application.Current as App)?.ApplyTrayTheme(light);
         ApplyTitleBar(dark: !light);
+    }
+
+
+    private bool _restoringBounds;
+    private bool _persistQueued;
+
+    /// <summary>从 AppSettings 恢复窗口位置/尺寸/最大化，并钳到当前工作区。</summary>
+    private void RestoreWindowBounds()
+    {
+        var app = _config.App;
+        var wa = SystemParameters.WorkArea;
+        _restoringBounds = true;
+        try
+        {
+            var w = app.WindowWidth is > 0 ? app.WindowWidth.Value : Width;
+            var h = app.WindowHeight is > 0 ? app.WindowHeight.Value : Height;
+            w = Math.Clamp(w, MinWidth, Math.Max(MinWidth, wa.Width));
+            h = Math.Clamp(h, MinHeight, Math.Max(MinHeight, wa.Height));
+            Width = w;
+            Height = h;
+
+            if (app.WindowLeft is double left && app.WindowTop is double top)
+            {
+                // 至少露出一截标题栏，避免完全跑出屏幕
+                var minLeft = wa.Left - Math.Max(0, w - 80);
+                var maxLeft = Math.Max(minLeft, wa.Right - Math.Min(w, 80));
+                var minTop = wa.Top - 8;
+                var maxTop = Math.Max(minTop, wa.Bottom - Math.Min(h, 40));
+                Left = Math.Clamp(left, minLeft, maxLeft);
+                Top = Math.Clamp(top, minTop, maxTop);
+                WindowStartupLocation = WindowStartupLocation.Manual;
+            }
+
+            if (app.WindowMaximized)
+                WindowState = WindowState.Maximized;
+        }
+        finally
+        {
+            _restoringBounds = false;
+        }
+    }
+
+    /// <summary>把当前窗口几何写入 AppSettings（最小化时跳过；最大化时存 RestoreBounds）。</summary>
+    private void PersistWindowBounds()
+    {
+        if (_restoringBounds || WindowState == WindowState.Minimized) return;
+        if (_persistQueued) return;
+        _persistQueued = true;
+        Dispatcher.BeginInvoke(() =>
+        {
+            _persistQueued = false;
+            if (_restoringBounds || WindowState == WindowState.Minimized) return;
+            var app = _config.App;
+            var bounds = WindowState == WindowState.Maximized ? RestoreBounds : new Rect(Left, Top, Width, Height);
+            app.WindowWidth = bounds.Width;
+            app.WindowHeight = bounds.Height;
+            app.WindowLeft = bounds.Left;
+            app.WindowTop = bounds.Top;
+            app.WindowMaximized = WindowState == WindowState.Maximized;
+            try { _config.Save(); }
+            catch (Exception) { /* 配置占用时下次再写 */ }
+        }, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     private void ApplyTitleBar(bool dark)

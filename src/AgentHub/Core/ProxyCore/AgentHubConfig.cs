@@ -295,6 +295,16 @@ public sealed class AppSettings
     public string PetSize { get; set; } = "medium";
     /// <summary>壳层与页面首帧主题：dark | light（UI_RULES §7.2）。页面切换经 theme: 消息写回。</summary>
     public string Theme { get; set; } = "dark";
+    /// <summary>主窗口上次宽度；缺省用 XAML 默认 1440。</summary>
+    public double? WindowWidth { get; set; }
+    /// <summary>主窗口上次高度；缺省用 XAML 默认 900。</summary>
+    public double? WindowHeight { get; set; }
+    /// <summary>主窗口上次 Left（屏幕坐标）。</summary>
+    public double? WindowLeft { get; set; }
+    /// <summary>主窗口上次 Top（屏幕坐标）。</summary>
+    public double? WindowTop { get; set; }
+    /// <summary>主窗口是否最大化。</summary>
+    public bool WindowMaximized { get; set; }
 }
 
 /// <summary>AgentHub 配置：落 %APPDATA%\AgentHub\config.json。</summary>

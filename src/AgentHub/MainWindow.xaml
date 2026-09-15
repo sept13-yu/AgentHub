@@ -4,7 +4,7 @@
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="AgentHub"
         Width="1440" Height="900"
-        MinWidth="1280" MinHeight="760"
+        MinWidth="900" MinHeight="600"
         WindowStartupLocation="CenterScreen"
         Background="#18181C">
     <Grid>

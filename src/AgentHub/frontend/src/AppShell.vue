@@ -365,4 +365,15 @@ const nav = [
     margin: calc(var(--sp-4) * -1) calc(var(--sp-4) * -1) 0;
   }
 }
+
+/* 矮屏：内容区滚动优先，避免主栏裁切 */
+@media (max-height: 700px) {
+  .main {
+    padding-top: var(--sp-3);
+    padding-bottom: var(--sp-3);
+  }
+  .stage {
+    overflow: auto;
+  }
+}
 </style>

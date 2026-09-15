@@ -1174,4 +1174,22 @@ button.cost:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* 竖屏 / 很窄：配额卡单列，热力统计与用量区全部堆叠，优先可滚动而非裁切 */
+@media (max-width: 900px) {
+  .qtiles {
+    grid-template-columns: 1fr;
+  }
+  .qtile.span-2 {
+    grid-column: span 1;
+  }
+  .heat-stats {
+    grid-template-columns: 1fr;
+    min-width: 0;
+    flex-basis: 100%;
+  }
+  .split {
+    grid-template-columns: 1fr;
+  }
+}
 </style>
