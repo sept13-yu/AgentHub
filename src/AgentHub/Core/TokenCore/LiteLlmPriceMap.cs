@@ -25,6 +25,9 @@ public static class LiteLlmPriceMap
             ["cursor-grok-4.6-high-fast"] = "xai/grok-4.6",
             ["grok-bot-default"] = "xai/grok-4.6",
 
+            // LiteLLM 仍有 deepseek-v4-flash（含 cache）；openrouter/deepseek/deepseek-v4.1-flash 无 cache 字段时优先旧键做 scale。
+            ["deepseek-v4.1-flash"] = "deepseek-v4-flash",
+            ["deepseek-flash"] = "deepseek-v4-flash",
             ["deepseek-v4.1-flash-expires-on-0910"] = "deepseek-v4-flash",
             ["deepseek-v4-flash"] = "deepseek-v4-flash",
             ["deepseek-v4-flash-vision-exp"] = "deepseek-v4-flash",

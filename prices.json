@@ -129,27 +129,43 @@
       "cacheWritePer1m": 0.0
     },
     {
-      "model": "deepseek-v4.1-flash-expires-on-0910",
-      "inputPer1m": 3.0,
-      "outputPer1m": 9.0,
+      "model": "deepseek-v4.1-flash",
+      "inputPer1m": 1.0,
+      "outputPer1m": 4.0,
       "currency": "CNY",
-      "cacheReadPer1m": 0.095454,
+      "cacheReadPer1m": 0.02,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "deepseek-flash",
+      "inputPer1m": 1.0,
+      "outputPer1m": 4.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.02,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "deepseek-v4.1-flash-expires-on-0910",
+      "inputPer1m": 1.0,
+      "outputPer1m": 4.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.02,
       "cacheWritePer1m": 0.0
     },
     {
       "model": "deepseek-v4-flash",
-      "inputPer1m": 3.0,
-      "outputPer1m": 9.0,
+      "inputPer1m": 1.0,
+      "outputPer1m": 4.0,
       "currency": "CNY",
-      "cacheReadPer1m": 0.095454,
+      "cacheReadPer1m": 0.02,
       "cacheWritePer1m": 0.0
     },
     {
       "model": "deepseek-v4-flash-vision-exp",
-      "inputPer1m": 3.0,
-      "outputPer1m": 9.0,
+      "inputPer1m": 1.0,
+      "outputPer1m": 4.0,
       "currency": "CNY",
-      "cacheReadPer1m": 0.095454,
+      "cacheReadPer1m": 0.02,
       "cacheWritePer1m": 0.0
     },
     {
@@ -162,10 +178,10 @@
     },
     {
       "model": "DeepSeek-V4-Flash 正式版",
-      "inputPer1m": 3.0,
-      "outputPer1m": 9.0,
+      "inputPer1m": 1.0,
+      "outputPer1m": 4.0,
       "currency": "CNY",
-      "cacheReadPer1m": 0.095454,
+      "cacheReadPer1m": 0.02,
       "cacheWritePer1m": 0.0
     },
     {

@@ -17,7 +17,14 @@ public static class PriceAliases
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             // vision-exp 与正式 flash 同价；正式行在表里，别名兜底旧缓存。
-            ["deepseek-v4-flash-vision-exp"] = "deepseek-v4-flash",
+            // DeepSeek V4.1 Flash：官方 API id deepseek-flash；用量名 deepseek-v4.1-flash / expires-on 变体均走 Flash 列表价。
+            ["deepseek-v4.1-flash"] = "deepseek-v4.1-flash",
+            ["deepseek-flash"] = "deepseek-v4.1-flash",
+            ["deepseek-v4.1-flash-expires-on-0910"] = "deepseek-v4.1-flash",
+            // vision-exp / 旧 flash 名已按 Flash 计费；canonical 用列表中的 deepseek-v4.1-flash。
+            ["deepseek-v4-flash-vision-exp"] = "deepseek-v4.1-flash",
+            ["deepseek-v4-flash"] = "deepseek-v4.1-flash",
+            ["DeepSeek-V4-Flash 正式版"] = "deepseek-v4.1-flash",
             ["kimi-k3-1"] = "kimi-k3",
             ["kimi-k3-high"] = "kimi-k3",
             ["kimi-k3-max"] = "kimi-k3",

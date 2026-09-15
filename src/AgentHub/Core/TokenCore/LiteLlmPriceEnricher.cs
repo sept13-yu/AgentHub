@@ -176,7 +176,8 @@ public static class LiteLlmPriceEnricher
 
     /// <summary>
     /// 未上架 AgentHub 列表时的 LiteLLM 原价回退（USD）。
-    /// 查找顺序：精确键 → LiteLlmPriceMap → PriceAliases → 剥离 Cursor 后缀后重试。
+    /// 查找顺序：精确键 → LiteLlmPriceMap → PriceAliases → 剥离 Cursor / expires-on 后缀后重试。
+    /// TryResolveKey 在精确键未命中时还会尝试提供商前缀（见方法内注释）。
     /// 不把全量 LiteLLM 键并入 UI 列表；仅在估价 / HasPrice 路径使用。
     /// </summary>
     public static bool TryGetPrice(string? model, out PriceRow row)
@@ -195,7 +196,7 @@ public static class LiteLlmPriceEnricher
             return true;
 
         var cursor = name;
-        while (TryStripCursorSuffix(cursor, out var next))
+        while (TryStripCursorSuffix(cursor, out var next) || TryStripExpiresOnSuffix(cursor, out next))
         {
             cursor = next;
             if (TryResolveKey(rates, cursor, out row)) return true;
@@ -212,6 +213,72 @@ public static class LiteLlmPriceEnricher
         if (TryMakeRow(rates, name, name, out row)) return true;
         if (LiteLlmPriceMap.TryMap(name, out var key) && TryMakeRow(rates, key, name, out row))
             return true;
+
+        // 提供商前缀回退（精确/映射都未命中时）：
+        // 优先顺序固定，避免随机命中带加价的 reseller：
+        //   1) bare name（上面已试）
+        //   2) deepseek/{name}
+        //   3) openrouter/deepseek/{name}
+        //   4) fireworks_ai/{name}
+        //   5) 任意键 Equals(name) 忽略大小写，或 EndsWith("/{name}")（稳定：按上述前缀偏好再扫一遍）
+        foreach (var prefixed in PrefixedLiteLlmKeys(name))
+        {
+            if (TryMakeRow(rates, prefixed, name, out row)) return true;
+        }
+        if (TryFindPrefixedBySuffix(rates, name, out var foundKey) && TryMakeRow(rates, foundKey, name, out row))
+            return true;
+        return false;
+    }
+
+    /// <summary>固定偏好的提供商前缀键（不含 bare；bare 已在 TryResolveKey 先试）。</summary>
+    private static IEnumerable<string> PrefixedLiteLlmKeys(string name)
+    {
+        yield return "deepseek/" + name;
+        yield return "openrouter/deepseek/" + name;
+        yield return "fireworks_ai/" + name;
+    }
+
+    /// <summary>
+    /// 扫描 rates：先按 PrefixedLiteLlmKeys 偏好匹配 EndsWith(/name)，再任意 /name 后缀，再 Equals(name)。
+    /// </summary>
+    private static bool TryFindPrefixedBySuffix(
+        Dictionary<string, LiteRates> rates,
+        string name,
+        out string foundKey)
+    {
+        foundKey = "";
+        var slashName = "/" + name;
+        foreach (var preferred in PrefixedLiteLlmKeys(name))
+        {
+            if (rates.ContainsKey(preferred))
+            {
+                foundKey = preferred;
+                return true;
+            }
+        }
+        string? anySlash = null;
+        string? anyEquals = null;
+        foreach (var k in rates.Keys)
+        {
+            if (k.Equals(name, StringComparison.OrdinalIgnoreCase))
+            {
+                anyEquals ??= k;
+                continue;
+            }
+            if (k.EndsWith(slashName, StringComparison.OrdinalIgnoreCase))
+                anySlash ??= k;
+        }
+        // Equals 其实已被 TryMakeRow(bare) 覆盖；这里仅兜底大小写变体键。
+        if (anyEquals is not null)
+        {
+            foundKey = anyEquals;
+            return true;
+        }
+        if (anySlash is not null)
+        {
+            foundKey = anySlash;
+            return true;
+        }
         return false;
     }
 
@@ -251,6 +318,23 @@ public static class LiteLlmPriceEnricher
             }
         }
         return false;
+    }
+
+    /// <summary>剥离用量日志里的 -expires-on-MMDD / -expires-on-YYYYMMDD 日期后缀。</summary>
+    private static bool TryStripExpiresOnSuffix(string name, out string stripped)
+    {
+        stripped = name;
+        const string marker = "-expires-on-";
+        var idx = name.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (idx <= 0) return false;
+        var tail = name[(idx + marker.Length)..];
+        if (tail.Length == 0) return false;
+        foreach (var ch in tail)
+        {
+            if (!char.IsDigit(ch)) return false;
+        }
+        stripped = name[..idx];
+        return stripped.Length > 0;
     }
 
     private static bool IsFreshDiskCache()
