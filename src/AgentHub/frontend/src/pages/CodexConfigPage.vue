@@ -424,7 +424,7 @@ onMounted(() => load())
     </section>
 
     <p v-if="status.configBroken" class="usage-error">config.toml 语法损坏，已阻止一切写入。请先在 Codex 中修复该文件。</p>
-    <p v-else-if="status.externalChanged" class="banner">检测到 config.toml 在 AgentHub 之外被修改过（如 CC Switch 或手工编辑）。下次应用连接时会基于最新文件重写受管字段。</p>
+    <p v-else-if="status.externalChanged" class="banner">受管字段与当前生效连接不一致。点「应用连接」会重写这些字段（未受管项保留）；切换账号档案不会动 config.toml。</p>
     <p v-else-if="status.live?.isHybridForm" class="banner">当前 live 是「中转地址 + requires_openai_auth」的混合形态；应用 AgentHub 连接后会重塑为标准形态（中转走命令式认证，官方走登录态）。</p>
 
     <section class="card profile-card">

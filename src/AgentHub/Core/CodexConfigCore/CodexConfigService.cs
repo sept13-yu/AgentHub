@@ -295,7 +295,6 @@ public sealed class CodexConfigService
         try { liveText = ReadLiveText(); }
         catch (InvalidOperationException) { parseBroken = true; }
         var live = CodexToml.Read(liveText);
-        var currentSha = File.Exists(ConfigPath) ? Sha256Hex(File.ReadAllText(ConfigPath)) : null;
         return new CodexStatus
         {
             ProviderId = CodexConnection.FixedProviderId,
@@ -306,8 +305,7 @@ public sealed class CodexConfigService
             LiveProviderMatches = live.ProviderMatches,
             LiveModel = live.Model,
             Live = live,
-            ExternalChanged = State.LiveSha256 is not null && currentSha is not null
-                && !string.Equals(State.LiveSha256, currentSha, StringComparison.Ordinal),
+            ExternalChanged = HasManagedFieldConflict(),
             AuthType = DetectAuthType(),
             CodexRunning = IsCodexRunning(),
             ActiveConnectionId = State.ActiveConnectionId,
@@ -328,6 +326,22 @@ public sealed class CodexConfigService
             liveProviderMatches = live.ProviderMatches,
             liveHybrid = live.IsHybridForm,
         };
+    }
+
+
+    /// <summary>
+    /// 仅当「当前生效连接」的受管字段与 live config.toml 不一致时为 true。
+    /// 文件被 Codex/其他工具改过、但受管字段仍一致时不提示（全文件 hash 差异可忽略）。
+    /// </summary>
+    private bool HasManagedFieldConflict()
+    {
+        if (string.IsNullOrEmpty(State.ActiveConnectionId)) return false;
+        var conn = Connections.FirstOrDefault(c => c.Id == State.ActiveConnectionId);
+        if (conn is null) return false;
+        string? liveText;
+        try { liveText = ReadLiveText(); }
+        catch (InvalidOperationException) { return false; }
+        return CodexToml.Diff(liveText, conn, _exePath).Any(r => r.Change != "keep");
     }
 
     private string? ReadLiveText()
