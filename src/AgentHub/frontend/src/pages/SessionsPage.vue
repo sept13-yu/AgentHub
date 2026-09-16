@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, ref, watch, type Ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NInput, useMessage } from 'naive-ui'
-import { ChevronDown, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
+import { ChevronDown, Cloud, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
 import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
@@ -827,7 +827,7 @@ onMounted(() => { void load() })
                   <span class="sess-title">
                     <AgentMark :id="row.agent" />
                     <b>{{ row.title || '(无标题)' }}</b>
-                    <span v-if="row.agent === 'cursor-cloud'" class="sess-tag">云端</span>
+                    <span v-if="row.agent === 'cursor-cloud'" class="sess-tag is-cloud" title="云端" aria-label="云端"><Cloud :size="12" :stroke-width="1.8" /></span>
                     <span v-if="row.orphanSub" class="sess-tag">子会话</span>
                     <span v-if="row.locked" class="sess-tag is-locked">已锁</span>
                   </span>
@@ -1004,6 +1004,13 @@ onMounted(() => { void load() })
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; min-width: 0;
 }
 .sess-tag { font-size: var(--fs-caption); color: var(--faint); flex: none; }
+.sess-tag.is-cloud {
+  display: inline-grid;
+  place-items: center;
+  width: 1.1em;
+  height: 1.1em;
+  color: var(--dim);
+}
 .icon-quiet {
   width: var(--h-icon-btn); height: var(--h-icon-btn); padding: 0;
   border: 0; background: transparent; color: var(--dim);
