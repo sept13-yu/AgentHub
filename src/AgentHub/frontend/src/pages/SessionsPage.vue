@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, ref, watch, type Ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NInput, useMessage } from 'naive-ui'
-import { ChevronDown, Cloud, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
+import { ChevronDown, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
 import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
@@ -827,7 +827,7 @@ onMounted(() => { void load() })
                   <span class="sess-title">
                     <AgentMark :id="row.agent" />
                     <b>{{ row.title || '(无标题)' }}</b>
-                    <span v-if="row.agent === 'cursor-cloud'" class="sess-tag is-cloud" title="云端" aria-label="云端"><Cloud :size="12" :stroke-width="1.8" /></span>
+                    <span v-if="row.agent === 'cursor-cloud'" class="sess-tag is-cloud" title="云端" aria-label="云端"><svg class="sess-cloud-ico" viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A5.994 5.994 0 0 0 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg></span>
                     <span v-if="row.orphanSub" class="sess-tag">子会话</span>
                     <span v-if="row.locked" class="sess-tag is-locked">已锁</span>
                   </span>
@@ -1007,10 +1007,14 @@ onMounted(() => { void load() })
 .sess-tag.is-cloud {
   display: inline-grid;
   place-items: center;
-  width: 1.1em;
-  height: 1.1em;
-  color: var(--dim);
+  flex: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  color: var(--src-cursor);
+  background: color-mix(in srgb, var(--src-cursor) 22%, transparent);
 }
+.sess-cloud-ico { display: block; }
 .icon-quiet {
   width: var(--h-icon-btn); height: var(--h-icon-btn); padding: 0;
   border: 0; background: transparent; color: var(--dim);
