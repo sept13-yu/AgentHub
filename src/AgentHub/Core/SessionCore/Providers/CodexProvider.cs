@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Data.Sqlite;
 using AgentHub.Core.TokenCore;
 
 namespace AgentHub.Core.SessionCore.Providers;
@@ -369,8 +370,9 @@ internal static class CodexThreadNames
     }
 }
 
-/// <summary>Codex Desktop 删除后残留：session_index.jsonl 侧栏标题 + .codex-global-state.json 按会话 id 清理。
-/// 对标 ZcodeProvider.DeleteLeftovers；写 global-state 前最好退出 Codex，避免被内存态覆盖。</summary>
+/// <summary>Codex Desktop 删除后残留：session_index.jsonl + state_5.sqlite 侧栏 threads +
+/// thread_history_1.sqlite + .codex-global-state.json。对标 ZcodeProvider.DeleteLeftovers；
+/// 写 sqlite / global-state 前最好退出 Codex，避免被内存态覆盖或文件锁。</summary>
 internal static class CodexDesktopCleanup
 {
     private static readonly System.Text.RegularExpressions.Regex UuidInText = new(
@@ -409,14 +411,17 @@ internal static class CodexDesktopCleanup
         return false;
     }
 
-    /// <summary>删索引行 + 尽力 scrub global-state。任一侧有改动即 true。</summary>
+    /// <summary>删索引行 + state_5/history sqlite 线程行 + 尽力 scrub global-state。任一侧有改动返回 true。</summary>
     public static bool RemoveLeftovers(string id)
     {
         var changed = RemoveFromSessionIndex(id);
+        if (RemoveFromSqlite(id))
+            changed = true;
         if (ScrubGlobalState(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }))
             changed = true;
         return changed;
     }
+
 
     /// <summary>扫 session_index 中无对应 jsonl 的孤儿，清理索引与 global-state。返回清掉的索引条数。</summary>
     public static int SweepOrphanLeftovers()
@@ -451,6 +456,13 @@ internal static class CodexDesktopCleanup
             }
             if (removed > 0)
                 WriteIndex(kept);
+        }
+        // Codex 桌面侧栏现以 state_5.sqlite threads 为准；jsonl 已删但 sqlite 仍在会幽灵显示
+        foreach (var orphanId in ListSqliteOrphanThreadIds())
+        {
+            orphans.Add(orphanId);
+            if (RemoveFromSqlite(orphanId))
+                removed++;
         }
         if (orphans.Count > 0)
             ScrubGlobalState(orphans);
@@ -511,6 +523,152 @@ internal static class CodexDesktopCleanup
             }
         }
         return live;
+    }
+
+    private static string StateDbPath => Path.Combine(Home, "state_5.sqlite");
+    private static string HistoryDbPath => Path.Combine(Home, "thread_history_1.sqlite");
+
+    /// <summary>从 state_5.sqlite / thread_history_1.sqlite 按 thread id（及 rollout_path 含 id）删除。
+    /// 缺库、锁住、表不存在时吞掉异常返回 false，不阻断删 jsonl / 索引。</summary>
+    public static bool RemoveFromSqlite(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return false;
+        var changed = false;
+        try
+        {
+            if (RemoveFromStateDb(id)) changed = true;
+        }
+        catch
+        {
+            /* locked / missing / schema drift */
+        }
+        try
+        {
+            if (RemoveFromHistoryDb(id)) changed = true;
+        }
+        catch
+        {
+            /* locked / missing / schema drift */
+        }
+        return changed;
+    }
+
+    private static bool RemoveFromStateDb(string id)
+    {
+        if (!File.Exists(StateDbPath)) return false;
+        using var conn = OpenWrite(StateDbPath);
+        using var tx = conn.BeginTransaction();
+        var removed = 0;
+        removed += ExecDelete(conn, tx,
+            "DELETE FROM thread_artifacts WHERE thread_id = $id", id);
+        removed += ExecDelete(conn, tx,
+            "DELETE FROM thread_dynamic_tools WHERE thread_id = $id", id);
+        removed += ExecDelete(conn, tx,
+            """
+            DELETE FROM thread_spawn_edges
+            WHERE parent_thread_id = $id OR child_thread_id = $id
+            """, id);
+        // 主表：精确 id，或 rollout_path 含该 uuid（路径里带线程 id）
+        removed += ExecDelete(conn, tx,
+            """
+            DELETE FROM threads
+            WHERE id = $id
+               OR instr(lower(coalesce(rollout_path, '')), lower($id)) > 0
+            """, id);
+        tx.Commit();
+        return removed > 0;
+    }
+
+    private static bool RemoveFromHistoryDb(string id)
+    {
+        if (!File.Exists(HistoryDbPath)) return false;
+        using var conn = OpenWrite(HistoryDbPath);
+        using var tx = conn.BeginTransaction();
+        var removed = 0;
+        foreach (var sql in new[]
+                 {
+                     "DELETE FROM thread_turns WHERE thread_id = $id",
+                     "DELETE FROM thread_items WHERE thread_id = $id",
+                     "DELETE FROM thread_realtime_items WHERE thread_id = $id",
+                     "DELETE FROM thread_history_projection_state WHERE thread_id = $id",
+                 })
+        {
+            removed += ExecDelete(conn, tx, sql, id);
+        }
+        tx.Commit();
+        return removed > 0;
+    }
+
+    /// <summary>state_5.threads 中 rollout_path 文件已不存在（或为空）的线程 id。</summary>
+    private static List<string> ListSqliteOrphanThreadIds()
+    {
+        var orphans = new List<string>();
+        if (!File.Exists(StateDbPath)) return orphans;
+        try
+        {
+            using var conn = OpenWrite(StateDbPath);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT id, rollout_path FROM threads";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var tid = r.IsDBNull(0) ? null : r.GetString(0);
+                if (string.IsNullOrEmpty(tid)) continue;
+                var rollout = r.IsDBNull(1) ? null : r.GetString(1);
+                if (RolloutFileExists(rollout)) continue;
+                orphans.Add(tid);
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+        return orphans;
+    }
+
+    private static bool RolloutFileExists(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        var p = path;
+        if (p.StartsWith(@"\\?\", StringComparison.Ordinal)) p = p[4..];
+        else if (p.StartsWith("//?/", StringComparison.Ordinal)) p = p[4..];
+        try { return File.Exists(p); }
+        catch { return false; }
+    }
+
+    private static SqliteConnection OpenWrite(string path)
+    {
+        var cs = new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadWrite,
+            Pooling = false,
+        };
+        var conn = new SqliteConnection(cs.ToString());
+        conn.Open();
+        using (var pragma = conn.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA foreign_keys=ON";
+            pragma.ExecuteNonQuery();
+        }
+        return conn;
+    }
+
+    private static int ExecDelete(SqliteConnection conn, SqliteTransaction tx, string sql, string id)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
+        cmd.CommandText = sql;
+        cmd.Parameters.AddWithValue("$id", id);
+        try
+        {
+            return cmd.ExecuteNonQuery();
+        }
+        catch (SqliteException)
+        {
+            // 表不存在等：忽略单条，继续其余
+            return 0;
+        }
     }
 
     /// <summary>按会话 UUID 清理 .codex-global-state.json：删含该 id 的键、值为该 id 的属性、数组中的 id 项。
