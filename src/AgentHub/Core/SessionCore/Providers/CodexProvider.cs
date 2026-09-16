@@ -371,8 +371,8 @@ internal static class CodexThreadNames
 }
 
 /// <summary>Codex Desktop 删除后残留：session_index.jsonl + state_5.sqlite 侧栏 threads +
-/// thread_history_1.sqlite + .codex-global-state.json。对标 ZcodeProvider.DeleteLeftovers；
-/// 写 sqlite / global-state 前最好退出 Codex，避免被内存态覆盖或文件锁。</summary>
+/// sqlite/codex-dev.db（local_thread_catalog）+ thread_history_1.sqlite + .codex-global-state.json。
+/// 对照 ZcodeProvider.DeleteLeftovers；写 sqlite / global-state 前最好退出 Codex，避免被内存态覆盖或文件锁。</summary>
 internal static class CodexDesktopCleanup
 {
     private static readonly System.Text.RegularExpressions.Regex UuidInText = new(
@@ -457,10 +457,16 @@ internal static class CodexDesktopCleanup
             if (removed > 0)
                 WriteIndex(kept);
         }
-        // Codex 桌面侧栏现以 state_5.sqlite threads 为准；jsonl 已删但 sqlite 仍在会幽灵显示
+        // Codex 桌面侧栏现以 state_5.sqlite threads / codex-dev.db catalog 为准；jsonl 已删但仍残留会幽灵显示
         foreach (var orphanId in ListSqliteOrphanThreadIds())
         {
             orphans.Add(orphanId);
+            if (RemoveFromSqlite(orphanId))
+                removed++;
+        }
+        foreach (var orphanId in ListDevCatalogOrphanThreadIds())
+        {
+            if (!orphans.Add(orphanId)) continue;
             if (RemoveFromSqlite(orphanId))
                 removed++;
         }
@@ -526,9 +532,12 @@ internal static class CodexDesktopCleanup
     }
 
     private static string StateDbPath => Path.Combine(Home, "state_5.sqlite");
+    private static string NestedStateDbPath => Path.Combine(Home, "sqlite", "state_5.sqlite");
     private static string HistoryDbPath => Path.Combine(Home, "thread_history_1.sqlite");
+    /// <summary>Codex Desktop 侧栏目录：~/.codex/sqlite/codex-dev.db（local_thread_catalog）。</summary>
+    private static string DevCatalogDbPath => Path.Combine(Home, "sqlite", "codex-dev.db");
 
-    /// <summary>从 state_5.sqlite / thread_history_1.sqlite 按 thread id（及 rollout_path 含 id）删除。
+    /// <summary>从 state_5.sqlite / thread_history_1.sqlite / codex-dev.db 按 thread id（及 rollout_path 含 id）删除。
     /// 缺库、锁住、表不存在时吞掉异常返回 false，不阻断删 jsonl / 索引。</summary>
     public static bool RemoveFromSqlite(string id)
     {
@@ -544,7 +553,23 @@ internal static class CodexDesktopCleanup
         }
         try
         {
+            if (RemoveFromNestedStateDb(id)) changed = true;
+        }
+        catch
+        {
+            /* locked / missing / schema drift */
+        }
+        try
+        {
             if (RemoveFromHistoryDb(id)) changed = true;
+        }
+        catch
+        {
+            /* locked / missing / schema drift */
+        }
+        try
+        {
+            if (RemoveFromDevCatalogDb(id)) changed = true;
         }
         catch
         {
@@ -599,6 +624,82 @@ internal static class CodexDesktopCleanup
         return removed > 0;
     }
 
+    /// <summary>旧版嵌套库 ~/.codex/sqlite/state_5.sqlite（无 projects 表），按同 schema 尽力清理。</summary>
+    private static bool RemoveFromNestedStateDb(string id)
+    {
+        if (!File.Exists(NestedStateDbPath)) return false;
+        // 与根目录 state_5 指向同一文件时跳过，避免重复删
+        try
+        {
+            if (File.Exists(StateDbPath)
+                && string.Equals(
+                    Path.GetFullPath(NestedStateDbPath),
+                    Path.GetFullPath(StateDbPath),
+                    StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        catch { }
+
+        using var conn = OpenWrite(NestedStateDbPath);
+        using var tx = conn.BeginTransaction();
+        var removed = 0;
+        removed += ExecDelete(conn, tx,
+            "DELETE FROM thread_dynamic_tools WHERE thread_id = $id", id);
+        removed += ExecDelete(conn, tx,
+            """
+            DELETE FROM thread_spawn_edges
+            WHERE parent_thread_id = $id OR child_thread_id = $id
+            """, id);
+        removed += ExecDelete(conn, tx,
+            """
+            DELETE FROM threads
+            WHERE id = $id
+               OR instr(lower(coalesce(rollout_path, '')), lower($id)) > 0
+            """, id);
+        tx.Commit();
+        return removed > 0;
+    }
+
+    /// <summary>Desktop 侧栏 catalog：local_thread_catalog + 相关 thread_id 表；revision +1。</summary>
+    private static bool RemoveFromDevCatalogDb(string id)
+    {
+        if (!File.Exists(DevCatalogDbPath)) return false;
+        using var conn = OpenWrite(DevCatalogDbPath);
+        using var tx = conn.BeginTransaction();
+        var removed = 0;
+        foreach (var sql in new[]
+                 {
+                     "DELETE FROM local_thread_catalog_scan_entries WHERE thread_id = $id",
+                     "DELETE FROM thread_timeline_ledger WHERE thread_id = $id",
+                     "DELETE FROM inbox_items WHERE thread_id = $id",
+                     "DELETE FROM automation_runs WHERE thread_id = $id",
+                     "DELETE FROM automations WHERE target_thread_id = $id",
+                     "DELETE FROM local_thread_catalog WHERE thread_id = $id",
+                 })
+        {
+            removed += ExecDelete(conn, tx, sql, id);
+        }
+
+        if (removed > 0)
+        {
+            try
+            {
+                using var bump = conn.CreateCommand();
+                bump.Transaction = tx;
+                bump.CommandText =
+                    "UPDATE local_thread_catalog_metadata SET catalog_revision = catalog_revision + 1 WHERE id = 1";
+                bump.ExecuteNonQuery();
+            }
+            catch (SqliteException)
+            {
+                /* metadata 表缺失则忽略 */
+            }
+        }
+
+        tx.Commit();
+        return removed > 0;
+    }
+
     /// <summary>state_5.threads 中 rollout_path 文件已不存在（或为空）的线程 id。</summary>
     private static List<string> ListSqliteOrphanThreadIds()
     {
@@ -616,6 +717,33 @@ internal static class CodexDesktopCleanup
                 if (string.IsNullOrEmpty(tid)) continue;
                 var rollout = r.IsDBNull(1) ? null : r.GetString(1);
                 if (RolloutFileExists(rollout)) continue;
+                orphans.Add(tid);
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+        return orphans;
+    }
+
+    /// <summary>codex-dev.db local_thread_catalog 中无对应 sessions/*.jsonl 的幽灵 thread id。</summary>
+    private static List<string> ListDevCatalogOrphanThreadIds()
+    {
+        var orphans = new List<string>();
+        if (!File.Exists(DevCatalogDbPath)) return orphans;
+        try
+        {
+            var live = LiveSessionIds();
+            using var conn = OpenWrite(DevCatalogDbPath);
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT thread_id FROM local_thread_catalog";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var tid = r.IsDBNull(0) ? null : r.GetString(0);
+                if (string.IsNullOrEmpty(tid)) continue;
+                if (live.Contains(tid)) continue;
                 orphans.Add(tid);
             }
         }
