@@ -146,11 +146,22 @@ public sealed class SessionService
         var list = new List<(string Id, string Name)>();
         foreach (var id in _config.Dashboard.ResolvedAgentOrder())
         {
+            // 云端并进「Cursor」筛选项，不单独占一个 chip
+            if (id.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (id.Equals("cursor", StringComparison.OrdinalIgnoreCase))
+            {
+                var localOk = ok.Contains("cursor")
+                    && Cursor.MissingReason is null
+                    && _config.Dashboard.SessionReadable("cursor");
+                var cloudOk = ok.Contains("cursor-cloud")
+                    && CursorCloud.MissingReason is null
+                    && _config.Dashboard.SessionReadable("cursor-cloud");
+                if (!localOk && !cloudOk) continue;
+                list.Add(("cursor", DashboardSettings.AgentDisplayName("cursor")));
+                continue;
+            }
             if (!ok.Contains(id) || !_config.Dashboard.SessionReadable(id)) continue;
-            if (id.Equals("cursor", StringComparison.OrdinalIgnoreCase) && Cursor.MissingReason is not null)
-                continue;
-            if (id.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase) && CursorCloud.MissingReason is not null)
-                continue;
             list.Add((id, DashboardSettings.AgentDisplayName(id)));
         }
         return list;

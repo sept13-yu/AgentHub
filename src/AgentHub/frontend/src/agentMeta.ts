@@ -40,7 +40,7 @@ export const AGENT_NAME: Record<string, string> = {
   workbuddy: 'WorkBuddy',
   zcode: 'ZCode',
   cursor: 'Cursor',
-  'cursor-cloud': 'Cursor 云端',
+  'cursor-cloud': 'Cursor · 云端',
   codex: 'Codex',
   mimocode: 'MiMo',
   relay: 'Sub2API',

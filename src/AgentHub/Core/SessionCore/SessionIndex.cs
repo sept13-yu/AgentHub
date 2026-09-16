@@ -126,7 +126,15 @@ internal sealed class SessionIndex
         IEnumerable<ConversationSummary> seq = merged;
 
         if (!string.IsNullOrEmpty(agent) && !agent.Equals("all", StringComparison.OrdinalIgnoreCase))
-            seq = seq.Where(s => s.AgentId.Equals(agent, StringComparison.OrdinalIgnoreCase));
+        {
+            // 「Cursor」筛选项同时包含本地与云端
+            if (agent.Equals("cursor", StringComparison.OrdinalIgnoreCase))
+                seq = seq.Where(s =>
+                    s.AgentId.Equals("cursor", StringComparison.OrdinalIgnoreCase)
+                    || s.AgentId.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase));
+            else
+                seq = seq.Where(s => s.AgentId.Equals(agent, StringComparison.OrdinalIgnoreCase));
+        }
 
         var single = !string.IsNullOrEmpty(agent) && !agent.Equals("all", StringComparison.OrdinalIgnoreCase);
         if (single && project is not null)
@@ -224,7 +232,14 @@ internal sealed class SessionIndex
 
         IEnumerable<ConversationSummary> seq = MergeSubs(snapshot);
         if (!string.IsNullOrEmpty(agent))
-            seq = seq.Where(s => s.AgentId.Equals(agent, StringComparison.OrdinalIgnoreCase));
+        {
+            if (agent.Equals("cursor", StringComparison.OrdinalIgnoreCase))
+                seq = seq.Where(s =>
+                    s.AgentId.Equals("cursor", StringComparison.OrdinalIgnoreCase)
+                    || s.AgentId.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase));
+            else
+                seq = seq.Where(s => s.AgentId.Equals(agent, StringComparison.OrdinalIgnoreCase));
+        }
 
         var cmp = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
         return seq

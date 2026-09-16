@@ -191,7 +191,9 @@ async function copyGcCommand() {
   }
 }
 const filterHasCursor = computed(() =>
-  agent.value === 'cursor' || (agent.value === 'all' && sources.value.some((s) => s.id === 'cursor')))
+  agent.value === 'cursor'
+  || agent.value === 'cursor-cloud'
+  || (agent.value === 'all' && sources.value.some((s) => s.id === 'cursor')))
 const lockedInFilter = computed(() => page.value?.lockedCount ?? 0)
 const confirmSkip = computed(() => {
   if (confirmKind.value !== 'delete') return 0
@@ -825,6 +827,7 @@ onMounted(() => { void load() })
                   <span class="sess-title">
                     <AgentMark :id="row.agent" />
                     <b>{{ row.title || '(无标题)' }}</b>
+                    <span v-if="row.agent === \'cursor-cloud\'" class="sess-tag">云端</span>
                     <span v-if="row.orphanSub" class="sess-tag">子会话</span>
                     <span v-if="row.locked" class="sess-tag is-locked">已锁</span>
                   </span>
