@@ -511,8 +511,9 @@ onMounted(() => load())
         <div class="card-body">
           <template v-if="isOfficial">
             <p class="hint explain">
-              官方订阅使用 Codex 自己的 ChatGPT 登录（auth.json）。应用连接只改 config.toml，不改登录态。
-              多个 Plus 账号可在上方「账号档案」中归档并冷切换，写回后请重启 Codex。
+              官方订阅使用 Codex 自己的 ChatGPT 登录（auth.json）。应用连接只改 config.toml：
+              移除中转 base_url、静态请求头与命令式认证，让 Codex 直连官方；登录态不在这里改写。
+              多个 Plus 账号请用上方「账号档案」归档并冷切换，写回后自行重启 Codex。
             </p>
           </template>
           <template v-else>
