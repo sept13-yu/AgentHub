@@ -237,7 +237,7 @@ public sealed class WorkBuddyProvider(TitleOverrideStore titles, Action<string>?
         return results;
     });
 
-    /// <summary>删 jsonl 与同名 sidecar。文件不在也当成功。</summary>
+    /// <summary>删 jsonl、同名 .meta.json 与 sidecar 目录（文件不在也算成功）。</summary>
     private static (bool Ok, long Size, string? Error) DeleteFiles(string id)
     {
         try
@@ -248,6 +248,13 @@ public sealed class WorkBuddyProvider(TitleOverrideStore titles, Action<string>?
             {
                 size += new FileInfo(jsonl).Length;
                 File.Delete(jsonl);
+                var metaBeside = Path.Combine(Path.GetDirectoryName(jsonl)!, id + ".meta.json");
+                size += TryDeleteFile(metaBeside);
+            }
+            else
+            {
+                // jsonl 已不在时仍清掉孤儿 meta，避免侧栏/扫描残留
+                size += TryDeleteMeta(id);
             }
             var dir = jsonl is not null
                 ? Path.Combine(Path.GetDirectoryName(jsonl)!, id)
@@ -263,6 +270,31 @@ public sealed class WorkBuddyProvider(TitleOverrideStore titles, Action<string>?
         {
             return (false, 0, ex.Message);
         }
+    }
+
+    private static long TryDeleteFile(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return 0;
+            var n = new FileInfo(path).Length;
+            File.Delete(path);
+            return n;
+        }
+        catch (Exception) { return 0; }
+    }
+
+    private static long TryDeleteMeta(string id)
+    {
+        long n = 0;
+        if (!Directory.Exists(ProjectsRoot)) return 0;
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(ProjectsRoot, id + ".meta.json", SearchOption.AllDirectories))
+                n += TryDeleteFile(f);
+        }
+        catch (Exception) { }
+        return n;
     }
 
     private static string? FindSidecar(string id)

@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ZstdSharp;
 
 namespace AgentHub.Core.SessionCore.Providers;
@@ -156,12 +157,14 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
                 var file = FindFile(id);
                 if (file is null)
                 {
+                    TryDeleteProjCache(id);
                     results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = false, Error = "会话目录不存在（可能已被删除）" });
                     continue;
                 }
                 var dir = Path.GetDirectoryName(file)!;
                 long size = DirSize(dir);
-                Directory.Delete(dir, recursive: true);   // 删文件/目录（方案 §4.2）
+                Directory.Delete(dir, recursive: true);   // 删文件/目录本体（§4.2）
+                size += TryDeleteProjCache(id);
                 titles.Remove(AgentId, id);
                 results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = true, FreedBytes = size });
             }
@@ -343,6 +346,85 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
             if (joined.Length > 0) return joined;
         }
         return CodexProvider.GetString(data, "text") ?? "";
+    }
+
+
+    private static readonly string ProjCacheSessions = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".dsh", "storages", "session_projcache", "sessions");
+
+    /// <summary>删 ~/.dsh/storages/session_projcache 中与会话对应的缓存（缺文件/锁住忽略）。</summary>
+    private static long TryDeleteProjCache(string id)
+    {
+        long n = 0;
+        try
+        {
+            if (!Directory.Exists(ProjCacheSessions)) return 0;
+            var uuid = NormalizeSessionId(id);
+            foreach (var name in new[] { id + ".json", "session-" + uuid + ".json", uuid + ".json" })
+            {
+                var path = Path.Combine(ProjCacheSessions, name);
+                try
+                {
+                    if (!File.Exists(path)) continue;
+                    n += new FileInfo(path).Length;
+                    File.Delete(path);
+                }
+                catch (Exception) { }
+            }
+            var index = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".dsh", "storages", "session_projcache", "session_projcache.json");
+            TryScrubProjCacheIndex(index, uuid);
+        }
+        catch (Exception) { }
+        return n;
+    }
+
+    private static void TryScrubProjCacheIndex(string indexPath, string uuid)
+    {
+        try
+        {
+            if (!File.Exists(indexPath)) return;
+            var text = File.ReadAllText(indexPath);
+            if (text.IndexOf(uuid, StringComparison.OrdinalIgnoreCase) < 0) return;
+            var node = System.Text.Json.Nodes.JsonNode.Parse(text);
+            if (node is System.Text.Json.Nodes.JsonObject jo)
+            {
+                var drop = new List<string>();
+                foreach (var kv in jo)
+                {
+                    if (kv.Key.Contains(uuid, StringComparison.OrdinalIgnoreCase)
+                        || (kv.Value?.ToJsonString().Contains(uuid, StringComparison.OrdinalIgnoreCase) ?? false))
+                        drop.Add(kv.Key);
+                }
+                if (drop.Count == 0) return;
+                foreach (var k in drop) jo.Remove(k);
+                WriteJsonAtomic(indexPath, jo.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else if (node is System.Text.Json.Nodes.JsonArray arr)
+            {
+                var removed = false;
+                for (var i = arr.Count - 1; i >= 0; i--)
+                {
+                    var s = arr[i]?.ToJsonString() ?? "";
+                    if (!s.Contains(uuid, StringComparison.OrdinalIgnoreCase)) continue;
+                    arr.RemoveAt(i);
+                    removed = true;
+                }
+                if (!removed) return;
+                WriteJsonAtomic(indexPath, arr.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+            }
+        }
+        catch (Exception) { }
+    }
+
+    private static void WriteJsonAtomic(string path, string payload)
+    {
+        var tmp = path + ".tmp-" + Guid.NewGuid().ToString("N");
+        File.WriteAllText(tmp, payload);
+        File.Copy(tmp, path, overwrite: true);
+        try { File.Delete(tmp); } catch { }
     }
 
     private static long DirSize(string dir)

@@ -265,6 +265,7 @@ public sealed class CursorProvider(TitleOverrideStore titles) : IConversationPro
                 tx.Commit();
                 titles.Remove(AgentId, id);
                 if (search is not null) DeleteFromSearch(search, id);
+                TryDeleteAcpSession(id);
                 results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = true, Note = "磁盘空间需 VACUUM 后才实际回收" });
             }
             catch (Exception ex)
@@ -274,6 +275,21 @@ public sealed class CursorProvider(TitleOverrideStore titles) : IConversationPro
         }
         return results;
     });
+
+
+    /// <summary>若 ~/.cursor/acp-sessions/{id} 存在则删除（按 composer/session id 目录命名；缺则忽略）。</summary>
+    private static void TryDeleteAcpSession(string id)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".cursor", "acp-sessions", id);
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, recursive: true);
+        }
+        catch (Exception) { }
+    }
 
     private static readonly string[] DelimitedPrefixes =
         ["bubbleId:", "checkpointId:", "ofsContent:", "codeBlockPartialInlineDiffFates:"];

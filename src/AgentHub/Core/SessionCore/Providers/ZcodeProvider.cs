@@ -505,6 +505,7 @@ public sealed class ZcodeProvider(TitleOverrideStore titles) : IConversationProv
         if (desktop && ZcodeDesktopStore.ClearTaskIndex(
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }, keepListed: false))
             changed = true;
+        // v2/checkpoints/<hash> 按工作区哈希存盘（非 session id），会话删除时不碰，避免误清其它会话的工作区快照。
         return changed;
     }
 

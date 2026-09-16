@@ -170,6 +170,7 @@ public sealed class MimocodeProvider(TitleOverrideStore titles) : IConversationP
                     var size = SizeOf(conn, id);
                     if (!SessionExists(conn, id))
                     {
+                        TryDeleteSessionDiff(id);
                         titles.Remove(AgentId, id);
                         results.Add(new DeleteItemResult
                         {
@@ -181,6 +182,7 @@ public sealed class MimocodeProvider(TitleOverrideStore titles) : IConversationP
                         continue;
                     }
                     DeleteSessionRows(conn, id);
+                    TryDeleteSessionDiff(id);
                     titles.Remove(AgentId, id);
                     results.Add(new DeleteItemResult
                     {
@@ -408,6 +410,22 @@ public sealed class MimocodeProvider(TitleOverrideStore titles) : IConversationP
             n += Convert.ToInt64(cmd.ExecuteScalar());
         }
         return n;
+    }
+
+
+    private static string SessionDiffPath(string id) => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".local", "share", "mimocode", "storage", "session_diff", id + ".json");
+
+    /// <summary>删 storage/session_diff/{id}.json（缺文件/锁住忽略）。</summary>
+    private static void TryDeleteSessionDiff(string id)
+    {
+        try
+        {
+            var path = SessionDiffPath(id);
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception) { }
     }
 
     private static void DeleteSessionRows(SqliteConnection conn, string id)
