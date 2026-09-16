@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, reactive, ref, type Ref } from 'vue'
 import { NButton, NIcon, NInput, NSwitch, useMessage } from 'naive-ui'
-import { CloudDownload, Lock, Plus, Save, Trash2 } from 'lucide-vue-next'
+import { CloudDownload, Lock, Plus, Repeat, Save, Trash2 } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import { api, del, get, post, put, WRITABLE } from '../api'
 import { usePageHotkeys } from '../hotkeys'
@@ -59,6 +59,22 @@ interface DiffRow {
   candidate: string | null
   change: 'keep' | 'set' | 'clear' | 'change'
 }
+interface AuthProfileView {
+  id: string
+  name: string
+  email: string
+  plan: string
+  accountId: string
+  createdAt: string
+  updatedAt: string
+  active: boolean
+}
+interface AuthProfileLive {
+  authType: string
+  email: string
+  plan: string
+  importable: boolean
+}
 
 const status = ref<CodexStatus | null>(null)
 const connections = ref<CodexConnectionView[]>([])
@@ -69,6 +85,16 @@ const applying = ref(false)
 const importing = ref(false)
 const deleteShow = ref(false)
 const diffRows = ref<DiffRow[] | null>(null)
+const profiles = ref<AuthProfileView[]>([])
+const profileLive = ref<AuthProfileLive | null>(null)
+const profilesError = ref('')
+const importingProfile = ref(false)
+const switchingProfileId = ref('')
+const importShow = ref(false)
+const importName = ref('')
+const switchShow = ref(false)
+const profileDeleteShow = ref(false)
+const pendingProfile = ref<AuthProfileView | null>(null)
 
 const f = reactive({
   name: '',
@@ -83,6 +109,9 @@ const f = reactive({
 
 const selected = computed(() => connections.value.find((c) => c.id === selectedId.value) ?? null)
 const isOfficial = computed(() => selected.value?.kind === 'official')
+const officialActive = computed(() => connections.value.some((c) => c.kind === 'official' && c.active))
+const liveUnarchived = computed(() =>
+  !!profileLive.value?.importable && !profiles.value.some((p) => p.active))
 
 const authTypeText = computed(() => {
   const t = status.value?.authType
@@ -90,6 +119,15 @@ const authTypeText = computed(() => {
     : t === 'apikey' ? 'API Key'
     : t === 'none' ? '未登录'
     : '未知'
+})
+
+const importHint = computed(() => {
+  const live = profileLive.value
+  const t = live?.authType ?? status.value?.authType
+  if (live?.importable) return '将当前 ~/.codex/auth.json 归档到本机。同一账号再次导入会覆盖该档案。'
+  if (t === 'apikey') return '当前是 API Key 登录，不能作为官方账号档案。'
+  if (t === 'chatgpt') return '当前登录态缺少 refresh_token，无法归档。请重新用 ChatGPT 登录 Codex 后再导入。'
+  return '尚未检测到 ChatGPT 登录（~/.codex/auth.json）。请先在 Codex 中登录官方账号。若登录存在系统凭据库，需改回文件存储后再导入。'
 })
 
 async function load(keepSelection = true) {
@@ -108,10 +146,23 @@ async function load(keepSelection = true) {
       ?? c.connections[0]
     select(active?.id ?? '')
     diffRows.value = null
+    await loadProfiles()
   } catch (e) {
     loadError.value = e instanceof Error ? e.message : String(e)
   } finally {
     if (pageLoading) pageLoading.value = false
+  }
+}
+
+async function loadProfiles() {
+  try {
+    const r = await get<{ profiles: AuthProfileView[]; live: AuthProfileLive }>(
+      '/api/codex-config/auth-profiles')
+    profiles.value = r.profiles
+    profileLive.value = r.live
+    profilesError.value = ''
+  } catch (e) {
+    profilesError.value = e instanceof Error ? e.message : String(e)
   }
 }
 
@@ -244,6 +295,103 @@ async function removeConnection() {
   }
 }
 
+function profileHint(p: AuthProfileView) {
+  const bits = [p.email, p.plan].filter((x) => x && x.trim())
+  return bits.length > 0 ? bits.join(' · ') : '（无邮箱 / 套餐信息）'
+}
+
+function openImport() {
+  if (readonly || importingProfile.value) return
+  importName.value = profileLive.value?.email || ''
+  importShow.value = true
+}
+
+async function importProfile() {
+  importShow.value = false
+  if (readonly || importingProfile.value) return
+  importingProfile.value = true
+  if (pageLoading) pageLoading.value = true
+  try {
+    const r = await post<{ id: string; updated?: boolean }>(
+      '/api/codex-config/auth-profiles/import',
+      { name: importName.value.trim() })
+    message.success(r.updated ? '已更新该账号的归档' : '已导入当前登录为账号档案')
+    await loadProfiles()
+  } catch (e) {
+    message.error('导入失败：' + (e instanceof Error ? e.message : String(e)))
+  } finally {
+    importingProfile.value = false
+    if (pageLoading) pageLoading.value = false
+  }
+}
+
+function askSwitch(p: AuthProfileView) {
+  if (readonly || p.active || switchingProfileId.value) return
+  pendingProfile.value = p
+  switchShow.value = true
+}
+
+const switchConfirmText = computed(() => {
+  const name = pendingProfile.value?.name || '该档案'
+  const lines = [`将把「${name}」写回 ~/.codex/auth.json，覆盖当前 ChatGPT 登录。`]
+  if (liveUnarchived.value) {
+    lines.push('当前登录尚未归档；若仍要切换，当前账号会丢失。建议先点「导入当前」。')
+  }
+  if (!officialActive.value) {
+    lines.push('当前生效的是中转连接：写回登录态后，还需应用「官方订阅」连接，Codex 才会用该账号。')
+  }
+  lines.push('切换后请彻底退出并重启 Codex，本页不会自动重启。')
+  return lines.join('\n')
+})
+
+async function switchProfile() {
+  switchShow.value = false
+  const p = pendingProfile.value
+  pendingProfile.value = null
+  if (!p || readonly) return
+  switchingProfileId.value = p.id
+  if (pageLoading) pageLoading.value = true
+  try {
+    const r = await post<{ ok: boolean; restartRequired: boolean; error?: string }>(
+      `/api/codex-config/auth-profiles/${p.id}/switch`)
+    if (!r.ok) {
+      message.error('切换失败：' + (r.error ?? '未知错误'))
+    } else if (r.restartRequired) {
+      message.warning('已写入 auth.json。检测到 Codex 正在运行，请彻底退出并重启 Codex 后生效')
+    } else {
+      message.success('已写入 auth.json。请启动或重启 Codex 后使用该账号')
+    }
+    await loadProfiles()
+    const s = await get<CodexStatus>('/api/codex-config/status')
+    status.value = s
+  } catch (e) {
+    message.error('切换失败：' + (e instanceof Error ? e.message : String(e)))
+  } finally {
+    switchingProfileId.value = ''
+    if (pageLoading) pageLoading.value = false
+  }
+}
+
+function askDeleteProfile(p: AuthProfileView) {
+  if (readonly) return
+  pendingProfile.value = p
+  profileDeleteShow.value = true
+}
+
+async function removeProfile() {
+  profileDeleteShow.value = false
+  const p = pendingProfile.value
+  pendingProfile.value = null
+  if (!p) return
+  try {
+    await del(`/api/codex-config/auth-profiles/${p.id}`)
+    message.success('档案已删除（不影响 Codex 当前登录）')
+    await loadProfiles()
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '删除失败')
+  }
+}
+
 const changeText: Record<DiffRow['change'], string> = {
   keep: '不变', set: '新增', clear: '移除', change: '修改',
 }
@@ -267,7 +415,8 @@ onMounted(() => load())
         <span class="mono" :class="{ 'is-warn': !status.liveProviderMatches }">
           {{ status.liveProvider ?? '（文件不存在）' }}<template v-if="!status.liveProviderMatches"> · 会导致部分历史在 Codex Desktop 中不可见，应用任一连接后恢复</template>
         </span>
-        <span class="lbl">Codex 登录</span><span>{{ authTypeText }}</span>
+        <span class="lbl">Codex 登录</span>
+        <span>{{ authTypeText }}<template v-if="profileLive?.email"> · {{ profileLive.email }}</template></span>
         <span class="lbl">Codex 进程</span>
         <span>{{ status.codexRunning ? '运行中（切换后需重启 Codex 生效）' : '未运行' }}</span>
         <span class="lbl">配置路径</span><span class="mono path" :title="status.configPath">{{ status.configPath }}</span>
@@ -277,6 +426,51 @@ onMounted(() => load())
     <p v-if="status.configBroken" class="usage-error">config.toml 语法损坏，已阻止一切写入。请先在 Codex 中修复该文件。</p>
     <p v-else-if="status.externalChanged" class="banner">检测到 config.toml 在 AgentHub 之外被修改过（如 CC Switch 或手工编辑）。下次应用连接时会基于最新文件重写受管字段。</p>
     <p v-else-if="status.live?.isHybridForm" class="banner">当前 live 是「中转地址 + requires_openai_auth」的混合形态；应用 AgentHub 连接后会重塑为标准形态（中转走命令式认证，官方走登录态）。</p>
+
+    <section class="card profile-card">
+      <div class="card-head">
+        账号档案
+        <span class="hint">冷切换 · 只改写 auth.json，需自行重启 Codex</span>
+        <span class="spacer" />
+        <n-button
+          :loading="importingProfile"
+          :disabled="readonly || !profileLive?.importable"
+          @click="openImport"
+        >
+          <template #icon><n-icon :size="16"><CloudDownload :stroke-width="1.8" /></n-icon></template>
+          导入当前
+        </n-button>
+      </div>
+      <div class="card-body">
+        <p class="hint explain">{{ importHint }} 档案保存在本机 AgentHub 数据目录，DPAPI 加密；切换后请自行重启 Codex。</p>
+        <p v-if="profilesError" class="usage-error">读取档案失败：{{ profilesError }}</p>
+        <div v-else-if="profiles.length === 0" class="profile-empty">还没有档案。用 ChatGPT 登录 Codex 后点「导入当前」。额度用尽时再切换到另一份归档。</div>
+        <div v-else class="profile-list">
+          <div v-for="p in profiles" :key="p.id" class="profile-row" :class="{ 'is-current': p.active }">
+            <div class="profile-main">
+              <span class="conn-name">{{ p.name || '（未命名）' }}</span>
+              <span class="conn-sub">{{ profileHint(p) }}</span>
+            </div>
+            <span v-if="p.active" class="profile-badge">当前</span>
+            <div class="profile-acts">
+              <n-button
+                size="small"
+                :loading="switchingProfileId === p.id"
+                :disabled="readonly || p.active || !!switchingProfileId"
+                @click="askSwitch(p)"
+              >
+                <template #icon><n-icon :size="14"><Repeat :stroke-width="1.8" /></n-icon></template>
+                {{ p.active ? '使用中' : '切换' }}
+              </n-button>
+              <n-button size="small" quaternary type="error" :disabled="readonly" @click="askDeleteProfile(p)">
+                <template #icon><n-icon :size="14"><Trash2 :stroke-width="1.8" /></n-icon></template>
+                删除
+              </n-button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div class="columns">
       <section class="card list-card">
@@ -317,8 +511,8 @@ onMounted(() => load())
         <div class="card-body">
           <template v-if="isOfficial">
             <p class="hint explain">
-              官方订阅使用 Codex 自己的 ChatGPT 登录（auth.json），AgentHub 不读写任何凭据。
-              应用后会移除中转 base_url、静态请求头与命令式认证，Codex 将直连官方。
+              官方订阅使用 Codex 自己的 ChatGPT 登录（auth.json）。应用连接只改 config.toml，不改登录态。
+              多个 Plus 账号可在上方「账号档案」中归档并冷切换，写回后请重启 Codex。
             </p>
           </template>
           <template v-else>
@@ -421,6 +615,37 @@ onMounted(() => load())
     @update:show="deleteShow = $event"
     @confirm="removeConnection"
   />
+  <AhConfirm
+    :show="importShow"
+    text="导入当前 ChatGPT 登录。同一账号再次导入会更新归档内容。"
+    ok-text="导入"
+    @update:show="importShow = $event"
+    @confirm="importProfile"
+  >
+    <div class="import-name">
+      <label class="lbl" for="cx-profile-name">档案名称</label>
+      <n-input
+        id="cx-profile-name"
+        :spellcheck="false"
+        v-model:value="importName"
+        placeholder="留空则使用邮箱"
+      />
+    </div>
+  </AhConfirm>
+  <AhConfirm
+    :show="switchShow"
+    :text="switchConfirmText"
+    ok-text="写入并切换"
+    @update:show="switchShow = $event"
+    @confirm="switchProfile"
+  />
+  <AhConfirm
+    :show="profileDeleteShow"
+    :text="pendingProfile ? `确定删除档案「${pendingProfile.name}」吗？只删除 AgentHub 中的归档，不影响 Codex 当前登录。` : '确定删除该档案吗？'"
+    ok-text="删除"
+    @update:show="profileDeleteShow = $event"
+    @confirm="removeProfile"
+  />
 </template>
 
 <style scoped>
@@ -507,6 +732,49 @@ onMounted(() => load())
   color: var(--ok);
 }
 .import-row { padding-top: var(--sp-3); }
+.profile-card .explain { margin: 0 0 var(--sp-3); }
+.profile-empty {
+  font-size: var(--fs-small);
+  color: var(--faint);
+}
+.profile-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.profile-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  box-shadow: var(--rule-hi);
+}
+.profile-row:last-child { box-shadow: none; }
+.profile-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.profile-row.is-current .conn-name { color: var(--accent-solid); }
+.profile-badge {
+  flex: 0 0 auto;
+  font-size: var(--fs-caption);
+  color: var(--ok);
+}
+.profile-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  flex: 0 0 auto;
+}
+.import-name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+}
 .explain { margin: 0 0 var(--sp-3); }
 .actions {
   display: flex;
@@ -596,5 +864,6 @@ onMounted(() => load())
   .columns { grid-template-columns: 1fr; }
   .row { grid-template-columns: 1fr; }
   .status-grid { grid-template-columns: 1fr; gap: 2px; }
+  .profile-row { flex-wrap: wrap; }
 }
 </style>

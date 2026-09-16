@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Http;
 
 namespace AgentHub.Web;
 
-/// <summary>/api/codex-config/*（方案 §10）：连接管理 + live 状态 + 应用切换。
-/// 写接口全部走壳内写授权；Key 只回 keySet，任何响应与日志不得出现明文 Key。</summary>
+/// <summary>/api/codex-config/*（方案 §10）：连接管理 + live 状态 + 应用切换 + ChatGPT 账号档案。
+/// 写接口全部走壳内写授权；Key / token 只回是否已配置，任何响应与日志不得出现明文凭据。</summary>
 public static class CodexConfigEndpoints
 {
     public static void MapCodexConfigEndpoints(this WebApplication app,
@@ -119,6 +119,86 @@ public static class CodexConfigEndpoints
                 return Results.Json(new { error = ex.Message }, statusCode: 400);
             }
         });
+
+        app.MapGet("/api/codex-config/auth-profiles", () =>
+        {
+            try
+            {
+                return Results.Json(service.ListAuthProfiles());
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+            }
+        });
+
+        app.MapPost("/api/codex-config/auth-profiles/import", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            var (name, error) = await ParseName(ctx);
+            if (error is not null) return Results.Json(new { error }, statusCode: 400);
+            try
+            {
+                var (profile, updated) = service.ImportAuthProfile(name);
+                return Results.Json(new { ok = true, id = profile.Id, updated });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 400);
+            }
+        });
+
+        app.MapPost("/api/codex-config/auth-profiles/{id}/switch", async (string id, HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            try
+            {
+                var result = await service.SwitchAuthProfileAsync(id);
+                return Results.Json(result);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new CodexApplyResult { Ok = false, Error = ex.Message }, statusCode: 500);
+            }
+        });
+
+        app.MapDelete("/api/codex-config/auth-profiles/{id}", (string id, HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            try
+            {
+                service.DeleteAuthProfile(id);
+                return Results.Json(new { ok = true });
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new { error = ex.Message }, statusCode: 400);
+            }
+        });
+    }
+
+    private static async Task<(string? Name, string? Error)> ParseName(HttpContext ctx)
+    {
+        if (ctx.Request.ContentLength is 0) return (null, null);
+        try
+        {
+            using var doc = await JsonDocument.ParseAsync(ctx.Request.Body);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return (null, "请求体必须是 JSON 对象");
+            if (!root.TryGetProperty("name", out var el)) return (null, null);
+            if (el.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return (null, null);
+            if (el.ValueKind != JsonValueKind.String)
+                return (null, "name 必须是字符串");
+            return (el.GetString(), null);
+        }
+        catch (JsonException)
+        {
+            return (null, "请求体不是有效 JSON");
+        }
     }
 
     private static async Task<(ConnectionBody Body, string? Error)> ParseBody(HttpContext ctx)
