@@ -198,9 +198,8 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
             try
             {
                 CodexProvider.GuardDbId(id);
-                using var req = Req(HttpMethod.Delete, "/v0/agents/" + Uri.EscapeDataString(id));
-                using var resp = await Http.SendAsync(req).ConfigureAwait(false);
-                if (resp.IsSuccessStatusCode || resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+                var (ok, err) = await DeleteOneAsync(id).ConfigureAwait(false);
+                if (ok)
                 {
                     titles.Remove(AgentId, id);
                     results.Add(new DeleteItemResult
@@ -208,7 +207,7 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
                         AgentId = AgentId,
                         Id = id,
                         Ok = true,
-                        Note = "已从 Cursor Cloud 删除",
+                        Note = "\u5df2\u4ece Cursor Cloud \u5220\u9664",
                     });
                 }
                 else
@@ -218,7 +217,7 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
                         AgentId = AgentId,
                         Id = id,
                         Ok = false,
-                        Error = $"删除失败 HTTP {(int)resp.StatusCode}",
+                        Error = err ?? "\u5220\u9664\u5931\u8d25",
                     });
                 }
             }
@@ -228,6 +227,77 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
             }
         }
         return results;
+    }
+
+    /// <summary>? DELETE?? 409?????? RUNNING?? stop ????????? v1 DELETE?</summary>
+    private async Task<(bool Ok, string? Error)> DeleteOneAsync(string id)
+    {
+        var path = "/v0/agents/" + Uri.EscapeDataString(id);
+        var (code, body) = await SendRawAsync(HttpMethod.Delete, path).ConfigureAwait(false);
+        if (code is >= 200 and < 300 or 404) return (true, null);
+
+        if (code == 409)
+        {
+            // ?????????? stop ??
+            await SendRawAsync(HttpMethod.Post, path + "/stop").ConfigureAwait(false);
+            await Task.Delay(800).ConfigureAwait(false);
+            (code, body) = await SendRawAsync(HttpMethod.Delete, path).ConfigureAwait(false);
+            if (code is >= 200 and < 300 or 404) return (true, null);
+        }
+
+        // v1 ???????id ?? bc-? / bc_? ???????
+        var v1 = "/v1/agents/" + Uri.EscapeDataString(id);
+        if (code is not (>= 200 and < 300 or 404))
+        {
+            if (code == 409)
+            {
+                await SendRawAsync(HttpMethod.Post, v1 + "/archive").ConfigureAwait(false);
+                await Task.Delay(400).ConfigureAwait(false);
+            }
+            (code, body) = await SendRawAsync(HttpMethod.Delete, v1).ConfigureAwait(false);
+            if (code is >= 200 and < 300 or 404) return (true, null);
+        }
+
+        return (false, FormatHttpError(code, body));
+    }
+
+    private async Task<(int Status, string Body)> SendRawAsync(HttpMethod method, string path)
+    {
+        using var req = Req(method, path);
+        using var resp = await Http.SendAsync(req).ConfigureAwait(false);
+        var body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+        return ((int)resp.StatusCode, body);
+    }
+
+    private static string FormatHttpError(int status, string body)
+    {
+        var detail = "";
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.TryGetProperty("message", out var msg) && msg.ValueKind == JsonValueKind.String)
+                detail = msg.GetString() ?? "";
+            else if (root.TryGetProperty("error", out var err))
+            {
+                if (err.ValueKind == JsonValueKind.String) detail = err.GetString() ?? "";
+                else if (err.TryGetProperty("message", out var em) && em.ValueKind == JsonValueKind.String)
+                    detail = em.GetString() ?? "";
+            }
+            if (root.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String)
+            {
+                var c = code.GetString();
+                if (!string.IsNullOrEmpty(c))
+                    detail = string.IsNullOrEmpty(detail) ? c : c + ": " + detail;
+            }
+        }
+        catch { /* ignore */ }
+
+        if (string.IsNullOrWhiteSpace(detail) && !string.IsNullOrWhiteSpace(body))
+            detail = body.Length > 180 ? body[..180] + "?" : body;
+        return string.IsNullOrWhiteSpace(detail)
+            ? $"\u5220\u9664\u5931\u8d25 HTTP {status}"
+            : $"\u5220\u9664\u5931\u8d25 HTTP {status}?{detail}?";
     }
 
     private static string? RepoOf(JsonElement agent)
