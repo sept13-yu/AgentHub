@@ -61,6 +61,7 @@ public sealed record ResidueSweepResult(
     ResidueSweepAgent Zcode,
     ResidueSweepAgent WorkBuddy,
     ResidueSweepAgent Cursor,
+    ResidueSweepAgent Codex,
     CursorVacuum? Vacuum);
 
 public sealed record CursorVacuum(bool Ok, string? Error);

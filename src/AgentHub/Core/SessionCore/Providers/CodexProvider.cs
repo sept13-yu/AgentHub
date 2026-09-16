@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AgentHub.Core.TokenCore;
 
 namespace AgentHub.Core.SessionCore.Providers;
@@ -151,11 +153,23 @@ public sealed class CodexProvider(TitleOverrideStore titles, Action<string>? log
                 var file = FindFile(id);
                 if (file is null)
                 {
-                    results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = false, Error = "文件不存在（可能已被删除）" });
+                    // jsonl 已没了，仍清理侧栏索引 / UI 状态，避免 orphan 标题。
+                    var leftover = CodexDesktopCleanup.RemoveLeftovers(id);
+                    titles.Remove(AgentId, id);
+                    results.Add(new DeleteItemResult
+                    {
+                        AgentId = AgentId,
+                        Id = id,
+                        Ok = true,
+                        Note = leftover
+                            ? "源文件已不在，已清理侧栏索引与 UI 残留。"
+                            : "源文件已不在。",
+                    });
                     continue;
                 }
                 long size = new FileInfo(file).Length;
                 File.Delete(file);
+                CodexDesktopCleanup.RemoveLeftovers(id);
                 titles.Remove(AgentId, id);
                 results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = true, FreedBytes = size });
             }
@@ -351,6 +365,234 @@ internal static class CodexThreadNames
         catch
         {
             _map ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+}
+
+/// <summary>Codex Desktop 删除后残留：session_index.jsonl 侧栏标题 + .codex-global-state.json 按会话 id 清理。
+/// 对标 ZcodeProvider.DeleteLeftovers；写 global-state 前最好退出 Codex，避免被内存态覆盖。</summary>
+internal static class CodexDesktopCleanup
+{
+    private static readonly System.Text.RegularExpressions.Regex UuidInText = new(
+        "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string Home => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
+
+    private static string IndexPath => Path.Combine(Home, "session_index.jsonl");
+    private static string GlobalStatePath => Path.Combine(Home, ".codex-global-state.json");
+
+    /// <summary>ChatGPT.exe（OpenAI Codex 包）或 codex.exe 在跑。</summary>
+    public static bool CodexRunning()
+    {
+        try
+        {
+            foreach (var p in Process.GetProcesses())
+            {
+                try
+                {
+                    var name = p.ProcessName;
+                    if (name.Equals("codex", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                    if (!name.Equals("ChatGPT", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    string? path = null;
+                    try { path = p.MainModule?.FileName; } catch { }
+                    if (path is not null && path.Contains("OpenAI.Codex", StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+                finally { p.Dispose(); }
+            }
+        }
+        catch { }
+        return false;
+    }
+
+    /// <summary>删索引行 + 尽力 scrub global-state。任一侧有改动即 true。</summary>
+    public static bool RemoveLeftovers(string id)
+    {
+        var changed = RemoveFromSessionIndex(id);
+        if (ScrubGlobalState(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { id }))
+            changed = true;
+        return changed;
+    }
+
+    /// <summary>扫 session_index 中无对应 jsonl 的孤儿，清理索引与 global-state。返回清掉的索引条数。</summary>
+    public static int SweepOrphanLeftovers()
+    {
+        var live = LiveSessionIds();
+        var orphans = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var kept = new List<string>();
+        var removed = 0;
+        if (File.Exists(IndexPath))
+        {
+            foreach (var line in UsageParsers.ReadLinesShared(IndexPath))
+            {
+                if (line.Length == 0) continue;
+                string? id = null;
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    id = CodexProvider.GetString(doc.RootElement, "id");
+                }
+                catch (JsonException)
+                {
+                    kept.Add(line);
+                    continue;
+                }
+                if (id is null || live.Contains(id))
+                {
+                    kept.Add(line);
+                    continue;
+                }
+                orphans.Add(id);
+                removed++;
+            }
+            if (removed > 0)
+                WriteIndex(kept);
+        }
+        if (orphans.Count > 0)
+            ScrubGlobalState(orphans);
+        return removed;
+    }
+
+    public static bool RemoveFromSessionIndex(string id)
+    {
+        if (!File.Exists(IndexPath)) return false;
+        var kept = new List<string>();
+        var removed = false;
+        foreach (var line in UsageParsers.ReadLinesShared(IndexPath))
+        {
+            if (line.Length == 0) continue;
+            try
+            {
+                using var doc = JsonDocument.Parse(line);
+                var lineId = CodexProvider.GetString(doc.RootElement, "id");
+                if (lineId is not null && lineId.Equals(id, StringComparison.OrdinalIgnoreCase))
+                {
+                    removed = true;
+                    continue;
+                }
+            }
+            catch (JsonException) { }
+            kept.Add(line);
+        }
+        if (!removed) return false;
+        WriteIndex(kept);
+        return true;
+    }
+
+    private static void WriteIndex(List<string> lines)
+    {
+        var dir = Path.GetDirectoryName(IndexPath);
+        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+        var tmp = IndexPath + ".tmp-" + Guid.NewGuid().ToString("N");
+        var payload = lines.Count == 0 ? "" : string.Join("\n", lines) + "\n";
+        File.WriteAllText(tmp, payload, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.Copy(tmp, IndexPath, overwrite: true);
+        try { File.Delete(tmp); } catch { }
+    }
+
+    private static HashSet<string> LiveSessionIds()
+    {
+        var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in new[]
+                 {
+                     Path.Combine(Home, "sessions"),
+                     Path.Combine(Home, "archived_sessions"),
+                 })
+        {
+            if (!Directory.Exists(root)) continue;
+            foreach (var file in Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories))
+            {
+                var id = CodexProvider.SessionIdFromName(Path.GetFileName(file));
+                if (id is not null) live.Add(id);
+            }
+        }
+        return live;
+    }
+
+    /// <summary>按会话 UUID 清理 .codex-global-state.json：删含该 id 的键、值为该 id 的属性、数组中的 id 项。
+    /// 失败吞掉（文件锁 / Codex 在写）；同步写 .bak 降低下次启动回滚旧态的概率。</summary>
+    public static bool ScrubGlobalState(HashSet<string> ids)
+    {
+        if (ids.Count == 0 || !File.Exists(GlobalStatePath)) return false;
+        try
+        {
+            var json = File.ReadAllText(GlobalStatePath, Encoding.UTF8);
+            var node = JsonNode.Parse(json);
+            if (node is null) return false;
+            var removed = 0;
+            ScrubNode(node, ids, ref removed);
+            if (removed == 0) return false;
+            var next = node.ToJsonString(new JsonSerializerOptions { WriteIndented = false });
+            var tmp = GlobalStatePath + ".tmp-" + Guid.NewGuid().ToString("N");
+            File.WriteAllText(tmp, next, new UTF8Encoding(false));
+            File.Copy(tmp, GlobalStatePath, overwrite: true);
+            try
+            {
+                var bak = GlobalStatePath + ".bak";
+                File.Copy(tmp, bak, overwrite: true);
+            }
+            catch { }
+            try { File.Delete(tmp); } catch { }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool RefsId(string? s, HashSet<string> ids)
+    {
+        if (string.IsNullOrEmpty(s)) return false;
+        if (ids.Contains(s)) return true;
+        foreach (System.Text.RegularExpressions.Match m in UuidInText.Matches(s))
+            if (ids.Contains(m.Value)) return true;
+        return false;
+    }
+
+    private static void ScrubNode(JsonNode node, HashSet<string> ids, ref int removed)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var key in obj.Select(kv => kv.Key).ToList())
+            {
+                if (RefsId(key, ids))
+                {
+                    obj.Remove(key);
+                    removed++;
+                    continue;
+                }
+                var child = obj[key];
+                if (child is JsonValue jv
+                    && jv.TryGetValue<string>(out var sv)
+                    && ids.Contains(sv))
+                {
+                    obj.Remove(key);
+                    removed++;
+                    continue;
+                }
+                if (child is not null) ScrubNode(child, ids, ref removed);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            for (var i = arr.Count - 1; i >= 0; i--)
+            {
+                var item = arr[i];
+                if (item is JsonValue jv
+                    && jv.TryGetValue<string>(out var s)
+                    && RefsId(s, ids))
+                {
+                    arr.RemoveAt(i);
+                    removed++;
+                    continue;
+                }
+                if (item is not null) ScrubNode(item, ids, ref removed);
+            }
         }
     }
 }

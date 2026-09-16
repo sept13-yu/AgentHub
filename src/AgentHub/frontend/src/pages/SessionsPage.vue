@@ -40,6 +40,7 @@ interface SessionPage {
   cursorRunning: boolean
   zcodeRunning: boolean
   workbuddyRunning: boolean
+  codexRunning: boolean
   sources: Source[]
   items: SessionRow[]
 }
@@ -116,21 +117,25 @@ const cursorOk = computed(() => !!page.value?.cursorAvailable)
 const cursorRunning = computed(() => !!page.value?.cursorRunning)
 const zcodeRunning = computed(() => !!page.value?.zcodeRunning)
 const workbuddyRunning = computed(() => !!page.value?.workbuddyRunning)
+const codexRunning = computed(() => !!page.value?.codexRunning)
 const hasZcode = computed(() => sources.value.some((s) => s.id === 'zcode'))
 const hasWorkbuddy = computed(() => sources.value.some((s) => s.id === 'workbuddy'))
-const residueVisible = computed(() => hasZcode.value || hasWorkbuddy.value || cursorOk.value)
+const hasCodex = computed(() => sources.value.some((s) => s.id === 'codex'))
+const residueVisible = computed(() => hasZcode.value || hasWorkbuddy.value || cursorOk.value || hasCodex.value)
 const residueCanRun = computed(() =>
   (hasZcode.value && !zcodeRunning.value)
   || (hasWorkbuddy.value && !workbuddyRunning.value)
-  || (cursorOk.value && !cursorRunning.value))
+  || (cursorOk.value && !cursorRunning.value)
+  || (hasCodex.value && !codexRunning.value))
 const residueSkipHint = computed(() => {
   const skip: string[] = []
   if (hasZcode.value && zcodeRunning.value) skip.push('ZCode')
   if (hasWorkbuddy.value && workbuddyRunning.value) skip.push('WorkBuddy')
   if (cursorOk.value && cursorRunning.value) skip.push('Cursor')
+  if (hasCodex.value && codexRunning.value) skip.push('Codex')
   return skip.length ? `${skip.join(' / ')} 还在运行，点清理时会跳过这${skip.length > 1 ? '几' : '一'}家。` : ''
 })
-const hostRunning = computed(() => zcodeRunning.value || workbuddyRunning.value)
+const hostRunning = computed(() => zcodeRunning.value || workbuddyRunning.value || codexRunning.value)
 
 // Cursor agentKv 内容库占用 → 大时引导用户跑官方 GC 命令（AgentHub 不代删共享库）
 interface CursorStorage { mainDbBytes: number; agentKvBytes: number; agentKvCount: number }
@@ -200,6 +205,8 @@ const confirmText = computed(() => {
       lines.push(zcodeRunning.value ? 'ZCode：还在运行，这次跳过' : 'ZCode：侧栏任务索引、上次会话、空页签')
     if (hasWorkbuddy.value)
       lines.push(workbuddyRunning.value ? 'WorkBuddy：还在运行，这次跳过' : 'WorkBuddy：云端还挂着的已删会话')
+    if (hasCodex.value)
+      lines.push(codexRunning.value ? 'Codex：还在运行，这次跳过' : 'Codex：侧栏索引里无 jsonl 的孤儿标题')
     if (cursorOk.value) {
       const o = cursorOrphans.value
       const orphan = o?.totalRows
@@ -209,7 +216,7 @@ const confirmText = computed(() => {
     }
     return lines.join('\n')
   }
-  const hostHint = pendingRows.value.some((r) => r.agent === 'zcode' || r.agent === 'workbuddy')
+  const hostHint = pendingRows.value.some((r) => r.agent === 'zcode' || r.agent === 'workbuddy' || r.agent === 'codex')
     ? (hostRunning.value
       ? ' 请先完全退出要删的那一家（含托盘），否则标题栏还在。'
       : ' 退出后再点一次删除，列表里还在的会话不会自己消失。')
@@ -478,6 +485,7 @@ async function runCleanResidue() {
       zcode: { ran: boolean; skipped: string | null; count: number; detail: string | null }
       workbuddy: { ran: boolean; skipped: string | null; count: number; detail: string | null }
       cursor: { ran: boolean; skipped: string | null; count: number; detail: string | null }
+      codex: { ran: boolean; skipped: string | null; count: number; detail: string | null }
       vacuum?: { ok?: boolean; error?: string | null }
     }>('/api/sessions/residue-clean', { vacuum: vacuum.value })
     if (r.error) {
@@ -490,6 +498,7 @@ async function runCleanResidue() {
       ['ZCode', r.zcode],
       ['WorkBuddy', r.workbuddy],
       ['Cursor', r.cursor],
+      ['Codex', r.codex],
     ] as const) {
       if (part.skipped === 'running') bits.push(`${name} 已跳过`)
       else if (part.skipped === 'error') fail.push(part.detail || `${name} 失败`)

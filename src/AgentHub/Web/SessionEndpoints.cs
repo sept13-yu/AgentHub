@@ -34,6 +34,7 @@ public static class SessionEndpoints
                 cursorRunning = CursorProvider.CursorRunning(),
                 zcodeRunning = ZcodeProvider.ZcodeRunning(),
                 workbuddyRunning = WorkBuddyProvider.WorkBuddyRunning(),
+                codexRunning = CodexDesktopCleanup.CodexRunning(),
                 sources = sessions.Sources().Select(s => new { id = s.Id, name = s.Name }).ToList(),
                 items = page.Items.Select(s => new
                 {
@@ -331,10 +332,11 @@ public static class SessionEndpoints
                 var r = sessions.SweepResidues(vacuum);
                 return Results.Json(new
                 {
-                    ok = r.Zcode.Skipped != "error" && r.WorkBuddy.Skipped != "error" && r.Cursor.Skipped != "error",
+                    ok = r.Zcode.Skipped != "error" && r.WorkBuddy.Skipped != "error" && r.Cursor.Skipped != "error" && r.Codex.Skipped != "error",
                     zcode = r.Zcode,
                     workbuddy = r.WorkBuddy,
                     cursor = r.Cursor,
+                    codex = r.Codex,
                     vacuum = r.Vacuum,
                 });
             }

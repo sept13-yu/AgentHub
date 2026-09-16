@@ -44,7 +44,7 @@ public sealed class SessionService
     public ResidueSweepResult SweepResidues(bool vacuum)
     {
         CursorVacuum? vac = null;
-        return new(SweepZcodeResidue(), SweepWorkBuddyResidue(), SweepCursorResidue(vacuum, out vac), vac);
+        return new(SweepZcodeResidue(), SweepWorkBuddyResidue(), SweepCursorResidue(vacuum, out vac), SweepCodexResidue(), vac);
     }
 
     private static ResidueSweepAgent SweepZcodeResidue()
@@ -69,6 +69,20 @@ public sealed class SessionService
         {
             var cloud = WorkBuddySidebar.SweepCloudDeleted(Dpapi.Unprotect(_config.Credentials.WorkBuddySession));
             return new(true, null, cloud.Ok, cloud.Warning);
+        }
+        catch (Exception ex)
+        {
+            return new(false, "error", 0, ex.Message);
+        }
+    }
+
+    private static ResidueSweepAgent SweepCodexResidue()
+    {
+        if (CodexDesktopCleanup.CodexRunning())
+            return new(false, "running", 0, "还在运行，已跳过");
+        try
+        {
+            return new(true, null, CodexDesktopCleanup.SweepOrphanLeftovers(), null);
         }
         catch (Exception ex)
         {
