@@ -6,7 +6,8 @@ namespace AgentHub.Core.CodexConfigCore;
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CodexConnectionKind
 {
-    /// <summary>ChatGPT 官方订阅：无 base_url，requires_openai_auth，凭据归 Codex 自己的 auth.json。</summary>
+    /// <summary>ChatGPT 官方订阅：无 base_url，requires_openai_auth，凭据仍在 Codex 的 auth.json。
+    /// 账号档案是 AgentHub 对本机登录态的归档，与连接记录分开，不随「应用连接」写入。</summary>
     Official,
     /// <summary>Responses 中转：base_url + auth.command，Key 由 AgentHub DPAPI 保管。</summary>
     ResponsesRelay,
@@ -56,4 +57,23 @@ public sealed class CodexConfigSettings
     public string? ActiveConnectionId { get; set; }
     /// <summary>最近一次成功应用后 live config.toml 的 SHA-256，用于外部修改检测。</summary>
     public string? LiveSha256 { get; set; }
+}
+
+/// <summary>账号档案索引（codex-auth-profiles/index.json）。不含 token。</summary>
+public sealed class CodexAuthProfileIndex
+{
+    public List<CodexAuthProfileMeta> Profiles { get; set; } = [];
+}
+
+/// <summary>一条归档的 ChatGPT 登录展示信息。凭据在同目录 {Id}.json 的 DPAPI 密文里。</summary>
+public sealed class CodexAuthProfileMeta
+{
+    public string Id { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Plan { get; set; } = "";
+    public string AccountId { get; set; } = "";
+    public string Identity { get; set; } = "";
+    public string CreatedAt { get; set; } = "";
+    public string UpdatedAt { get; set; } = "";
 }

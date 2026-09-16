@@ -18,16 +18,18 @@ public sealed class CodexApplyResult
 
 /// <summary>
 /// Codex 连接管理（方案 §6）：连接存 AgentHub config.json，live config.toml 只是当前连接的投影。
-/// AgentHub 不管理 auth.json、会话与其它用户配置；切换只重写受管字段并原子替换。
+/// 连接切换只重写 config.toml 受管字段；ChatGPT 登录态可选归档到本机账号档案，按需写回 auth.json。
 /// </summary>
 public sealed class CodexConfigService
 {
     private readonly AgentHubConfig _config;
     private readonly string _codexHome;
     private readonly string _exePath;
+    private readonly CodexAuthProfileStore _profiles;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public CodexConfigService(AgentHubConfig config, string? codexHome = null, string? exePath = null)
+    public CodexConfigService(AgentHubConfig config, string? codexHome = null, string? exePath = null,
+        string? profilesDir = null)
     {
         _config = config;
         _codexHome = codexHome ?? Path.Combine(
@@ -35,6 +37,7 @@ public sealed class CodexConfigService
         _exePath = exePath ?? Environment.ProcessPath
             ?? Process.GetCurrentProcess().MainModule?.FileName
             ?? "AgentHub.exe";
+        _profiles = new CodexAuthProfileStore(profilesDir);
     }
 
     public string ConfigPath => Path.Combine(_codexHome, "config.toml");
@@ -340,6 +343,177 @@ public sealed class CodexConfigService
             throw new InvalidOperationException("当前 config.toml 语法损坏，拒绝继续：" + ex.Message, ex);
         }
         return text;
+    }
+
+    // ---------------- 账号档案（冷切换 auth.json） ----------------
+
+    public object ListAuthProfiles()
+    {
+        var index = _profiles.LoadIndex();
+        TryReadLiveChatGpt(out var liveInfo, out var liveType);
+        return new
+        {
+            profiles = index.Profiles.Select(p => ToProfileView(p, liveInfo)),
+            live = new
+            {
+                authType = liveType,
+                email = liveInfo?.Email ?? "",
+                plan = liveInfo?.Plan ?? "",
+                importable = liveInfo is not null,
+            },
+        };
+    }
+
+    /// <summary>把当前 ~/.codex/auth.json（须为带 refresh_token 的 ChatGPT 登录）归档为命名档案。</summary>
+    public (CodexAuthProfileMeta Profile, bool Updated) ImportAuthProfile(string? name)
+    {
+        _writeLock.Wait();
+        try
+        {
+            if (!File.Exists(AuthJsonPath))
+                throw new InvalidOperationException("未找到 ~/.codex/auth.json，请先用 ChatGPT 账号登录 Codex");
+            string text;
+            try { text = File.ReadAllText(AuthJsonPath); }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("读取 auth.json 失败：" + ex.Message, ex);
+            }
+            if (!CodexChatGptAuth.TryParse(text, out var info, out var error) || info is null)
+                throw new InvalidOperationException(error ?? "当前登录不是可归档的 ChatGPT 官方登录");
+
+            var now = DateTime.UtcNow.ToString("o");
+            var trimmed = (name ?? "").Trim();
+            if (trimmed.Length > 80) trimmed = trimmed[..80];
+            var defaultName = info.Email.Length > 0 ? info.Email : "ChatGPT 账号";
+
+            var index = _profiles.LoadIndex();
+            var existing = index.Profiles.FirstOrDefault(p =>
+                p.Identity.Length > 0 && string.Equals(p.Identity, info.Identity, StringComparison.Ordinal));
+            if (existing is not null)
+            {
+                existing.Email = info.Email;
+                existing.Plan = info.Plan;
+                existing.AccountId = info.AccountId;
+                existing.Identity = info.Identity;
+                existing.UpdatedAt = now;
+                if (trimmed.Length > 0) existing.Name = trimmed;
+                else if (string.IsNullOrWhiteSpace(existing.Name)) existing.Name = defaultName;
+                _profiles.WritePayload(existing.Id, info.RawText);
+                _profiles.SaveIndex(index);
+                return (existing, true);
+            }
+
+            var meta = new CodexAuthProfileMeta
+            {
+                Id = NewAuthId(),
+                Name = trimmed.Length > 0 ? trimmed : defaultName,
+                Email = info.Email,
+                Plan = info.Plan,
+                AccountId = info.AccountId,
+                Identity = info.Identity,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+            _profiles.WritePayload(meta.Id, info.RawText);
+            index.Profiles.Add(meta);
+            _profiles.SaveIndex(index);
+            return (meta, false);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>把档案内容写回 ~/.codex/auth.json。不改 config.toml，也不重启 Codex。</summary>
+    public async Task<CodexApplyResult> SwitchAuthProfileAsync(string id)
+    {
+        await _writeLock.WaitAsync();
+        try
+        {
+            var index = _profiles.LoadIndex();
+            if (index.Profiles.All(p => p.Id != id))
+                throw new InvalidOperationException("账号档案不存在");
+            var payload = _profiles.ReadPayload(id);
+            if (!CodexChatGptAuth.TryParse(payload, out _, out var error))
+                return new CodexApplyResult { Ok = false, Error = "档案内容无效：" + error };
+
+            Directory.CreateDirectory(_codexHome);
+            var tempPath = AuthJsonPath + ".agenthub-tmp";
+            try
+            {
+                var bytes = System.Text.Encoding.UTF8.GetBytes(payload);
+                await using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+                {
+                    await fs.WriteAsync(bytes);
+                    fs.Flush(flushToDisk: true);
+                }
+                if (File.Exists(AuthJsonPath)) File.Replace(tempPath, AuthJsonPath, destinationBackupFileName: null);
+                else File.Move(tempPath, AuthJsonPath);
+            }
+            catch (Exception ex)
+            {
+                try { File.Delete(tempPath); } catch (IOException) { }
+                return new CodexApplyResult { Ok = false, Error = "写入 auth.json 失败：" + ex.Message };
+            }
+
+            return new CodexApplyResult { Ok = true, RestartRequired = IsCodexRunning() };
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new CodexApplyResult { Ok = false, Error = ex.Message };
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    public void DeleteAuthProfile(string id)
+    {
+        _writeLock.Wait();
+        try
+        {
+            var index = _profiles.LoadIndex();
+            var meta = index.Profiles.FirstOrDefault(p => p.Id == id)
+                ?? throw new InvalidOperationException("账号档案不存在");
+            index.Profiles.Remove(meta);
+            _profiles.SaveIndex(index);
+            _profiles.DeletePayload(id);
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    private static object ToProfileView(CodexAuthProfileMeta p, CodexChatGptAuthInfo? live) => new
+    {
+        p.Id, p.Name, p.Email, p.Plan, accountId = p.AccountId,
+        p.CreatedAt, p.UpdatedAt,
+        active = live is not null && p.Identity.Length > 0
+            && string.Equals(p.Identity, live.Identity, StringComparison.Ordinal),
+    };
+
+    private bool TryReadLiveChatGpt(out CodexChatGptAuthInfo? info, out string authType)
+    {
+        info = null;
+        authType = DetectAuthType();
+        if (authType != "chatgpt" || !File.Exists(AuthJsonPath)) return false;
+        try
+        {
+            return CodexChatGptAuth.TryParse(File.ReadAllText(AuthJsonPath), out info, out _);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static string NewAuthId()
+    {
+        var bytes = RandomNumberGenerator.GetBytes(4);
+        return "auth-" + Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
     /// <summary>auth.json 只看结构判类型，绝不返回内容。apikey | chatgpt | none | unknown。</summary>
