@@ -27,6 +27,7 @@ public sealed class SessionService
         _providers = new Dictionary<string, IConversationProvider>(StringComparer.OrdinalIgnoreCase)
         {
             ["cursor"] = new CursorProvider(titles),
+            ["cursor-cloud"] = new CursorCloudProvider(titles, config),
             ["codex"] = new CodexProvider(titles, log),
             ["dsh"] = new DshProvider(titles),
             ["workbuddy"] = new WorkBuddyProvider(titles, log, config),
@@ -37,6 +38,7 @@ public sealed class SessionService
     }
 
     public CursorProvider Cursor => (CursorProvider)_providers["cursor"];
+    public CursorCloudProvider CursorCloud => (CursorCloudProvider)_providers["cursor-cloud"];
     public int IndexedCount => _index.Count;
     public SessionLockStore Locks => _locks;
 
@@ -147,6 +149,8 @@ public sealed class SessionService
             if (!ok.Contains(id) || !_config.Dashboard.SessionReadable(id)) continue;
             if (id.Equals("cursor", StringComparison.OrdinalIgnoreCase) && Cursor.MissingReason is not null)
                 continue;
+            if (id.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase) && CursorCloud.MissingReason is not null)
+                continue;
             list.Add((id, DashboardSettings.AgentDisplayName(id)));
         }
         return list;
@@ -183,6 +187,8 @@ public sealed class SessionService
         {
             if (!_config.Dashboard.SessionReadable(id)) continue;
             if (id.Equals("cursor", StringComparison.OrdinalIgnoreCase) && Cursor.MissingReason is not null)
+                continue;
+            if (id.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase) && CursorCloud.MissingReason is not null)
                 continue;
             list.Add(id);
         }
@@ -272,7 +278,8 @@ public sealed class SessionService
     public string ExportMarkdown(ConversationDetail detail) => MarkdownExporter.Export(detail);
 
     public bool CanOpen(string agent) =>
-        !agent.Equals("cursor", StringComparison.OrdinalIgnoreCase);
+        !agent.Equals("cursor", StringComparison.OrdinalIgnoreCase)
+        && !agent.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>打开会话里出现过的项目目录。不接受索引外的任意路径。</summary>
     public async Task OpenProjectAsync(string path)

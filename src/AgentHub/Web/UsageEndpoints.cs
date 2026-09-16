@@ -70,6 +70,7 @@ public static class UsageEndpoints
             var relayRefresh = Dpapi.Unprotect(config.Credentials.RelayPanelRefreshToken);
             var workbuddySession = Dpapi.Unprotect(config.Credentials.WorkBuddySession);
             var traeSession = Dpapi.Unprotect(config.Credentials.TraeSession);
+            var cursorCloudApiKey = Dpapi.Unprotect(config.Credentials.CursorCloudApiKey);
             var update = AppUpdate.Snapshot();
             return Results.Json(new
             {
@@ -116,6 +117,8 @@ public static class UsageEndpoints
                     workbuddySession = shell ? workbuddySession : "",
                     traeSessionSet = !string.IsNullOrEmpty(traeSession),
                     traeSession = shell ? traeSession : "",
+                    cursorCloudApiKeySet = !string.IsNullOrEmpty(cursorCloudApiKey),
+                    cursorCloudApiKey = shell ? cursorCloudApiKey : "",
                 },
                 autostartActual = AutostartManager.IsEnabled(),
                 petRunning = petIsRunning?.Invoke() ?? false,
@@ -279,6 +282,14 @@ public static class UsageEndpoints
                     if (cred.TryGetProperty("traeSession", out var trs) && trs.ValueKind == JsonValueKind.String
                         && !string.IsNullOrWhiteSpace(trs.GetString()))
                         config.Credentials.TraeSession = Dpapi.Protect(trs.GetString()!.Trim());
+                    if (cred.TryGetProperty("cursorCloudApiKey", out var cck))
+                    {
+                        if (cck.ValueKind == JsonValueKind.Null
+                            || (cck.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(cck.GetString())))
+                            config.Credentials.CursorCloudApiKey = "";
+                        else if (cck.ValueKind == JsonValueKind.String)
+                            config.Credentials.CursorCloudApiKey = Dpapi.Protect(cck.GetString()!.Trim());
+                    }
                 }
 
                 config.Save();

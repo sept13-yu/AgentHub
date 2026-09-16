@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, type Ref } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { NButton, NIcon, NInput, NInputNumber, NModal, NProgress, NSwitch, useMessage } from 'naive-ui'
 import { FileCog, Lock } from 'lucide-vue-next'
@@ -56,6 +56,7 @@ interface SettingsPayload {
     deepseekKeySet: boolean
     relayKeySet: boolean
     workbuddySessionSet: boolean
+    cursorCloudApiKeySet?: boolean
   }
   autostartActual: boolean
   configPath: string
@@ -117,9 +118,11 @@ const f = reactive({
   deepseekKey: '',
   relayKey: '',
   workbuddySession: '',
+  cursorCloudApiKey: '',
   deepseekKeySet: false,
   relayKeySet: false,
   workbuddySessionSet: false,
+  cursorCloudApiKeySet: false,
 })
 
 const sectionNav = [
@@ -128,7 +131,19 @@ const sectionNav = [
   { id: 'usage', label: '用量额度' },
 ]
 
-const secretKeys = ['deepseekKey', 'relayKey', 'workbuddySession'] as const
+const secretKeys = ['deepseekKey', 'relayKey', 'workbuddySession', 'cursorCloudApiKey'] as const
+const clearCursorCloudKey = ref(false)
+
+function clearCursorCloudApiKey() {
+  if (readonly) return
+  f.cursorCloudApiKey = ''
+  clearCursorCloudKey.value = true
+  f.cursorCloudApiKeySet = false
+}
+
+watch(() => f.cursorCloudApiKey, (v) => {
+  if (v.trim().length > 0) clearCursorCloudKey.value = false
+})
 
 function pickTokenUnit(next: TokenUnit) {
   f.tokenUnit = next
@@ -146,6 +161,7 @@ const dirty = computed(() => {
   // 密钥不进快照串（snapOf 两侧都置空），单独判断：输入框非空即视为有改动，
   // 否则只改 Key 时永远不会出现保存按钮
   if (secretKeys.some((key) => f[key].trim().length > 0)) return true
+  if (clearCursorCloudKey.value) return true
   return snapOf() !== snapshot.value
 })
 
@@ -176,9 +192,11 @@ function applyLoaded(s: SettingsPayload) {
   f.deepseekKey = ''
   f.relayKey = ''
   f.workbuddySession = ''
+  f.cursorCloudApiKey = ''
   f.deepseekKeySet = s.credentials.deepseekKeySet
   f.relayKeySet = s.credentials.relayKeySet
   f.workbuddySessionSet = !!s.credentials.workbuddySessionSet
+  f.cursorCloudApiKeySet = !!s.credentials.cursorCloudApiKeySet
   configPath.value = s.configPath
   appVersion.value = s.appVersion || ''
   updateInstalled.value = !!s.updateInstalled
@@ -284,9 +302,15 @@ async function save() {
         ...(f.deepseekKey.trim() ? { deepseekKey: f.deepseekKey.trim() } : {}),
         ...(f.relayKey.trim() ? { relayKey: f.relayKey.trim() } : {}),
         ...(f.workbuddySession.trim() ? { workbuddySession: f.workbuddySession.trim() } : {}),
+        ...(f.cursorCloudApiKey.trim()
+          ? { cursorCloudApiKey: f.cursorCloudApiKey.trim() }
+          : clearCursorCloudKey.value
+            ? { cursorCloudApiKey: null }
+            : {}),
       },
     })
     setTokenUnit(f.tokenUnit)
+    clearCursorCloudKey.value = false
     await load()
     message.success('已保存并应用')
   } catch (e) {
@@ -417,6 +441,8 @@ function discard() {
   f.deepseekKey = ''
   f.relayKey = ''
   f.workbuddySession = ''
+  f.cursorCloudApiKey = ''
+  clearCursorCloudKey.value = false
   setTokenUnit(f.tokenUnit)
 }
 
@@ -618,6 +644,30 @@ onUnmounted(() => {
               v-model:value="f.workbuddySession"
             />
             <span v-if="f.workbuddySessionSet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> DPAPI</span>
+          </div>
+        </div>
+        <div class="row row--fill">
+          <div class="meta">
+            <label class="lbl" for="s-ccloud">Cursor Cloud API Key</label>
+            <span class="hint">会话页合并云端 Agent；Dashboard → API Keys</span>
+          </div>
+          <div class="ctrl ctrl--secret">
+            <n-input
+              id="s-ccloud"
+              type="password"
+              show-password-on="click"
+              :disabled="readonly"
+              autocomplete="off"
+              :placeholder="f.cursorCloudApiKeySet && !clearCursorCloudKey ? '已配置（留空不修改）' : ' '"
+              v-model:value="f.cursorCloudApiKey"
+            />
+            <span v-if="f.cursorCloudApiKeySet && !clearCursorCloudKey" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> DPAPI</span>
+            <n-button
+              v-if="(f.cursorCloudApiKeySet || clearCursorCloudKey) && !readonly"
+              quaternary
+              size="tiny"
+              @click="clearCursorCloudApiKey"
+            >清除</n-button>
           </div>
         </div>
       </div>

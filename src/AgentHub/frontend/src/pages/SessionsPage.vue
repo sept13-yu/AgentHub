@@ -540,7 +540,8 @@ watch(q, () => {
 })
 
 function canOpenAgent(id: string) {
-  return id.toLowerCase() !== 'cursor'
+  const a = id.toLowerCase()
+  return a !== 'cursor' && a !== 'cursor-cloud'
 }
 
 async function copyOk(text: string, ok: string) {

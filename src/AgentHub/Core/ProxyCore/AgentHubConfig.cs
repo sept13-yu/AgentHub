@@ -60,12 +60,12 @@ public sealed class DashboardSettings
 
     public static readonly string[] DefaultAgentOrder =
     [
-        "dsh", "trae", "workbuddy", "zcode", "mimocode", "cursor", "codex",
+        "dsh", "trae", "workbuddy", "zcode", "mimocode", "cursor", "cursor-cloud", "codex",
     ];
 
     public static readonly string[] SessionReadableAgents =
     [
-        "codex", "dsh", "cursor", "workbuddy", "zcode", "mimocode",
+        "codex", "dsh", "cursor", "cursor-cloud", "workbuddy", "zcode", "mimocode",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -82,6 +82,7 @@ public sealed class DashboardSettings
         ["cursor-auto"] = "cursor",
         ["cursor-api"] = "cursor",
         ["cursor-grok"] = "cursor",
+        ["cursor-cloud"] = "cursor-cloud",
         ["codex"] = "codex",
         ["codex-5h"] = "codex",
         ["codex-7d"] = "codex",
@@ -197,7 +198,7 @@ public sealed class DashboardSettings
         if (ShowQuotaRelay) q.Add("relay");
         foreach (var id in ResolvedAgentOrder())
         {
-            if (id == "dsh" || id == "mimocode" || !AgentEnabled(id)) continue;
+            if (id == "dsh" || id == "mimocode" || id == "cursor-cloud" || !AgentEnabled(id)) continue;
             q.Add(id);
         }
         return q;
@@ -209,7 +210,8 @@ public sealed class DashboardSettings
         var quota = NormalizeQuotaOrder(quotaOrder);
         var agents = NormalizeAgentOrder(agentOrder)
             .Where(id => !string.Equals(id, "dsh", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(id, "mimocode", StringComparison.OrdinalIgnoreCase))
+                      && !string.Equals(id, "mimocode", StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(id, "cursor-cloud", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var agentSet = new HashSet<string>(agents, StringComparer.Ordinal);
         var qi = 0;
@@ -237,6 +239,7 @@ public sealed class DashboardSettings
         "workbuddy" => ShowQuotaWorkBuddy,
         "zcode" => ShowQuotaZcode,
         "cursor" => ShowQuotaCursor,
+        "cursor-cloud" => ShowQuotaCursor,
         "codex" => ShowQuotaCodex,
         _ => false,
     };
@@ -259,6 +262,7 @@ public sealed class DashboardSettings
         "workbuddy" => "WorkBuddy",
         "zcode" => "ZCode",
         "cursor" => "Cursor",
+        "cursor-cloud" => "Cursor 云端",
         "codex" => "Codex",
         _ => id,
     };
@@ -281,6 +285,8 @@ public sealed class CredentialsSettings
     public string WorkBuddySession { get; set; } = "";
     /// <summary>Trae 网页 cookie `X-Cloudide-Session`（DPAPI 密文）。本机 storage.json 读不到 JWT 时才用。</summary>
     public string TraeSession { get; set; } = "";
+    /// <summary>Cursor Cloud Agents API Key（DPAPI 密文）。Dashboard → API Keys。</summary>
+    public string CursorCloudApiKey { get; set; } = "";
 }
 
 /// <summary>应用级设置。</summary>

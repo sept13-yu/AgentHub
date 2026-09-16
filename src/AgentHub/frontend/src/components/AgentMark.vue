@@ -10,7 +10,10 @@ const INK: Record<string, string> = {
 
 const props = defineProps<{ id: string | null | undefined }>()
 
-const ink = computed(() => (props.id ? INK[props.id] : undefined))
+const ink = computed(() => {
+  const id = props.id === 'cursor-cloud' ? 'cursor' : props.id
+  return id ? INK[id] : undefined
+})
 const src = computed(() => agentIcon(props.id))
 </script>
 
