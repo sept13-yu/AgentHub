@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using AgentHub.Core.ProxyCore;
 
@@ -65,6 +65,33 @@ internal sealed class SessionIndex
             _items = items.ToList();
             if (okAgents is not null) _okAgents = okAgents.ToList();
             _builtAt = DateTimeOffset.UtcNow;
+        }
+        Save();
+    }
+
+    /// <summary>取出某一家当前缓存（云端失败时保留旧列表用）。</summary>
+    public IReadOnlyList<ConversationSummary> ItemsForAgent(string agentId)
+    {
+        lock (_gate)
+        {
+            return _items
+                .Where(s => s.AgentId.Equals(agentId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+    }
+
+    /// <summary>只替换某一家条目并标记可读；不碰其他家，供云端后台/短超时合并。</summary>
+    public void UpsertAgent(string agentId, IReadOnlyList<ConversationSummary> items, bool markOk = true)
+    {
+        lock (_gate)
+        {
+            _items.RemoveAll(s => s.AgentId.Equals(agentId, StringComparison.OrdinalIgnoreCase));
+            _items.AddRange(items);
+            if (markOk)
+            {
+                var has = _okAgents.Any(a => a.Equals(agentId, StringComparison.OrdinalIgnoreCase));
+                if (!has) _okAgents.Add(agentId);
+            }
         }
         Save();
     }

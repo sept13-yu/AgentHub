@@ -37,6 +37,7 @@ interface SessionPage {
   weekStart: string
   cursorAvailable: boolean
   cursorMissingReason: string | null
+  cursorCloudHint?: string | null
   cursorRunning: boolean
   zcodeRunning: boolean
   workbuddyRunning: boolean
@@ -114,6 +115,7 @@ const groups = computed(() => {
   return unknown ? [...known, unknown] : known
 })
 const cursorOk = computed(() => !!page.value?.cursorAvailable)
+const cloudHint = computed(() => page.value?.cursorCloudHint?.trim() || '')
 const cursorRunning = computed(() => !!page.value?.cursorRunning)
 const zcodeRunning = computed(() => !!page.value?.zcodeRunning)
 const workbuddyRunning = computed(() => !!page.value?.workbuddyRunning)
@@ -286,6 +288,15 @@ async function loadList() {
   if (current.value && !keys.has(keyOf(current.value))) closePreview()
 }
 
+let cloudCatchupTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleCloudCatchup() {
+  if (cloudCatchupTimer) clearTimeout(cloudCatchupTimer)
+  // 后端本地先返回、云端短超时后台合并；稍后再拉一次拿到合并结果或网络提示
+  cloudCatchupTimer = setTimeout(() => {
+    void loadList().catch(() => {})
+  }, 4500)
+}
+
 async function refresh() {
   if (readonly) return
   setLoading(true)
@@ -293,6 +304,7 @@ async function refresh() {
     await post('/api/sessions/index/refresh')
     await loadList()
     await Promise.all([loadCursorStorage(), loadCursorOrphans()])
+    scheduleCloudCatchup()
     message.success('已刷新')
   } catch (e) {
     message.error(e instanceof Error ? e.message : '刷新失败')
@@ -306,6 +318,7 @@ async function load() {
   try {
     await loadList()
     await Promise.all([loadCursorStorage(), loadCursorOrphans()])
+    scheduleCloudCatchup()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '读取失败')
   } finally {
@@ -753,7 +766,8 @@ onMounted(() => { void load() })
               清理残留
             </n-button>
           </div>
-          <p v-if="residueSkipHint || hostRunning" class="hint">
+                    <p v-if="cloudHint" class="hint cloud-hint">{{ cloudHint }}</p>
+<p v-if="residueSkipHint || hostRunning" class="hint">
             <span v-if="residueSkipHint">{{ residueSkipHint }}</span>
             <span v-if="hostRunning"> 删会话仍要先退出要删的那一家（含托盘）。</span>
           </p>

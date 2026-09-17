@@ -1,4 +1,5 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
+using System.Net.Http;
 using System.IO;
 using AgentHub.Core.ProxyCore;
 using AgentHub.Core.SessionCore.Providers;
@@ -16,6 +17,8 @@ public sealed class SessionService
     private readonly SemaphoreSlim _rebuild = new(1, 1);
     private readonly Action<string>? _log;
     private bool _scannedOnce;
+    private string? _cloudScanHint;
+    private int _cloudEnriching;
 
     /// <summary>各家会话在客户端里随时会被删，索引太久就出"标题在、正文空"的残影，过期必须重扫。</summary>
     private static readonly TimeSpan IndexTtl = TimeSpan.FromMinutes(5);
@@ -40,6 +43,8 @@ public sealed class SessionService
     public CursorProvider Cursor => (CursorProvider)_providers["cursor"];
     public CursorCloudProvider CursorCloud => (CursorCloudProvider)_providers["cursor-cloud"];
     public int IndexedCount => _index.Count;
+    /// <summary>云端扫描失败时的网络提示；成功或未启用云端时为 null。</summary>
+    public string? CloudScanHint => _cloudScanHint;
     public SessionLockStore Locks => _locks;
 
     /// <summary>清各家残留。某一家还在跑就跳过那一家，不挡其余。</summary>
@@ -170,15 +175,33 @@ public sealed class SessionService
     public async Task EnsureIndexAsync(bool force = false)
     {
         if (!force && IndexFresh()) return;
+        var startCloud = false;
         await _rebuild.WaitAsync();
         try
         {
             if (!force && IndexFresh()) return;
-            var (all, ok) = await ScanProvidersAsync();
+            // 本地优先：先落本地索引，立即返回；云端短超时后台合并，不挡列表。
+            var (all, ok) = await ScanLocalProvidersAsync();
+            if (CloudEnabled())
+            {
+                // 保留上次云端缓存，避免离线时列表被掏空；标记 ok 以免 NeedsRescan 死循环。
+                if (!ok.Contains("cursor-cloud", StringComparer.OrdinalIgnoreCase))
+                    ok.Add("cursor-cloud");
+                foreach (var old in _index.ItemsForAgent("cursor-cloud"))
+                    all.Add(old);
+                startCloud = true;
+            }
+            else
+            {
+                _cloudScanHint = null;
+            }
             _index.Replace(all, ok);
             _scannedOnce = true;
         }
         finally { _rebuild.Release(); }
+
+        if (startCloud)
+            StartCloudEnrichInBackground();
     }
 
     /// <summary>盘上缓存只够首屏秒开，不算新鲜：本进程扫过一次 + 未过期 + 名单没新增可读家才直接用。</summary>
@@ -206,12 +229,17 @@ public sealed class SessionService
         return list;
     }
 
-    private async Task<(List<ConversationSummary> Items, List<string> Ok)> ScanProvidersAsync()
+    private bool CloudEnabled() =>
+        AllowedAgents().Any(id => id.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>只扫本地家（不含 cursor-cloud），保证 api.cursor.com 不可达时列表仍秒开。</summary>
+    private async Task<(List<ConversationSummary> Items, List<string> Ok)> ScanLocalProvidersAsync()
     {
         var lists = new List<ConversationSummary>();
         var ok = new List<string>();
         foreach (var id in AllowedAgents())
         {
+            if (id.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase)) continue;
             if (!_providers.TryGetValue(id, out var p)) continue;
             try
             {
@@ -225,6 +253,53 @@ public sealed class SessionService
             }
         }
         return (lists, ok);
+    }
+
+    private void StartCloudEnrichInBackground()
+    {
+        if (Interlocked.CompareExchange(ref _cloudEnriching, 1, 0) != 0) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await EnrichCloudAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _cloudEnriching, 0);
+            }
+        });
+    }
+
+    private async Task EnrichCloudAsync()
+    {
+        if (!_providers.TryGetValue("cursor-cloud", out var p)) return;
+        try
+        {
+            var items = await p.ListAsync().ConfigureAwait(false);
+            _index.UpsertAgent("cursor-cloud", items, markOk: true);
+            _cloudScanHint = null;
+            _log?.Invoke($"[sessions] cursor-cloud 已合并 {items.Count} 条");
+        }
+        catch (Exception ex)
+        {
+            _cloudScanHint = FriendlyCloudHint(ex);
+            _log?.Invoke($"[sessions] cursor-cloud 扫描失败 {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static string FriendlyCloudHint(Exception ex)
+    {
+        var msg = ex.Message ?? "";
+        if (msg.Contains("api.cursor.com", StringComparison.OrdinalIgnoreCase)
+            || msg.Contains("超时", StringComparison.Ordinal)
+            || msg.Contains("网络", StringComparison.Ordinal)
+            || ex is HttpRequestException or TaskCanceledException or OperationCanceledException
+            || ex.InnerException is HttpRequestException or TaskCanceledException)
+        {
+            return "Cursor 云端暂不可用（无法连接 api.cursor.com）。本地会话已正常显示，可稍后重试刷新。";
+        }
+        return "Cursor 云端同步失败：" + (string.IsNullOrWhiteSpace(msg) ? ex.GetType().Name : msg);
     }
 
     public async Task<ConversationDetail?> LoadAsync(string agent, string id)

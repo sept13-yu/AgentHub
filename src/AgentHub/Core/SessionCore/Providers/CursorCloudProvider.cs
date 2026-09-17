@@ -1,4 +1,5 @@
-﻿using System.Net.Http;
+﻿using System.IO;
+using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
@@ -15,11 +16,13 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
     public string AgentId => Id;
 
     private const string BaseUrl = "https://api.cursor.com";
+    /// <summary>列表/详情面向用户：短超时，避免 api.cursor.com 卡住整页。</summary>
+    private static readonly TimeSpan UserFacingTimeout = TimeSpan.FromSeconds(4);
     private static readonly HttpClient Http = CreateClient();
 
     private static HttpClient CreateClient()
     {
-        var http = new HttpClient { BaseAddress = new Uri(BaseUrl), Timeout = TimeSpan.FromSeconds(60) };
+        var http = new HttpClient { BaseAddress = new Uri(BaseUrl), Timeout = TimeSpan.FromSeconds(30) };
         http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         return http;
     }
@@ -47,14 +50,18 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
     public async Task<IReadOnlyList<ConversationSummary>> ListAsync()
     {
         if (MissingReason is not null) return [];
+        using var timeout = new CancellationTokenSource(UserFacingTimeout);
         var list = new List<ConversationSummary>();
         string? cursor = null;
+        try
+        {
         for (var page = 0; page < 20; page++)
         {
+            timeout.Token.ThrowIfCancellationRequested();
             var path = "/v0/agents?limit=100" + (cursor is null ? "" : "&cursor=" + Uri.EscapeDataString(cursor));
             using var req = Req(HttpMethod.Get, path);
-            using var resp = await Http.SendAsync(req).ConfigureAwait(false);
-            var body = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            using var resp = await Http.SendAsync(req, timeout.Token).ConfigureAwait(false);
+            var body = await resp.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
             if (!resp.IsSuccessStatusCode)
                 throw new HttpRequestException($"Cursor Cloud 列表失败 HTTP {(int)resp.StatusCode}");
 
@@ -93,6 +100,19 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
             if (string.IsNullOrEmpty(cursor)) break;
         }
         return list;
+        }
+        catch (OperationCanceledException)
+        {
+            throw new HttpRequestException(NetworkHint("列表"));
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (IsNetworkFailure(ex))
+        {
+            throw new HttpRequestException(NetworkHint("列表"), ex);
+        }
     }
 
     public async Task<ConversationDetail?> LoadAsync(string id)
@@ -100,10 +120,14 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
         CodexProvider.GuardDbId(id);
         if (MissingReason is not null) return null;
 
+        using var timeout = new CancellationTokenSource(UserFacingTimeout);
+        var ct = timeout.Token;
+        try
+        {
         using var statusReq = Req(HttpMethod.Get, "/v0/agents/" + Uri.EscapeDataString(id));
-        using var statusResp = await Http.SendAsync(statusReq).ConfigureAwait(false);
+        using var statusResp = await Http.SendAsync(statusReq, ct).ConfigureAwait(false);
         if (statusResp.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
-        var statusBody = await statusResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var statusBody = await statusResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (!statusResp.IsSuccessStatusCode)
             throw new HttpRequestException($"Cursor Cloud 详情失败 HTTP {(int)statusResp.StatusCode}");
 
@@ -116,8 +140,8 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
         var repo = RepoOf(agent);
 
         using var convReq = Req(HttpMethod.Get, "/v0/agents/" + Uri.EscapeDataString(id) + "/conversation");
-        using var convResp = await Http.SendAsync(convReq).ConfigureAwait(false);
-        var convBody = await convResp.Content.ReadAsStringAsync().ConfigureAwait(false);
+        using var convResp = await Http.SendAsync(convReq, ct).ConfigureAwait(false);
+        var convBody = await convResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
         if (convResp.StatusCode == System.Net.HttpStatusCode.NotFound) return null;
         if (!convResp.IsSuccessStatusCode)
             throw new HttpRequestException($"Cursor Cloud 会话失败 HTTP {(int)convResp.StatusCode}");
@@ -174,6 +198,19 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
             Messages = capped,
             Note = noteParts.Count > 0 ? string.Join(" · ", noteParts) : null,
         };
+        }
+        catch (OperationCanceledException)
+        {
+            throw new HttpRequestException(NetworkHint("详情"));
+        }
+        catch (HttpRequestException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (IsNetworkFailure(ex))
+        {
+            throw new HttpRequestException(NetworkHint("详情"), ex);
+        }
     }
 
     public Task RenameAsync(string id, string title)
@@ -299,6 +336,14 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
             ? $"\u5220\u9664\u5931\u8d25 HTTP {status}"
             : $"\u5220\u9664\u5931\u8d25 HTTP {status}?{detail}?";
     }
+
+
+    private static string NetworkHint(string action) =>
+        $"Cursor Cloud {action}失败：无法连接 api.cursor.com（超时或网络不可达）。本地会话不受影响，可稍后重试。";
+
+    private static bool IsNetworkFailure(Exception ex) =>
+        ex is HttpRequestException or TaskCanceledException or OperationCanceledException
+        || ex.InnerException is HttpRequestException or TaskCanceledException or IOException;
 
     private static string? RepoOf(JsonElement agent)
     {

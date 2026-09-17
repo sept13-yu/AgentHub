@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using AgentHub.Core.SessionCore;
 using AgentHub.Core.SessionCore.Providers;
@@ -31,6 +31,7 @@ public static class SessionEndpoints
                 weekStart = weekStart.ToString("yyyy-MM-dd"),
                 cursorAvailable = sessions.Cursor.MissingReason is null,
                 cursorMissingReason = sessions.Cursor.MissingReason,
+                cursorCloudHint = sessions.CloudScanHint,
                 cursorRunning = CursorProvider.CursorRunning(),
                 zcodeRunning = ZcodeProvider.ZcodeRunning(),
                 workbuddyRunning = WorkBuddyProvider.WorkBuddyRunning(),
