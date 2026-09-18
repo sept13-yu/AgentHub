@@ -341,7 +341,7 @@ internal static class QoderQuota
     {
         var totalContainer = Obj(root, "totalQuota") ?? Obj(root, "total_quota");
         if (totalContainer is null) return null;
-        var summary = Obj(totalContainer, "quotaSummary") ?? Obj(totalContainer, "quota_summary");
+        var summary = Obj(totalContainer.Value, "quotaSummary") ?? Obj(totalContainer.Value, "quota_summary");
         if (summary is null || !TryNormalizeSummary(summary.Value, out var used, out var total, out var remaining, out var pct, out var unit))
             return null;
         var sharedContainer = Obj(root, "sharedQuota") ?? Obj(root, "shared_quota");

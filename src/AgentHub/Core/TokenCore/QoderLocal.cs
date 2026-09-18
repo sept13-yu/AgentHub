@@ -80,7 +80,7 @@ internal static class QoderLocal
             if (!TryNum(root, "completion_tokens", out var completion) || completion < 0) return false;
             var cache = 0L;
             if (TryNum(root, "cached_tokens", out var rawCache) && rawCache >= 0)
-                cache = rawCache;
+                cache = (long)rawCache;
             var promptI = (long)prompt;
             var cacheI = (long)cache;
             var outI = (long)completion;

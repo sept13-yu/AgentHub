@@ -83,7 +83,7 @@ internal static class GrokLocal
                 }
                 if (!emitted)
                 {
-                    var rec = NormalizeTurn(usage, sessionId, eventId, ts, fallbackModel, project);
+                    var rec = NormalizeTurn(usage.Value, sessionId, eventId, ts, fallbackModel, project);
                     if (rec is not null) yield return rec;
                 }
             }
