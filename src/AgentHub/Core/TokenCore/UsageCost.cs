@@ -79,28 +79,53 @@ public static class UsageCost
         IEnumerable<PriceRow> prices, string? defaultCurrency)
         => BuildTable(prices, defaultCurrency);
 
+
+    /// <summary>
+    /// ZCode / WorkBuddy 等用量名常带区域前缀（如 cn:deepseek-v4-flash）。
+    /// 估价时去掉短前缀再匹配价表 / 别名 / LiteLLM；保留原名优先精确命中。
+    /// </summary>
+    internal static IEnumerable<string> ModelNameCandidates(string? model)
+    {
+        var name = (model ?? "").Trim();
+        if (name.Length == 0) yield break;
+        yield return name;
+
+        // cn:xxx / us:xxx 等：冒号前为短区域码（1–8 个字母数字），去掉后重试。
+        var colon = name.IndexOf(':');
+        if (colon is > 0 and <= 8)
+        {
+            var prefix = name[..colon];
+            var rest = name[(colon + 1)..].Trim();
+            if (rest.Length > 0
+                && prefix.All(c => char.IsLetterOrDigit(c) || c == '-' || c == '_')
+                && !rest.Equals(name, StringComparison.OrdinalIgnoreCase))
+                yield return rest;
+        }
+    }
+
     private static bool TryResolve(
         string? model,
         IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)> table,
         out (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny) price)
     {
         price = default;
-        var name = (model ?? "").Trim();
-        if (name.Length == 0) return false;
-        if (table.TryGetValue(name, out price)) return true;
-        if (PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out price))
-            return true;
-        // Unlisted model: LiteLLM list-price fallback (USD). Keeps settings table lean.
-        if (LiteLlmPriceEnricher.TryGetPrice(name, out var lite)
-            && lite.InputPer1m is { } inn and > 0
-            && lite.OutputPer1m is { } outt and > 0
-            && double.IsFinite(inn) && double.IsFinite(outt))
+        foreach (var name in ModelNameCandidates(model))
         {
-            double? cr = lite.CacheReadPer1m is { } crr && double.IsFinite(crr) ? crr : null;
-            double? cw = lite.CacheWritePer1m is { } cww && double.IsFinite(cww) ? cww : null;
-            var isCny = string.Equals(lite.Currency, "CNY", StringComparison.OrdinalIgnoreCase);
-            price = (inn, outt, cr, cw, isCny);
-            return true;
+            if (table.TryGetValue(name, out price)) return true;
+            if (PriceAliases.TryMap(name, out var canonical) && table.TryGetValue(canonical, out price))
+                return true;
+            // Unlisted model: LiteLLM list-price fallback (USD). Keeps settings table lean.
+            if (LiteLlmPriceEnricher.TryGetPrice(name, out var lite)
+                && lite.InputPer1m is { } inn and > 0
+                && lite.OutputPer1m is { } outt and > 0
+                && double.IsFinite(inn) && double.IsFinite(outt))
+            {
+                double? cr = lite.CacheReadPer1m is { } crr && double.IsFinite(crr) ? crr : null;
+                double? cw = lite.CacheWritePer1m is { } cww && double.IsFinite(cww) ? cww : null;
+                var isCny = string.Equals(lite.Currency, "CNY", StringComparison.OrdinalIgnoreCase);
+                price = (inn, outt, cr, cw, isCny);
+                return true;
+            }
         }
         return false;
     }
