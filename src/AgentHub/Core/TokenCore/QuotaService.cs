@@ -12,7 +12,8 @@ namespace AgentHub.Core.TokenCore;
 /// DeepSeek 走 API Key（DPAPI 保护）；Cursor 走 usage-summary（登录态从 vscdb 只读提取，
 /// 凭证不落盘不打日志）；Codex 走 ChatGPT backend wham/usage（auth.json OAuth）；
 /// Sub2API 走 API Key 的 GET /v1/usage；WorkBuddy / Trae 先本机登录态，设置 Cookie 兜底；
-/// Qoder / Qoder CN 优先本机 IPC（named pipe JSON-RPC），失败再 cookie/env、日志刮取、上次成功缓存。拿不到写原因，不写 0。</summary>
+/// Qoder 国际版优先本机 IPC（named pipe JSON-RPC）；国内版先探 ~/.qoder-cn 与
+/// com.qodercn.app.stable（不是 QoderCN 文件夹），再 cookie/env、日志刮取、上次成功缓存。拿不到写原因，不写 0。</summary>
 public sealed class QuotaService
 {
     private readonly AgentHubConfig _config;
