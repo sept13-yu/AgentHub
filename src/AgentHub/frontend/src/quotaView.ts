@@ -65,7 +65,7 @@ export function toQuotaTiles(raw: unknown): QuotaTile[] {
       id: meta.group,
       name: AGENT_NAME[meta.group] ?? meta.group,
       color: AGENT_COLOR[meta.group] ?? 'var(--idle)',
-      span: meta.group === 'cursor' ? 1 : windows.length >= 2 ? 2 : 1,
+      span: 1,
       windows,
       plan: subscriptionPlan(str(rec.plan)) || undefined,
     })
