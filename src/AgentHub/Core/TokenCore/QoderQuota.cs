@@ -156,10 +156,26 @@ internal static class QoderQuota
         var overrideHome = Environment.GetEnvironmentVariable(homeKey);
         if (!string.IsNullOrWhiteSpace(overrideHome))
             return Path.GetFullPath(overrideHome.Trim());
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (OperatingSystem.IsMacOS())
+            return Path.Combine(home, "Library", "Application Support", site.AppDir);
+        if (OperatingSystem.IsLinux())
+            return Path.Combine(home, ".config", site.AppDir);
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         if (string.IsNullOrEmpty(appData))
-            appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData", "Roaming");
+            appData = Path.Combine(home, "AppData", "Roaming");
         return Path.Combine(appData, site.AppDir);
+    }
+
+    /// <summary>用量库：<c>SharedClientCache/cache/db/local.db</c>。可用 <c>{PREFIX}_DB_PATH</c> 覆盖。
+    /// 不是 <c>state.vscdb</c>（那是会话索引，不当作 token 来源）。</summary>
+    internal static string LocalDbPath(Site site)
+    {
+        var dbKey = site.EnvPrefix + "_DB_PATH";
+        var overrideDb = Environment.GetEnvironmentVariable(dbKey);
+        if (!string.IsNullOrWhiteSpace(overrideDb))
+            return Path.GetFullPath(overrideDb.Trim());
+        return Path.Combine(DataRoot(site), "SharedClientCache", "cache", "db", "local.db");
     }
 
     private static string InfoPath(Site site) =>

@@ -1,8 +1,6 @@
 export const SET_PAYGO = [
   { id: 'deepseek', name: 'DeepSeek', show: 'showQuotaDeepSeek' },
   { id: 'relay', name: 'Sub2API', show: 'showQuotaRelay' },
-  { id: 'qoder', name: 'Qoder', show: 'showQuotaQoder' },
-  { id: 'qoder-cn', name: 'Qoder 国内', show: 'showQuotaQoderCn' },
 ] as const
 
 export const SET_AGENTS = [
@@ -12,6 +10,8 @@ export const SET_AGENTS = [
   { id: 'zcode', name: 'ZCode', windows: '5 小时 + 每周', show: 'showQuotaZcode' },
   { id: 'mimocode', name: 'MiMo', windows: '会话 · 用量', show: 'showAgentMimocode' },
   { id: 'grok', name: 'Grok', windows: '用量', show: 'showAgentGrok' },
+  { id: 'qoder', name: 'Qoder', windows: '额度 · 用量', show: 'showQuotaQoder' },
+  { id: 'qoder-cn', name: 'Qoder 国内', windows: '额度 · 用量', show: 'showQuotaQoderCn' },
   { id: 'cursor', name: 'Cursor', windows: '总用量 · Auto · API · Grok', show: 'showQuotaCursor' },
   { id: 'codex', name: 'Codex', windows: '5 小时 + 每周', show: 'showQuotaCodex' },
 ] as const
@@ -29,6 +29,12 @@ const AGENT_ALIAS: Record<string, AgentId> = {
   'zcode-week': 'zcode',
   mimocode: 'mimocode',
   grok: 'grok',
+  qoder: 'qoder',
+  'qoder-credits': 'qoder',
+  'qoder-calls': 'qoder',
+  'qoder-cn': 'qoder-cn',
+  'qoder-cn-credits': 'qoder-cn',
+  'qoder-cn-calls': 'qoder-cn',
   cursor: 'cursor',
   'cursor-total': 'cursor',
   'cursor-auto': 'cursor',

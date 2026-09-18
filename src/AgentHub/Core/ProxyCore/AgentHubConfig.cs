@@ -60,7 +60,7 @@ public sealed class DashboardSettings
 
     public static readonly string[] DefaultAgentOrder =
     [
-        "dsh", "trae", "workbuddy", "zcode", "mimocode", "grok", "cursor", "cursor-cloud", "codex",
+        "dsh", "trae", "workbuddy", "zcode", "mimocode", "grok", "qoder", "qoder-cn", "cursor", "cursor-cloud", "codex",
     ];
 
     public static readonly string[] SessionReadableAgents =
@@ -78,6 +78,12 @@ public sealed class DashboardSettings
         ["zcode-week"] = "zcode",
         ["mimocode"] = "mimocode",
         ["grok"] = "grok",
+        ["qoder"] = "qoder",
+        ["qoder-credits"] = "qoder",
+        ["qoder-calls"] = "qoder",
+        ["qoder-cn"] = "qoder-cn",
+        ["qoder-cn-credits"] = "qoder-cn",
+        ["qoder-cn-calls"] = "qoder-cn",
         ["cursor"] = "cursor",
         ["cursor-total"] = "cursor",
         ["cursor-auto"] = "cursor",
@@ -131,9 +137,9 @@ public sealed class DashboardSettings
     public bool ShowQuotaTrae { get; set; } = true;
     public bool ShowQuotaZcode { get; set; } = true;
     public bool ShowQuotaCodex { get; set; } = true;
-    /// <summary>Qoder 国际版额度砖（本机 IPC，无会话）。</summary>
+    /// <summary>Qoder 国际版：IPC 额度砖 + local.db 用量（无会话页）。</summary>
     public bool ShowQuotaQoder { get; set; } = true;
-    /// <summary>Qoder 国内版额度砖（独立 QoderCN 目录 / IPC，无会话）。</summary>
+    /// <summary>Qoder 国内版：独立 QoderCN 目录 / IPC 额度砖 + local.db 用量（无会话页）。</summary>
     public bool ShowQuotaQoderCn { get; set; } = true;
     /// <summary>DSH 无额度砖，只控制用量和会话。</summary>
     public bool ShowAgentDsh { get; set; } = true;
@@ -213,7 +219,7 @@ public sealed class DashboardSettings
         if (ShowQuotaQoderCn) q.Add("qoder-cn");
         foreach (var id in ResolvedAgentOrder())
         {
-            if (id is "dsh" or "mimocode" or "grok" or "cursor-cloud" || !AgentEnabled(id)) continue;
+            if (id is "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud" || !AgentEnabled(id)) continue;
             q.Add(id);
         }
         return q;
@@ -227,6 +233,8 @@ public sealed class DashboardSettings
             .Where(id => !string.Equals(id, "dsh", StringComparison.OrdinalIgnoreCase)
                       && !string.Equals(id, "mimocode", StringComparison.OrdinalIgnoreCase)
                       && !string.Equals(id, "grok", StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(id, "qoder", StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(id, "qoder-cn", StringComparison.OrdinalIgnoreCase)
                       && !string.Equals(id, "cursor-cloud", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var agentSet = new HashSet<string>(agents, StringComparer.Ordinal);
@@ -252,6 +260,8 @@ public sealed class DashboardSettings
         "dsh" => ShowAgentDsh,
         "mimocode" => ShowAgentMimocode,
         "grok" => ShowAgentGrok,
+        "qoder" => ShowQuotaQoder,
+        "qoder-cn" => ShowQuotaQoderCn,
         "trae" => ShowQuotaTrae,
         "workbuddy" => ShowQuotaWorkBuddy,
         "zcode" => ShowQuotaZcode,

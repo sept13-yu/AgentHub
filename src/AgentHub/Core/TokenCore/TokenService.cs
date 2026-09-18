@@ -31,7 +31,7 @@ public sealed class TokenService
     // 扫描
     // ------------------------------------------------------------------
 
-    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode/grok，单事务）。不碰网络，亚秒级。
+    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode/grok/qoder，单事务）。不碰网络，亚秒级。
     /// 主键冲突时更新用量列；新解析出名非 unknown 时回填模型（Codex 按轮次/改道、WorkBuddy 曾误读根级 unknown）。</summary>
     public ScanAllResult ScanAllLocal()
     {
@@ -95,6 +95,15 @@ public sealed class TokenService
 
                 sources["grok"] = GrokLocal.SessionsExist
                     ? Ingest("grok", GrokLocal.Home, () => GrokLocal.ReadUsage())
+                    : new SourceScanStat(0, 0, 0);
+
+                sources["qoder"] = QoderLocal.DbExists(QoderQuota.International)
+                    ? Ingest("qoder", QoderLocal.DbPath(QoderQuota.International),
+                        () => QoderLocal.ReadInternational())
+                    : new SourceScanStat(0, 0, 0);
+                sources["qoder-cn"] = QoderLocal.DbExists(QoderQuota.China)
+                    ? Ingest("qoder-cn", QoderLocal.DbPath(QoderQuota.China),
+                        () => QoderLocal.ReadChina())
                     : new SourceScanStat(0, 0, 0);
 
                 tx.Commit();
@@ -341,6 +350,8 @@ public sealed class TokenService
         if (!dash.ShowAgentDsh) hide.Add("dsh");
         if (!dash.ShowAgentMimocode) hide.Add("mimocode");
         if (!dash.ShowAgentGrok) hide.Add("grok");
+        if (!dash.ShowQuotaQoder) hide.Add("qoder");
+        if (!dash.ShowQuotaQoderCn) hide.Add("qoder-cn");
         if (!dash.ShowQuotaTrae) hide.Add("trae");
         if (!dash.ShowQuotaWorkBuddy) hide.Add("workbuddy");
         if (!dash.ShowQuotaZcode) hide.Add("zcode");
