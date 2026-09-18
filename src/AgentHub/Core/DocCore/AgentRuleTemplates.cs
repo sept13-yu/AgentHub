@@ -22,7 +22,7 @@ internal static class AgentRuleTemplates
 
     /// <summary>与 Descriptors() 顺序一致；结构化拼装只按此序输出已知 extra。</summary>
     internal static readonly string[] KnownAgentIds =
-        ["codex", "cursor", "dsh", "trae", "workbuddy", "zcode", "mimocode"];
+        ["codex", "cursor", "dsh", "trae", "workbuddy", "zcode", "mimocode", "qoder-cn"];
 
     private const string SlugLine = "- 当前 `<Agent>` = `{{slug}}`";
     private const string ShellHeading = "# 全局共用规则";
@@ -329,6 +329,7 @@ internal static class AgentRuleTemplates
         "trae" => ("Trae", "Trae"),
         "workbuddy" => ("WorkBuddy", "WorkBuddy"),
         "mimocode" => ("MiMo", "MiMoCode"),
+        "qoder-cn" => ("Qoder CN", "QoderCN"),
         _ => throw new ArgumentOutOfRangeException(nameof(agentId)),
     };
 

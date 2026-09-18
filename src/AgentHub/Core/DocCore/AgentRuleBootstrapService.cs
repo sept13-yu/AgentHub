@@ -642,6 +642,7 @@ public sealed class AgentRuleBootstrapService
         yield return new("workbuddy", "WorkBuddy", Path.Combine(_home, ".workbuddy"), RuleKind.WorkBuddy);
         yield return new("zcode", "ZCode", Path.Combine(_home, ".zcode"), RuleKind.Markdown);
         yield return new("mimocode", "MiMo", Path.Combine(_home, ".config", "mimocode"), RuleKind.Markdown);
+        yield return new("qoder-cn", "Qoder CN", Path.Combine(_home, ".qoder-cn"), RuleKind.Markdown);
     }
 
     private static AgentRuleItem Item(Descriptor d, bool detected, AgentRuleStatus status,
