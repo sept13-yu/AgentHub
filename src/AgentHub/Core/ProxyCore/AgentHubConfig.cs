@@ -65,7 +65,7 @@ public sealed class DashboardSettings
 
     public static readonly string[] SessionReadableAgents =
     [
-        "codex", "dsh", "cursor", "cursor-cloud", "workbuddy", "zcode", "mimocode",
+        "codex", "dsh", "cursor", "cursor-cloud", "workbuddy", "zcode", "mimocode", "qoder-cn",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -139,7 +139,7 @@ public sealed class DashboardSettings
     public bool ShowQuotaCodex { get; set; } = true;
     /// <summary>Qoder 国际版：IPC 额度砖 + %APPDATA%/Qoder/.../local.db 用量（无会话页）。</summary>
     public bool ShowQuotaQoder { get; set; } = true;
-    /// <summary>Qoder 国内版：额度砖 + ~/.qoder-cn jsonl 用量（无会话页；不是 %APPDATA%/QoderCN）。</summary>
+    /// <summary>Qoder 国内版：额度砖 + ~/.qoder-cn jsonl 用量 + com.qodercn.app.stable/main.sqlite 会话页。</summary>
     public bool ShowQuotaQoderCn { get; set; } = true;
     /// <summary>DSH 无额度砖，只控制用量和会话。</summary>
     public bool ShowAgentDsh { get; set; } = true;

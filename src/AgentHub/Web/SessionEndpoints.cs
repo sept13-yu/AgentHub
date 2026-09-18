@@ -35,6 +35,7 @@ public static class SessionEndpoints
                 cursorRunning = CursorProvider.CursorRunning(),
                 zcodeRunning = ZcodeProvider.ZcodeRunning(),
                 workbuddyRunning = WorkBuddyProvider.WorkBuddyRunning(),
+                qoderCnRunning = QoderCnProvider.QoderCnRunning(),
                 codexRunning = CodexDesktopCleanup.CodexRunning(),
                 sources = sessions.Sources().Select(s => new { id = s.Id, name = s.Name }).ToList(),
                 items = page.Items.Select(s => new

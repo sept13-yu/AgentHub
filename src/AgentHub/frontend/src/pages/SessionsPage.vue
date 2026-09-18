@@ -41,6 +41,7 @@ interface SessionPage {
   cursorRunning: boolean
   zcodeRunning: boolean
   workbuddyRunning: boolean
+  qoderCnRunning: boolean
   codexRunning: boolean
   sources: Source[]
   items: SessionRow[]
@@ -119,6 +120,7 @@ const cloudHint = computed(() => page.value?.cursorCloudHint?.trim() || '')
 const cursorRunning = computed(() => !!page.value?.cursorRunning)
 const zcodeRunning = computed(() => !!page.value?.zcodeRunning)
 const workbuddyRunning = computed(() => !!page.value?.workbuddyRunning)
+const qoderCnRunning = computed(() => !!page.value?.qoderCnRunning)
 const codexRunning = computed(() => !!page.value?.codexRunning)
 const hasZcode = computed(() => sources.value.some((s) => s.id === 'zcode'))
 const hasWorkbuddy = computed(() => sources.value.some((s) => s.id === 'workbuddy'))
@@ -137,7 +139,8 @@ const residueSkipHint = computed(() => {
   if (hasCodex.value && codexRunning.value) skip.push('Codex')
   return skip.length ? `${skip.join(' / ')} 还在运行，点清理时会跳过这${skip.length > 1 ? '几' : '一'}家。` : ''
 })
-const hostRunning = computed(() => zcodeRunning.value || workbuddyRunning.value || codexRunning.value)
+const hostRunning = computed(() =>
+  zcodeRunning.value || workbuddyRunning.value || qoderCnRunning.value || codexRunning.value)
 
 // Cursor agentKv 内容库占用 → 大时引导用户跑官方 GC 命令（AgentHub 不代删共享库）
 interface CursorStorage { mainDbBytes: number; agentKvBytes: number; agentKvCount: number }
@@ -220,7 +223,8 @@ const confirmText = computed(() => {
     }
     return lines.join('\n')
   }
-  const hostHint = pendingRows.value.some((r) => r.agent === 'zcode' || r.agent === 'workbuddy' || r.agent === 'codex')
+  const hostHint = pendingRows.value.some((r) =>
+    r.agent === 'zcode' || r.agent === 'workbuddy' || r.agent === 'codex' || r.agent === 'qoder-cn')
     ? (hostRunning.value
       ? ' 请先完全退出要删的那一家（含托盘），否则标题栏还在。'
       : ' 退出后再点一次删除，列表里还在的会话不会自己消失。')

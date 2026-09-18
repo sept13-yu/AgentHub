@@ -36,6 +36,7 @@ public sealed class SessionService
             ["workbuddy"] = new WorkBuddyProvider(titles, log, config),
             ["zcode"] = new ZcodeProvider(titles),
             ["mimocode"] = new MimocodeProvider(titles),
+            ["qoder-cn"] = new QoderCnProvider(titles),
         };
         _index.LoadFromDisk();
     }
