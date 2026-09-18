@@ -204,6 +204,37 @@ internal static class QoderLocal
     }
 
     /// <summary>UTF-8 字节/4，至少 1，保证 byAgent.tokens &gt; 0。</summary>
+
+    /// <summary>
+    /// Qoder CN stores internal route ids (qfmodel); UI labels them Qwen3.8-Flash in dynamic-text.
+    /// Map at ingest so dashboard model chips and price table match the UI names.
+    /// </summary>
+    internal static string ResolveChinaModelDisplay(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "unknown";
+        var key = raw.Trim();
+        if (key.StartsWith("qoder/", StringComparison.OrdinalIgnoreCase))
+            key = key["qoder/".Length..].Trim();
+        return ChinaModelDisplay.TryGetValue(key, out var label) ? label : raw.Trim();
+    }
+
+    private static readonly Dictionary<string, string> ChinaModelDisplay =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["qfmodel"] = "Qwen3.8-Flash",
+            ["qmodel_38max"] = "Qwen3.8-Max",
+            ["qmodel"] = "Qwen3.7-Plus",
+            ["qmodel_latest"] = "Qwen3.7-Max",
+            ["dfmodel"] = "DeepSeek-V4-Flash",
+            ["dmodel"] = "DeepSeek-V4-Pro",
+            ["gfmodel"] = "GLM-5.3-Flash",
+            ["gmodel"] = "GLM-5.3",
+            ["kmodel"] = "Kimi-K2.7-Code",
+            ["kmodel_latest"] = "Kimi-K3",
+            ["mmodel"] = "MiniMax-M3",
+            ["cmodel"] = "Cantus",
+        };
+
     internal static long EstimateOutputTokens(JsonElement? message)
     {
         var text = ExtractAssistantText(message);
