@@ -415,6 +415,12 @@ public sealed class SessionService
             if (seen.Add($"{agent}:{id}")) work.Add((agent, id));
             foreach (var child in _index.ChildOf(agent, id))
             {
+                // 删父时展开的子会话同样受锁保护，避免锁定项被物理删除
+                if (!single && _locks.IsLocked(child.AgentId, child.Id))
+                {
+                    skipped++;
+                    continue;
+                }
                 if (seen.Add($"{agent}:{child.Id}")) work.Add((agent, child.Id));
             }
         }

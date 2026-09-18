@@ -408,7 +408,8 @@ public static class UsageParsers
             {
                 Tool = "cursor",
                 SessionId = "cursor-day:" + localDay,
-                RequestKey = dateRaw,
+                // 主键含 model：同日多模型不得互相覆盖
+                RequestKey = dateRaw + "|" + model,
                 TsUtc = ts,
                 InputTokens = inputWithout,
                 OutputTokens = output,

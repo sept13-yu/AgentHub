@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -98,6 +99,25 @@ public partial class MainWindow : Window
                 }
             };
 
+            // 写 token 对每个文档注入，壳内 WebView 不得导航出本机 origin，否则外页可读 token
+            Web.CoreWebView2.NavigationStarting += (_, args) =>
+            {
+                if (!IsLocalShellUri(args.Uri)) args.Cancel = true;
+            };
+            Web.CoreWebView2.NewWindowRequested += (_, args) =>
+            {
+                args.Handled = true;
+                if (Uri.TryCreate(args.Uri, UriKind.Absolute, out var u)
+                    && (u.Scheme == Uri.UriSchemeHttp || u.Scheme == Uri.UriSchemeHttps))
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo(args.Uri) { UseShellExecute = true });
+                    }
+                    catch (Exception) { }
+                }
+            };
+
             Web.NavigationCompleted += OnFirstNavigationCompleted;
             Web.Source = new Uri(_web.BaseUri, "app/");
         }
@@ -110,6 +130,17 @@ public partial class MainWindow : Window
             ReallyExit = true;
             (Application.Current as App)?.RequestExit();
         }
+    }
+
+    /// <summary>壳内只允许本机 Kestrel（含 about:blank 首帧）。</summary>
+    private static bool IsLocalShellUri(string? uriText)
+    {
+        if (string.IsNullOrEmpty(uriText)) return false;
+        if (uriText.Equals("about:blank", StringComparison.OrdinalIgnoreCase)) return true;
+        if (!Uri.TryCreate(uriText, UriKind.Absolute, out var uri)) return false;
+        return uri.Scheme == Uri.UriSchemeHttp
+            && uri.Host.Equals("127.0.0.1", StringComparison.Ordinal)
+            && uri.Port == WebHostService.Port;
     }
 
     protected override void OnClosing(CancelEventArgs e)

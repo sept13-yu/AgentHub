@@ -61,17 +61,10 @@ public static class UsageEndpoints
 
         // ---------------- 设置 ----------------
 
-        app.MapGet("/api/settings", (HttpContext ctx) =>
+        app.MapGet("/api/settings", () =>
         {
-            var shell = writeAuth(ctx);
-            var deepseekKey = Dpapi.Unprotect(config.Credentials.DeepSeekKey);
-            var relayKey = Dpapi.Unprotect(config.Credentials.RelayKey);
-            var relayAuth = Dpapi.Unprotect(config.Credentials.RelayPanelAuthToken);
-            var relayRefresh = Dpapi.Unprotect(config.Credentials.RelayPanelRefreshToken);
-            var workbuddySession = Dpapi.Unprotect(config.Credentials.WorkBuddySession);
-            var traeSession = Dpapi.Unprotect(config.Credentials.TraeSession);
-            var cursorCloudApiKey = Dpapi.Unprotect(config.Credentials.CursorCloudApiKey);
             var update = AppUpdate.Snapshot();
+            // 明文凭据不回传：设置页只吃 *Set 标志，密钥仅经 PUT 写入（DPAPI）
             return Results.Json(new
             {
                 app = new
@@ -106,19 +99,19 @@ public static class UsageEndpoints
                 },
                 credentials = new
                 {
-                    deepseekKeySet = !string.IsNullOrEmpty(deepseekKey),
-                    deepseekKey = shell ? deepseekKey : "",
-                    relayKeySet = !string.IsNullOrEmpty(relayKey),
-                    relayKey = shell ? relayKey : "",
+                    deepseekKeySet = !string.IsNullOrEmpty(Dpapi.Unprotect(config.Credentials.DeepSeekKey)),
+                    deepseekKey = "",
+                    relayKeySet = !string.IsNullOrEmpty(Dpapi.Unprotect(config.Credentials.RelayKey)),
+                    relayKey = "",
                     relayPanelBaseUrl = config.Credentials.RelayPanelBaseUrl,
-                    relayPanelAuthTokenSet = !string.IsNullOrEmpty(relayAuth),
-                    relayPanelRefreshTokenSet = !string.IsNullOrEmpty(relayRefresh),
-                    workbuddySessionSet = !string.IsNullOrEmpty(workbuddySession),
-                    workbuddySession = shell ? workbuddySession : "",
-                    traeSessionSet = !string.IsNullOrEmpty(traeSession),
-                    traeSession = shell ? traeSession : "",
-                    cursorCloudApiKeySet = !string.IsNullOrEmpty(cursorCloudApiKey),
-                    cursorCloudApiKey = shell ? cursorCloudApiKey : "",
+                    relayPanelAuthTokenSet = !string.IsNullOrEmpty(Dpapi.Unprotect(config.Credentials.RelayPanelAuthToken)),
+                    relayPanelRefreshTokenSet = !string.IsNullOrEmpty(Dpapi.Unprotect(config.Credentials.RelayPanelRefreshToken)),
+                    workbuddySessionSet = !string.IsNullOrEmpty(Dpapi.Unprotect(config.Credentials.WorkBuddySession)),
+                    workbuddySession = "",
+                    traeSessionSet = !string.IsNullOrEmpty(Dpapi.Unprotect(config.Credentials.TraeSession)),
+                    traeSession = "",
+                    cursorCloudApiKeySet = !string.IsNullOrEmpty(Dpapi.Unprotect(config.Credentials.CursorCloudApiKey)),
+                    cursorCloudApiKey = "",
                 },
                 autostartActual = AutostartManager.IsEnabled(),
                 petRunning = petIsRunning?.Invoke() ?? false,

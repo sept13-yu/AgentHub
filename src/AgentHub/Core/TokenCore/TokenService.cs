@@ -122,6 +122,18 @@ public sealed class TokenService
             {
                 InitSchema(conn);
                 using var tx = conn.BeginTransaction();
+                // CSV 当日全量替换：清掉同 day 旧主键（含历史 dateRaw 无 model 格式），避免双计
+                var days = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var rec in recs)
+                    days.Add(rec.SessionId);
+                foreach (var day in days)
+                {
+                    using var del = conn.CreateCommand();
+                    del.Transaction = tx;
+                    del.CommandText = "DELETE FROM usage_records WHERE tool = 'cursor' AND session_id = $sid";
+                    del.Parameters.AddWithValue("$sid", day);
+                    del.ExecuteNonQuery();
+                }
                 foreach (var rec in recs)
                     n += InsertRecord(conn, tx, rec);
                 tx.Commit();
@@ -193,8 +205,11 @@ public sealed class TokenService
               output_tokens = excluded.output_tokens,
               cached_input_tokens = excluded.cached_input_tokens,
               cache_write_tokens = excluded.cache_write_tokens,
+              reasoning_tokens = excluded.reasoning_tokens,
+              is_subagent = excluded.is_subagent,
               ts_utc = excluded.ts_utc,
               local_date = excluded.local_date,
+              project = excluded.project,
               model = CASE
                 WHEN usage_records.model = 'unknown' AND excluded.model <> 'unknown'
                 THEN excluded.model ELSE usage_records.model END

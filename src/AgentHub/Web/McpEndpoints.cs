@@ -19,8 +19,10 @@ public static class McpEndpoints
             catch (Exception ex) { return Results.Json(new { error = ex.Message }, statusCode: 500); }
         });
 
-        app.MapGet("/api/mcp/raw", (string name) =>
+        // 明文配置（含 env/headers）仅壳内可读：浏览器直连一律 403，列表接口保持掩码
+        app.MapGet("/api/mcp/raw", (HttpContext ctx, string name) =>
         {
+            if (!writeAuth(ctx)) return Forbidden();
             if (string.IsNullOrWhiteSpace(name))
                 return Results.Json(new { error = "需要 name" }, statusCode: 400);
             var spec = mcp.GetRaw(name.Trim());
