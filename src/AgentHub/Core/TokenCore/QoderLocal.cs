@@ -180,9 +180,10 @@ internal static class QoderLocal
         var ts = ReadLineTimestamp(root) ?? (msg is not null ? ReadLineTimestamp(msg.Value) : null);
         if (ts is null) return null;
 
-        var model = (msg is not null ? UsageParsers.GetStr(msg, "model") : null)
+        var model = ResolveChinaModelDisplay(
+            (msg is not null ? UsageParsers.GetStr(msg, "model") : null)
             ?? UsageParsers.GetStr(root, "model")
-            ?? "unknown";
+            ?? "unknown");
         var project = UsageParsers.GetStr(root, "cwd")
             ?? (msg is not null ? UsageParsers.GetStr(msg, "cwd") : null);
 
