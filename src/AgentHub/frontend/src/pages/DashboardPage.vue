@@ -1013,7 +1013,8 @@ button.cost:focus-visible {
   justify-content: center;
   gap: var(--sp-2);
   min-width: 0;
-  min-height: 64px;
+  /* 与余额砖（大号 metric）视觉齐平；单窗进度砖单独占行时不再被压矮 */
+  min-height: 92px;
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--stroke);
   border-radius: var(--r-card);
@@ -1143,6 +1144,7 @@ button.cost:focus-visible {
   grid-template-columns: 52px minmax(0, 1fr) 36px 72px;
   align-items: center;
   gap: var(--sp-2);
+  min-height: 28px;
   font-size: var(--fs-caption);
   color: var(--dim);
 }
@@ -1150,7 +1152,7 @@ button.cost:focus-visible {
   color: var(--text);
 }
 .qbar {
-  height: 4px;
+  height: 6px;
   border-radius: var(--r-pill);
   background: var(--wash);
   overflow: hidden;
