@@ -20,6 +20,10 @@ const WINDOW_META: Record<string, { group: string; short: string }> = {
   'zcode-week': { group: 'zcode', short: '每周' },
   'codex-5h': { group: 'codex', short: '5 小时' },
   'codex-7d': { group: 'codex', short: '每周' },
+  'qoder-credits': { group: 'qoder', short: '额度' },
+  'qoder-calls': { group: 'qoder', short: '体验' },
+  'qoder-cn-credits': { group: 'qoder-cn', short: '额度' },
+  'qoder-cn-calls': { group: 'qoder-cn', short: '体验' },
 }
 
 export function toQuotaTiles(raw: unknown): QuotaTile[] {

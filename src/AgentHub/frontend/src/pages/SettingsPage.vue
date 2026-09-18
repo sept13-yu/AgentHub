@@ -48,8 +48,11 @@ interface SettingsPayload {
     showQuotaTrae: boolean
     showQuotaZcode: boolean
     showQuotaCodex: boolean
+    showQuotaQoder?: boolean
+    showQuotaQoderCn?: boolean
     showAgentDsh?: boolean
     showAgentMimocode?: boolean
+    showAgentGrok?: boolean
     agentOrder?: string[]
   }
   credentials: {
@@ -113,8 +116,11 @@ const f = reactive({
   showQuotaTrae: true,
   showQuotaZcode: true,
   showQuotaCodex: true,
+  showQuotaQoder: true,
+  showQuotaQoderCn: true,
   showAgentDsh: true,
   showAgentMimocode: true,
+  showAgentGrok: true,
   agentOrder: normalizeAgentOrder([]),
   deepseekKey: '',
   relayKey: '',
@@ -187,8 +193,11 @@ function applyLoaded(s: SettingsPayload) {
   f.showQuotaTrae = d.showQuotaTrae !== false
   f.showQuotaZcode = d.showQuotaZcode !== false
   f.showQuotaCodex = d.showQuotaCodex !== false
+  f.showQuotaQoder = d.showQuotaQoder !== false
+  f.showQuotaQoderCn = d.showQuotaQoderCn !== false
   f.showAgentDsh = d.showAgentDsh !== false
   f.showAgentMimocode = d.showAgentMimocode !== false
+  f.showAgentGrok = d.showAgentGrok !== false
   f.agentOrder = normalizeAgentOrder(d.agentOrder)
   f.deepseekKey = ''
   f.relayKey = ''
@@ -294,8 +303,11 @@ async function save() {
         showQuotaTrae: !!f.showQuotaTrae,
         showQuotaZcode: !!f.showQuotaZcode,
         showQuotaCodex: !!f.showQuotaCodex,
+        showQuotaQoder: !!f.showQuotaQoder,
+        showQuotaQoderCn: !!f.showQuotaQoderCn,
         showAgentDsh: !!f.showAgentDsh,
         showAgentMimocode: !!f.showAgentMimocode,
+        showAgentGrok: !!f.showAgentGrok,
         agentOrder: f.agentOrder,
       },
       credentials: {
@@ -682,7 +694,7 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <label class="lbl" for="s-cost">成本估算</label>
-            <span class="hint">净输入×输入 + cache读×cache读 + cache写×cache写 + 输出×输出（缺 cache 价回退输入价）。{{ priceSyncHint() }}</span>
+            <span class="hint">净输入×输入 + cache读×cache读 + cache写×cache写 + (输出+推理)×输出（缺 cache 价回退输入价；Grok 优先用厂商回报 USD）。{{ priceSyncHint() }}</span>
           </div>
           <div class="ctrl"><n-switch id="s-cost" :disabled="readonly" v-model:value="f.costEstimate" /></div>
         </div>

@@ -55,12 +55,12 @@ public sealed class DashboardSettings
 {
     public static readonly string[] DefaultQuotaOrder =
     [
-        "deepseek", "relay", "trae", "workbuddy", "zcode", "cursor", "codex",
+        "deepseek", "relay", "qoder", "qoder-cn", "trae", "workbuddy", "zcode", "cursor", "codex",
     ];
 
     public static readonly string[] DefaultAgentOrder =
     [
-        "dsh", "trae", "workbuddy", "zcode", "mimocode", "cursor", "cursor-cloud", "codex",
+        "dsh", "trae", "workbuddy", "zcode", "mimocode", "grok", "qoder", "qoder-cn", "cursor", "cursor-cloud", "codex",
     ];
 
     public static readonly string[] SessionReadableAgents =
@@ -77,6 +77,13 @@ public sealed class DashboardSettings
         ["zcode-5h"] = "zcode",
         ["zcode-week"] = "zcode",
         ["mimocode"] = "mimocode",
+        ["grok"] = "grok",
+        ["qoder"] = "qoder",
+        ["qoder-credits"] = "qoder",
+        ["qoder-calls"] = "qoder",
+        ["qoder-cn"] = "qoder-cn",
+        ["qoder-cn-credits"] = "qoder-cn",
+        ["qoder-cn-calls"] = "qoder-cn",
         ["cursor"] = "cursor",
         ["cursor-total"] = "cursor",
         ["cursor-auto"] = "cursor",
@@ -94,6 +101,12 @@ public sealed class DashboardSettings
         ["relay"] = "relay",
         ["trae"] = "trae",
         ["workbuddy"] = "workbuddy",
+        ["qoder"] = "qoder",
+        ["qoder-credits"] = "qoder",
+        ["qoder-calls"] = "qoder",
+        ["qoder-cn"] = "qoder-cn",
+        ["qoder-cn-credits"] = "qoder-cn",
+        ["qoder-cn-calls"] = "qoder-cn",
         ["zcode"] = "zcode",
         ["zcode-5h"] = "zcode",
         ["zcode-week"] = "zcode",
@@ -124,10 +137,16 @@ public sealed class DashboardSettings
     public bool ShowQuotaTrae { get; set; } = true;
     public bool ShowQuotaZcode { get; set; } = true;
     public bool ShowQuotaCodex { get; set; } = true;
+    /// <summary>Qoder 国际版：IPC 额度砖 + local.db 用量（无会话页）。</summary>
+    public bool ShowQuotaQoder { get; set; } = true;
+    /// <summary>Qoder 国内版：独立 QoderCN 目录 / IPC 额度砖 + local.db 用量（无会话页）。</summary>
+    public bool ShowQuotaQoderCn { get; set; } = true;
     /// <summary>DSH 无额度砖，只控制用量和会话。</summary>
     public bool ShowAgentDsh { get; set; } = true;
     /// <summary>MiMo 无额度砖，只控制用量和会话。</summary>
     public bool ShowAgentMimocode { get; set; } = true;
+    /// <summary>本机 Grok 用量（~/.grok），无额度砖、无会话页。</summary>
+    public bool ShowAgentGrok { get; set; } = true;
     /// <summary>Agent 表顺序。空或未调过按 DefaultAgentOrder。</summary>
     public List<string> AgentOrder { get; set; } = [];
     /// <summary>额度条目顺序。空或未调过按 DefaultQuotaOrder。</summary>
@@ -196,9 +215,11 @@ public sealed class DashboardSettings
         var q = new List<string>();
         if (ShowQuotaDeepSeek) q.Add("deepseek");
         if (ShowQuotaRelay) q.Add("relay");
+        if (ShowQuotaQoder) q.Add("qoder");
+        if (ShowQuotaQoderCn) q.Add("qoder-cn");
         foreach (var id in ResolvedAgentOrder())
         {
-            if (id == "dsh" || id == "mimocode" || id == "cursor-cloud" || !AgentEnabled(id)) continue;
+            if (id is "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud" || !AgentEnabled(id)) continue;
             q.Add(id);
         }
         return q;
@@ -211,6 +232,9 @@ public sealed class DashboardSettings
         var agents = NormalizeAgentOrder(agentOrder)
             .Where(id => !string.Equals(id, "dsh", StringComparison.OrdinalIgnoreCase)
                       && !string.Equals(id, "mimocode", StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(id, "grok", StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(id, "qoder", StringComparison.OrdinalIgnoreCase)
+                      && !string.Equals(id, "qoder-cn", StringComparison.OrdinalIgnoreCase)
                       && !string.Equals(id, "cursor-cloud", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var agentSet = new HashSet<string>(agents, StringComparer.Ordinal);
@@ -235,6 +259,9 @@ public sealed class DashboardSettings
     {
         "dsh" => ShowAgentDsh,
         "mimocode" => ShowAgentMimocode,
+        "grok" => ShowAgentGrok,
+        "qoder" => ShowQuotaQoder,
+        "qoder-cn" => ShowQuotaQoderCn,
         "trae" => ShowQuotaTrae,
         "workbuddy" => ShowQuotaWorkBuddy,
         "zcode" => ShowQuotaZcode,
@@ -258,6 +285,9 @@ public sealed class DashboardSettings
     {
         "dsh" => "DSH",
         "mimocode" => "MiMo",
+        "grok" => "Grok",
+        "qoder" => "Qoder",
+        "qoder-cn" => "Qoder 国内",
         "trae" => "Trae",
         "workbuddy" => "WorkBuddy",
         "zcode" => "ZCode",

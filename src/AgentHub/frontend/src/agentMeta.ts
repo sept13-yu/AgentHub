@@ -6,6 +6,9 @@ import cursor from './assets/agents/cursor.svg'
 import codex from './assets/agents/codex.png'
 import mimocode from './assets/agents/mimocode.png'
 import relay from './assets/agents/relay.svg'
+import qoder from './assets/agents/qoder.svg'
+import qoderCn from './assets/agents/qoder-cn.svg'
+import grok from './assets/agents/grok.svg'
 
 export const AGENT_ICON: Record<string, string> = {
   dsh,
@@ -17,7 +20,10 @@ export const AGENT_ICON: Record<string, string> = {
   'cursor-cloud': cursor,
   codex,
   mimocode,
+  grok,
   relay,
+  qoder,
+  'qoder-cn': qoderCn,
 }
 
 export const AGENT_COLOR: Record<string, string> = {
@@ -30,7 +36,10 @@ export const AGENT_COLOR: Record<string, string> = {
   'cursor-cloud': 'var(--src-cursor)',
   codex: 'var(--src-codex)',
   mimocode: 'var(--src-mimocode)',
+  grok: 'var(--src-grok)',
   relay: 'var(--src-relay)',
+  qoder: 'var(--src-qoder)',
+  'qoder-cn': 'var(--src-qoder-cn)',
 }
 
 export const AGENT_NAME: Record<string, string> = {
@@ -43,7 +52,10 @@ export const AGENT_NAME: Record<string, string> = {
   'cursor-cloud': 'Cursor · 云端',
   codex: 'Codex',
   mimocode: 'MiMo',
+  grok: 'Grok',
   relay: 'Sub2API',
+  qoder: 'Qoder',
+  'qoder-cn': 'Qoder 国内',
 }
 
 export function agentName(id: string): string {

@@ -101,8 +101,25 @@ internal static class ZcodeLocal
         };
         using var conn = new SqliteConnection(cs.ToString());
         conn.Open();
+        try { return ReadUsageRows(conn, withProvider: true); }
+        catch (SqliteException)
+        {
+            return ReadUsageRows(conn, withProvider: false);
+        }
+    }
+
+    private static List<UsageRecord> ReadUsageRows(SqliteConnection conn, bool withProvider)
+    {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        cmd.CommandText = withProvider
+            ? """
+            SELECT logical_request_id, session_id, model_id, started_at, completed_at,
+                   input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens,
+                   reasoning_tokens, provider_id
+            FROM model_usage
+            WHERE status = 'completed'
+            """
+            : """
             SELECT logical_request_id, session_id, model_id, started_at, completed_at,
                    input_tokens, output_tokens, cache_read_input_tokens, cache_creation_input_tokens,
                    reasoning_tokens
@@ -128,9 +145,13 @@ internal static class ZcodeLocal
             var cacheRead = ReadLong(r, 7);
             var cacheWrite = ReadLong(r, 8);
             var reasoning = ReadLong(r, 9);
-            // TT v0.96.0 inclusive-token correction: ZCode input includes cache read AND write.
-            var netIn = cacheRead > 0 && cacheRead <= input ? input - cacheRead : input;
-            if (cacheWrite > 0 && cacheWrite <= netIn) netIn -= cacheWrite;
+            var providerId = withProvider && r.FieldCount > 10 && !r.IsDBNull(10) ? r.GetString(10) : "";
+            // 捆绑的 Claude/Codex/Gemini 子代理已由对应解析器记账，这里丢掉避免双计。
+            if (IsBundledProvider(providerId)) continue;
+
+            // TokenTracker v0.96：ZCode 的 input 含 cache 读/写，output 含 reasoning。
+            UsageParsers.SplitInclusiveTokens(input, output, cacheRead, cacheWrite, reasoning,
+                out var netIn, out var netOut);
 
             list.Add(new UsageRecord
             {
@@ -139,7 +160,7 @@ internal static class ZcodeLocal
                 RequestKey = requestKey,
                 TsUtc = ts.Value,
                 InputTokens = netIn,
-                OutputTokens = output,
+                OutputTokens = netOut,
                 CachedInputTokens = cacheRead,
                 CacheWriteTokens = cacheWrite,
                 ReasoningTokens = reasoning,
@@ -147,6 +168,15 @@ internal static class ZcodeLocal
             });
         }
         return list;
+    }
+
+    private static bool IsBundledProvider(string? providerId)
+    {
+        if (string.IsNullOrWhiteSpace(providerId)) return false;
+        var p = providerId.Trim().ToLowerInvariant();
+        return p.Contains("anthropic", StringComparison.Ordinal)
+            || p.Contains("openai", StringComparison.Ordinal)
+            || p.Contains("google", StringComparison.Ordinal);
     }
 
     private static string? FindCodingPlanKey(JsonElement root)

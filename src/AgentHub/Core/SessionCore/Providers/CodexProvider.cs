@@ -127,7 +127,7 @@ public sealed class CodexProvider(TitleOverrideStore titles, Action<string>? log
                     MessageCount = messages.Count,
                     SizeBytes = size,
                     LastActivityUtc = lastTs ?? new FileInfo(file).LastWriteTimeUtc,
-                    IsSubagent = IsSubThread(threadSource),
+                    IsSubagent = IsSubThread(threadSource, parentId),
                     ParentId = parentId,
                     SourceFile = file,
                 },
@@ -227,7 +227,7 @@ public sealed class CodexProvider(TitleOverrideStore titles, Action<string>? log
                     cwd = GetString(p, "cwd") ?? cwd;
                     threadSource = GetString(p, "thread_source") ?? threadSource;
                     sessionId = GetString(p, "session_id") ?? GetString(p, "id") ?? sessionId;
-                    parentId = GetString(p, "parent_thread_id") ?? parentId;
+                    parentId = GetString(p, "parent_thread_id") ?? GetString(p, "forked_from_id") ?? parentId;
                 }
                 else if (firstUser is null && GetString(p, "type") == "message" && GetString(p, "role") == "user")
                 {
@@ -238,12 +238,12 @@ public sealed class CodexProvider(TitleOverrideStore titles, Action<string>? log
             }
         }
         var named = CodexThreadNames.Get(sessionId);
-        return (named, named is not null ? "source" : "derived", cwd, IsSubThread(threadSource), firstUser, null, parentId);
+        return (named, named is not null ? "source" : "derived", cwd, IsSubThread(threadSource, parentId), firstUser, null, parentId);
     }
 
-    internal static bool IsSubThread(string? threadSource) =>
-        !string.IsNullOrEmpty(threadSource)
-        && !threadSource.Equals("user", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsSubThread(string? threadSource, string? forkedFrom = null) =>
+        (!string.IsNullOrEmpty(threadSource) && !threadSource.Equals("user", StringComparison.OrdinalIgnoreCase))
+        || !string.IsNullOrEmpty(forkedFrom);
 
     internal static bool IsInjectedPrompt(string text)
     {

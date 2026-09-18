@@ -31,9 +31,8 @@ public sealed class TokenService
     // 扫描
     // ------------------------------------------------------------------
 
-    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode，单事务）。不碰网络，亚秒级。
-    /// 主键冲突时更新用量列；仅当旧 model 为 unknown
-    /// 且新解析出真名时回填（WorkBuddy 曾误读根级 model，存量全是 unknown）。</summary>
+    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode/grok/qoder，单事务）。不碰网络，亚秒级。
+    /// 主键冲突时更新用量列；新解析出名非 unknown 时回填模型（Codex 按轮次/改道、WorkBuddy 曾误读根级 unknown）。</summary>
     public ScanAllResult ScanAllLocal()
     {
         lock (_scanGate)
@@ -92,6 +91,19 @@ public sealed class TokenService
 
                 sources["mimocode"] = MimocodeLocal.DbExists
                     ? Ingest("mimocode", MimocodeLocal.DbPath, () => MimocodeLocal.ReadUsage())
+                    : new SourceScanStat(0, 0, 0);
+
+                sources["grok"] = GrokLocal.SessionsExist
+                    ? Ingest("grok", GrokLocal.Home, () => GrokLocal.ReadUsage())
+                    : new SourceScanStat(0, 0, 0);
+
+                sources["qoder"] = QoderLocal.DbExists(QoderQuota.International)
+                    ? Ingest("qoder", QoderLocal.DbPath(QoderQuota.International),
+                        () => QoderLocal.ReadInternational())
+                    : new SourceScanStat(0, 0, 0);
+                sources["qoder-cn"] = QoderLocal.DbExists(QoderQuota.China)
+                    ? Ingest("qoder-cn", QoderLocal.DbPath(QoderQuota.China),
+                        () => QoderLocal.ReadChina())
                     : new SourceScanStat(0, 0, 0);
 
                 tx.Commit();
@@ -198,21 +210,24 @@ public sealed class TokenService
         cmd.CommandText = """
             INSERT INTO usage_records
             (tool, session_id, request_key, ts_utc, local_date, input_tokens, output_tokens,
-             cached_input_tokens, cache_write_tokens, reasoning_tokens, is_subagent, model, project)
-            VALUES ($tool, $sid, $rk, $ts, $ld, $in, $out, $cached, $cw, $reason, $sub, $model, $project)
+             cached_input_tokens, cache_write_tokens, reasoning_tokens, reported_cost_usd,
+             is_subagent, model, project)
+            VALUES ($tool, $sid, $rk, $ts, $ld, $in, $out, $cached, $cw, $reason, $cost,
+                    $sub, $model, $project)
             ON CONFLICT(tool, session_id, request_key) DO UPDATE SET
               input_tokens = excluded.input_tokens,
               output_tokens = excluded.output_tokens,
               cached_input_tokens = excluded.cached_input_tokens,
               cache_write_tokens = excluded.cache_write_tokens,
               reasoning_tokens = excluded.reasoning_tokens,
+              reported_cost_usd = excluded.reported_cost_usd,
               is_subagent = excluded.is_subagent,
               ts_utc = excluded.ts_utc,
               local_date = excluded.local_date,
               project = excluded.project,
               model = CASE
-                WHEN usage_records.model = 'unknown' AND excluded.model <> 'unknown'
-                THEN excluded.model ELSE usage_records.model END
+                WHEN excluded.model <> 'unknown' THEN excluded.model
+                ELSE usage_records.model END
             """;
         cmd.Parameters.AddWithValue("$tool", r.Tool);
         cmd.Parameters.AddWithValue("$sid", r.SessionId);
@@ -224,15 +239,16 @@ public sealed class TokenService
         cmd.Parameters.AddWithValue("$cached", r.CachedInputTokens);
         cmd.Parameters.AddWithValue("$cw", r.CacheWriteTokens);
         cmd.Parameters.AddWithValue("$reason", r.ReasoningTokens);
+        cmd.Parameters.AddWithValue("$cost", (object?)r.ReportedCostUsd ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$sub", r.IsSubagent ? 1 : 0);
         cmd.Parameters.AddWithValue("$model", r.Model);
         cmd.Parameters.AddWithValue("$project", (object?)r.Project ?? DBNull.Value);
         return cmd.ExecuteNonQuery();
     }
 
-    // ------------------------------------------------------------------
-    // /usage 查询
-    // ------------------------------------------------------------------
+    /// <summary>互不重叠列合计：input + output + cache 读/写 + reasoning（对齐 TokenTracker total_tokens）。</summary>
+    private const string BilledExpr =
+        "input_tokens + output_tokens + cached_input_tokens + cache_write_tokens + reasoning_tokens";
 
     public Dictionary<string, object?> Usage(string range)
     {
@@ -263,7 +279,7 @@ public sealed class TokenService
             if (fx <= 0) fx = _config.Dashboard.FxFallbackRate > 0 ? _config.Dashboard.FxFallbackRate : 7;
         }
         var (cost, partial, currency) = UsageCost.Estimate(
-            rows.Select(r => (r.Model, r.Input, r.Output, r.Cached, r.CacheWrite)),
+            rows.Select(r => (r.Model, r.Input, r.Output, r.Cached, r.CacheWrite, r.Reasoning, r.ReportedUsd)),
             prices,
             _config.Dashboard.CostEstimate,
             _config.Dashboard.CostCurrency,
@@ -306,11 +322,11 @@ public sealed class TokenService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
             SELECT local_date,
-                   COALESCE(SUM(input_tokens + output_tokens + cached_input_tokens + cache_write_tokens), 0)
+                   COALESCE(SUM({BilledExpr}), 0)
             FROM usage_records
             WHERE local_date BETWEEN $from AND $to {filter}
             GROUP BY local_date
-            HAVING SUM(input_tokens + output_tokens + cached_input_tokens + cache_write_tokens) > 0
+            HAVING SUM({BilledExpr}) > 0
             ORDER BY local_date
             """;
         cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd"));
@@ -333,6 +349,9 @@ public sealed class TokenService
         var hide = new List<string>();
         if (!dash.ShowAgentDsh) hide.Add("dsh");
         if (!dash.ShowAgentMimocode) hide.Add("mimocode");
+        if (!dash.ShowAgentGrok) hide.Add("grok");
+        if (!dash.ShowQuotaQoder) hide.Add("qoder");
+        if (!dash.ShowQuotaQoderCn) hide.Add("qoder-cn");
         if (!dash.ShowQuotaTrae) hide.Add("trae");
         if (!dash.ShowQuotaWorkBuddy) hide.Add("workbuddy");
         if (!dash.ShowQuotaZcode) hide.Add("zcode");
@@ -342,9 +361,12 @@ public sealed class TokenService
         return "AND tool NOT IN (" + string.Join(", ", hide.Select(t => "'" + t + "'")) + ")";
     }
 
-    private sealed record ModelRow(string Tool, string Model, long Input, long Output, long Cached, long CacheWrite)
+    private sealed record ModelRow(
+        string Tool, string Model, bool IsSub, long Input, long Output, long Cached, long CacheWrite,
+        long Reasoning, double? ReportedUsd)
     {
-        public long Tokens => Input + Output + Cached + CacheWrite;
+        public long Tokens => Input + Output + Cached + CacheWrite + Reasoning;
+        public string DisplayName => IsSub ? Model + " · 子代理" : Model;
     }
 
     private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to, string filter)
@@ -352,21 +374,28 @@ public sealed class TokenService
         var rows = new List<ModelRow>();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
-            SELECT tool, model, SUM(input_tokens), SUM(output_tokens),
-                   SUM(cached_input_tokens), SUM(cache_write_tokens)
+            SELECT tool, model, is_subagent,
+                   SUM(input_tokens), SUM(output_tokens),
+                   SUM(cached_input_tokens), SUM(cache_write_tokens),
+                   SUM(reasoning_tokens), SUM(reported_cost_usd)
             FROM usage_records
             WHERE local_date BETWEEN $from AND $to {filter}
-            GROUP BY tool, model
+            GROUP BY tool, model, is_subagent
             """;
         cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("$to", to.ToString("yyyy-MM-dd"));
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
+            double? reported = null;
+            if (!r.IsDBNull(8))
+                reported = r.GetDouble(8);
             rows.Add(new ModelRow(
                 r.GetString(0),
                 r.IsDBNull(1) || string.IsNullOrWhiteSpace(r.GetString(1)) ? "unknown" : r.GetString(1),
-                r.GetInt64(2), r.GetInt64(3), r.GetInt64(4), r.GetInt64(5)));
+                !r.IsDBNull(2) && r.GetInt64(2) != 0,
+                r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6), r.GetInt64(7),
+                reported));
         }
         return rows;
     }
@@ -375,7 +404,7 @@ public sealed class TokenService
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
-            SELECT COALESCE(SUM(input_tokens + output_tokens + cached_input_tokens + cache_write_tokens), 0)
+            SELECT COALESCE(SUM({BilledExpr}), 0)
             FROM usage_records
             WHERE local_date BETWEEN $from AND $to {filter}
             """;
@@ -407,9 +436,9 @@ public sealed class TokenService
             var models = list
                 .Select(x =>
                 {
-                    var m = new Dictionary<string, object?> { ["name"] = x.Model, ["tokens"] = x.Tokens };
+                    var m = new Dictionary<string, object?> { ["name"] = x.DisplayName, ["tokens"] = x.Tokens };
                     // Cost estimate on + non-empty table: flag models missing from exact/alias lookup.
-                    if (priceTable is not null && !UsageCost.HasPrice(x.Model, priceTable))
+                    if (priceTable is not null && x.ReportedUsd is null && !UsageCost.HasPrice(x.Model, priceTable))
                         m["noPrice"] = true;
                     return m;
                 })
@@ -510,15 +539,13 @@ public sealed class TokenService
 
         long todayTokens = 0, last7d = 0;
         int conversations = 0;
-        // 与 /api/usage 同一口径：所有工具都是 input+output+cached+cache_write
+        // 与 /api/usage 同一口径：互不重叠列合计（含 reasoning）
         using (var cmd = conn.CreateCommand())
         {
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 SELECT
-                  COALESCE(SUM(CASE WHEN local_date = $today THEN
-                    input_tokens + output_tokens + cached_input_tokens + cache_write_tokens END), 0),
-                  COALESCE(SUM(CASE WHEN local_date BETWEEN $from7 AND $today THEN
-                    input_tokens + output_tokens + cached_input_tokens + cache_write_tokens END), 0),
+                  COALESCE(SUM(CASE WHEN local_date = $today THEN {BilledExpr} END), 0),
+                  COALESCE(SUM(CASE WHEN local_date BETWEEN $from7 AND $today THEN {BilledExpr} END), 0),
                   COUNT(DISTINCT CASE WHEN local_date = $today THEN session_id END)
                 FROM usage_records
                 """;
@@ -537,8 +564,8 @@ public sealed class TokenService
         long topSum = 0;
         using (var cmd = conn.CreateCommand())
         {
-            cmd.CommandText = """
-                SELECT model, SUM(input_tokens + output_tokens + cached_input_tokens + cache_write_tokens) AS t
+            cmd.CommandText = $"""
+                SELECT model, SUM({BilledExpr}) AS t
                 FROM usage_records WHERE local_date = $today
                 GROUP BY model ORDER BY t DESC LIMIT 5
                 """;
@@ -560,9 +587,9 @@ public sealed class TokenService
         int streak = 0;
         using (var cmd = conn.CreateCommand())
         {
-            cmd.CommandText = """
+            cmd.CommandText = $"""
                 SELECT DISTINCT local_date FROM usage_records
-                WHERE input_tokens + output_tokens + cached_input_tokens + cache_write_tokens > 0
+                WHERE {BilledExpr} > 0
                 ORDER BY local_date DESC
                 """;
             using var r = cmd.ExecuteReader();
@@ -667,6 +694,7 @@ public sealed class TokenService
                 cached_input_tokens INTEGER NOT NULL DEFAULT 0,
                 cache_write_tokens INTEGER NOT NULL DEFAULT 0,
                 reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+                reported_cost_usd REAL,
                 is_subagent INTEGER NOT NULL DEFAULT 0,
                 model TEXT NOT NULL DEFAULT 'unknown',
                 project TEXT,
@@ -676,6 +704,18 @@ public sealed class TokenService
             CREATE INDEX IF NOT EXISTS idx_usage_date_model ON usage_records(local_date, tool, model);
             """;
         cmd.ExecuteNonQuery();
+        TryAddColumn(conn, "reported_cost_usd", "REAL");
+    }
+
+    private static void TryAddColumn(SqliteConnection conn, string name, string type)
+    {
+        try
+        {
+            using var alter = conn.CreateCommand();
+            alter.CommandText = $"ALTER TABLE usage_records ADD COLUMN {name} {type}";
+            alter.ExecuteNonQuery();
+        }
+        catch (SqliteException) { /* 已有列 */ }
     }
 }
 
