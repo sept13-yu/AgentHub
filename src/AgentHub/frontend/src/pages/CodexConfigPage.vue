@@ -1352,22 +1352,12 @@ onMounted(() => load())
 
 
 
-  <ConfirmDialog
-
+  <AhConfirm
     :show="clearAuthShow"
-
-    title="新建空白登录？"
-
     text="会备份并删掉当前 ~/.codex/auth.json，相当于新建空白。打开 Codex 后按提示用 ChatGPT 登录新账号；登好后再点「导入当前」归档。不会删掉已有账号档案。"
-
-    confirm-text="新建空白"
-
-    danger
-
+    ok-text="新建空白"
     @update:show="clearAuthShow = $event"
-
     @confirm="clearLiveAuth"
-
   />
 
 
