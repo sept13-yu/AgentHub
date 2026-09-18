@@ -31,7 +31,7 @@ public sealed class TokenService
     // 扫描
     // ------------------------------------------------------------------
 
-    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode/grok/qoder，单事务）。不碰网络，亚秒级。
+    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode/grok/qoder/qoder-cn，单事务）。不碰网络，亚秒级。
     /// 主键冲突时更新用量列；新解析出名非 unknown 时回填模型（Codex 按轮次/改道、WorkBuddy 曾误读根级 unknown）。</summary>
     public ScanAllResult ScanAllLocal()
     {
@@ -101,9 +101,8 @@ public sealed class TokenService
                     ? Ingest("qoder", QoderLocal.DbPath(QoderQuota.International),
                         () => QoderLocal.ReadInternational())
                     : new SourceScanStat(0, 0, 0);
-                sources["qoder-cn"] = QoderLocal.DbExists(QoderQuota.China)
-                    ? Ingest("qoder-cn", QoderLocal.DbPath(QoderQuota.China),
-                        () => QoderLocal.ReadChina())
+                sources["qoder-cn"] = QoderLocal.ChinaUsageExists
+                    ? Ingest("qoder-cn", QoderLocal.ChinaHome, () => QoderLocal.ReadChina())
                     : new SourceScanStat(0, 0, 0);
 
                 tx.Commit();

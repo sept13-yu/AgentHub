@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
 using System.Net.Http;
@@ -5,14 +6,19 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using AgentHub.Core.ProxyCore;
+using Microsoft.Data.Sqlite;
 
 namespace AgentHub.Core.TokenCore;
 
 /// <summary>
-/// Qoder / Qoder CN 额度：优先本机 IPC（%APPDATA%/Qoder[CN]/SharedClientCache/.info.json
+/// Qoder / Qoder CN 额度。国际版优先本机 IPC（%APPDATA%/Qoder/SharedClientCache/.info.json
 /// → named pipe，JSON-RPC <c>credit/usage</c> + <c>auth/status</c>），失败再 cookie/env、
-/// renderer.log 刮取、上次成功缓存。凭据只在内存里用，不落盘不打日志。
-/// 口径对齐 TokenTracker <c>src/lib/qoder-limits.js</c>。
+/// renderer.log 刮取、上次成功缓存。
+/// 国内桌面端（product=qodercn）数据根不是 VS Code 叉的 QoderCN：
+/// 先 QODER_CN_HOME / QODERCN_CONFIG_DIR，再 ~/.qoder-cn，再 Roaming/com.qodercn.app.stable。
+/// 额度优先 IPC（若 CN 暴露了 .info.json / ipc），再读 main.sqlite 的 partner_plan_snapshots
+/// 与 .qoder-app-status.json；不读 auth.v1.dat / 凭据库。凭据只在内存里用，不落盘不打日志。
+/// 口径对齐 TokenTracker <c>src/lib/qoder-limits.js</c> 的 windows 卡。
 /// </summary>
 internal static class QoderQuota
 {
@@ -36,7 +42,7 @@ internal static class QoderQuota
 
     internal static readonly Site China = new(
         "china",
-        "QoderCN",
+        "com.qodercn.app.stable",
         "QODER_CN",
         "https://qoder.com.cn",
         "https://qoder.com.cn/api/v2/me/usages/big_model_credits",
@@ -99,6 +105,14 @@ internal static class QoderQuota
             return live;
         }
 
+        if (site.Id == "china" && TryReadChinaLocalQuota(out var fromLocal))
+        {
+            if (activity is not null)
+                MergeSecondary(fromLocal, activity);
+            WriteLimitsCache(site, fromLocal);
+            return fromLocal;
+        }
+
         if (ReadLimitsCache(site) is { } cached)
         {
             if (activity is not null)
@@ -142,7 +156,7 @@ internal static class QoderQuota
         }
 
         return Status("empty", site.Id == "china"
-            ? "本机未检测到 Qoder 国内版登录态（需 Qoder 在跑，走 IPC）"
+            ? ChinaEmptyReason()
             : "本机未检测到 Qoder 登录态（需 Qoder 在跑，走 IPC）");
     }
 
@@ -150,25 +164,95 @@ internal static class QoderQuota
     // IPC
     // ------------------------------------------------------------------
 
+    // ------------------------------------------------------------------
+    // Paths：国际版 Qoder/SharedClientCache；国内版 ~/.qoder-cn + com.qodercn.app.stable
+    // ------------------------------------------------------------------
+
+    /// <summary>国内 CLI 配置根。QODER_CN_HOME 优先，其次官方 QODERCN_CONFIG_DIR，默认 ~/.qoder-cn。</summary>
+    internal static string ChinaConfigHome
+    {
+        get
+        {
+            var env = ReadEnv("QODER_CN_HOME") ?? ReadEnv("QODERCN_CONFIG_DIR");
+            if (!string.IsNullOrWhiteSpace(env))
+                return Path.GetFullPath(env);
+            return Path.Combine(UserHome, ".qoder-cn");
+        }
+    }
+
+    internal static string UserHome =>
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+    internal static string AppSupportRoot()
+    {
+        if (OperatingSystem.IsMacOS())
+            return Path.Combine(UserHome, "Library", "Application Support");
+        if (OperatingSystem.IsLinux())
+            return Path.Combine(UserHome, ".config");
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        if (string.IsNullOrEmpty(appData))
+            appData = Path.Combine(UserHome, "AppData", "Roaming");
+        return appData;
+    }
+
+    /// <summary>国内数据根探测顺序：环境变量、~/.qoder-cn、Roaming/com.qodercn.app.stable。不含 QoderCN / Qoder。</summary>
+    internal static IReadOnlyList<string> ChinaDataRoots()
+    {
+        var list = new List<string>();
+        void Add(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            string full;
+            try { full = Path.GetFullPath(path.Trim()); }
+            catch (Exception) { return; }
+            foreach (var existing in list)
+            {
+                if (string.Equals(existing, full, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+            list.Add(full);
+        }
+
+        Add(ReadEnv("QODER_CN_HOME"));
+        Add(ReadEnv("QODERCN_CONFIG_DIR"));
+        Add(Path.Combine(UserHome, ".qoder-cn"));
+        Add(Path.Combine(AppSupportRoot(), "com.qodercn.app.stable"));
+        return list;
+    }
+
+    internal static bool ChinaLayoutExists()
+    {
+        foreach (var root in ChinaDataRoots())
+        {
+            if (Directory.Exists(root)) return true;
+        }
+        return File.Exists(Path.Combine(ChinaConfigHome, ".qoder-app-status.json"));
+    }
+
     internal static string DataRoot(Site site)
     {
+        if (site.Id == "china")
+        {
+            foreach (var root in ChinaDataRoots())
+            {
+                if (Directory.Exists(root)) return root;
+            }
+            return ChinaConfigHome;
+        }
+
         var homeKey = site.EnvPrefix + "_HOME";
         var overrideHome = Environment.GetEnvironmentVariable(homeKey);
         if (!string.IsNullOrWhiteSpace(overrideHome))
             return Path.GetFullPath(overrideHome.Trim());
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (OperatingSystem.IsMacOS())
-            return Path.Combine(home, "Library", "Application Support", site.AppDir);
+            return Path.Combine(UserHome, "Library", "Application Support", site.AppDir);
         if (OperatingSystem.IsLinux())
-            return Path.Combine(home, ".config", site.AppDir);
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrEmpty(appData))
-            appData = Path.Combine(home, "AppData", "Roaming");
-        return Path.Combine(appData, site.AppDir);
+            return Path.Combine(UserHome, ".config", site.AppDir);
+        return Path.Combine(AppSupportRoot(), site.AppDir);
     }
 
-    /// <summary>用量库：<c>SharedClientCache/cache/db/local.db</c>。可用 <c>{PREFIX}_DB_PATH</c> 覆盖。
-    /// 不是 <c>state.vscdb</c>（那是会话索引，不当作 token 来源）。</summary>
+    /// <summary>国际版用量库：<c>SharedClientCache/cache/db/local.db</c>。可用 <c>QODER_DB_PATH</c> 覆盖。
+    /// 国内版不走此路径（jsonl 才是用量源）。不是 <c>state.vscdb</c>。</summary>
     internal static string LocalDbPath(Site site)
     {
         var dbKey = site.EnvPrefix + "_DB_PATH";
@@ -178,14 +262,56 @@ internal static class QoderQuota
         return Path.Combine(DataRoot(site), "SharedClientCache", "cache", "db", "local.db");
     }
 
-    private static string InfoPath(Site site) =>
-        Path.Combine(DataRoot(site), "SharedClientCache", ".info.json");
+    private static IEnumerable<string> InfoPaths(Site site)
+    {
+        if (site.Id != "china")
+        {
+            yield return Path.Combine(DataRoot(site), "SharedClientCache", ".info.json");
+            yield break;
+        }
+
+        var rel = new[]
+        {
+            Path.Combine("SharedClientCache", ".info.json"),
+            ".info.json",
+            Path.Combine("ipc", ".info.json"),
+            Path.Combine("shared_client", ".info.json"),
+            Path.Combine("cli", ".info.json"),
+        };
+        foreach (var root in ChinaDataRoots())
+        {
+            foreach (var r in rel)
+                yield return Path.Combine(root, r);
+            var ipcDir = Path.Combine(root, "ipc");
+            if (!Directory.Exists(ipcDir)) continue;
+            IEnumerable<string> extra;
+            try { extra = Directory.EnumerateFiles(ipcDir, "*.json"); }
+            catch (IOException) { continue; }
+            catch (UnauthorizedAccessException) { continue; }
+            foreach (var f in extra)
+            {
+                var name = Path.GetFileName(f);
+                if (name.StartsWith("auth", StringComparison.OrdinalIgnoreCase)) continue;
+                yield return f;
+            }
+        }
+    }
 
     private static async Task<JsonElement?> RpcAsync(Site site, string method, CancellationToken ct)
     {
-        var infoFile = InfoPath(site);
-        if (!File.Exists(infoFile))
-            throw new IOException("Qoder local service is not running.");
+        Exception? last = null;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var infoFile in InfoPaths(site))
+        {
+            if (!seen.Add(infoFile) || !File.Exists(infoFile)) continue;
+            try { return await RpcOnceAsync(infoFile, method, ct).ConfigureAwait(false); }
+            catch (Exception ex) { last = ex; }
+        }
+        throw last ?? new IOException("Qoder local service is not running.");
+    }
+
+    private static async Task<JsonElement?> RpcOnceAsync(string infoFile, string method, CancellationToken ct)
+    {
         string ipcPath;
         using (var doc = JsonDocument.Parse(File.ReadAllText(infoFile)))
         {
@@ -567,20 +693,36 @@ internal static class QoderQuota
     private static Dictionary<string, object?>? ReadLocalQuotaLog(Site site)
     {
         var logRoot = Environment.GetEnvironmentVariable(site.EnvPrefix + "_LOG_ROOT");
-        var root = !string.IsNullOrWhiteSpace(logRoot)
-            ? Path.GetFullPath(logRoot.Trim())
-            : Path.Combine(DataRoot(site), "logs");
-        if (!Directory.Exists(root)) return null;
-        var files = new List<(string Path, DateTime Mtime)>();
-        try
+        var roots = new List<string>();
+        if (!string.IsNullOrWhiteSpace(logRoot))
+            roots.Add(Path.GetFullPath(logRoot.Trim()));
+        else if (site.Id == "china")
         {
-            foreach (var f in Directory.EnumerateFiles(root, "renderer.log", SearchOption.AllDirectories))
-            {
-                try { files.Add((f, File.GetLastWriteTimeUtc(f))); }
-                catch (IOException) { }
-            }
+            foreach (var r in ChinaDataRoots())
+                roots.Add(Path.Combine(r, "logs"));
         }
-        catch (IOException) { return null; }
+        else
+            roots.Add(Path.Combine(DataRoot(site), "logs"));
+
+        var files = new List<(string Path, DateTime Mtime)>();
+        foreach (var root in roots)
+        {
+            if (!Directory.Exists(root)) continue;
+            try
+            {
+                foreach (var f in Directory.EnumerateFiles(root, "*.log", SearchOption.AllDirectories))
+                {
+                    var name = Path.GetFileName(f);
+                    if (!name.Equals("renderer.log", StringComparison.OrdinalIgnoreCase)
+                        && !name.Equals("main.log", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    try { files.Add((f, File.GetLastWriteTimeUtc(f))); }
+                    catch (IOException) { }
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
         foreach (var (path, _) in files.OrderByDescending(x => x.Mtime).Take(12))
         {
             try
@@ -597,6 +739,341 @@ internal static class QoderQuota
             catch (IOException) { }
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------
+    // 国内版本地额度：status json + main.sqlite partner_plan_snapshots（不读 auth.v1.dat）
+    // ------------------------------------------------------------------
+
+    private static string ChinaEmptyReason()
+    {
+        if (ChinaLayoutExists())
+            return "已检测到 Qoder CN 本机目录（~/.qoder-cn 或 AppData\\com.qodercn.app.stable），但没有可读的 Credits 余额。国内桌面端不是 %APPDATA%\\QoderCN\\SharedClientCache。";
+        return "未检测到 Qoder CN。用量读 %USERPROFILE%\\.qoder-cn\\projects\\**\\*.jsonl；额度读 com.qodercn.app.stable。可用 QODER_CN_HOME 覆盖配置目录。";
+    }
+
+    internal static bool TryReadChinaLocalQuota(out Dictionary<string, object?> card)
+    {
+        card = [];
+        foreach (var path in ChinaStatusJsonPaths())
+        {
+            if (!File.Exists(path)) continue;
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(path));
+                if (TryQuotaFromJson(doc.RootElement, out card))
+                    return true;
+            }
+            catch (JsonException) { }
+            catch (IOException) { }
+        }
+
+        foreach (var db in ChinaAppSqlitePaths())
+        {
+            if (!File.Exists(db)) continue;
+            try
+            {
+                if (TryQuotaFromPartnerSnapshots(db, out card))
+                    return true;
+            }
+            catch (Exception)
+            {
+                // 加密库 / 锁 / 缺表：跳过，不读 auth.v1.dat
+            }
+        }
+        return false;
+    }
+
+    private static IEnumerable<string> ChinaStatusJsonPaths()
+    {
+        foreach (var root in ChinaDataRoots())
+        {
+            yield return Path.Combine(root, ".qoder-app-status.json");
+            yield return Path.Combine(root, "qoder-app-status.json");
+        }
+    }
+
+    private static IEnumerable<string> ChinaAppSqlitePaths()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in ChinaDataRoots())
+        {
+            var db = Path.Combine(root, "main.sqlite");
+            if (seen.Add(db)) yield return db;
+        }
+    }
+
+    private static bool TryQuotaFromPartnerSnapshots(string dbPath, out Dictionary<string, object?> card)
+    {
+        card = [];
+        if (!TryCopySqlite(dbPath, "agenthub-qoder-cn-plan-", out var copy, out var tmp))
+            return false;
+        try
+        {
+            var cs = new SqliteConnectionStringBuilder
+            {
+                DataSource = copy,
+                Mode = SqliteOpenMode.ReadOnly,
+                Pooling = false,
+            };
+            using var conn = new SqliteConnection(cs.ToString());
+            conn.Open();
+            using (var probe = conn.CreateCommand())
+            {
+                probe.CommandText = "SELECT 1 FROM sqlite_master WHERE type='table' AND name='partner_plan_snapshots' LIMIT 1";
+                if (probe.ExecuteScalar() is null) return false;
+            }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM partner_plan_snapshots ORDER BY rowid DESC LIMIT 8";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                if (TryQuotaFromSnapshotRow(r, out card))
+                    return true;
+            }
+            return false;
+        }
+        finally
+        {
+            try { if (!string.IsNullOrEmpty(tmp)) Directory.Delete(tmp, recursive: true); }
+            catch (IOException) { }
+        }
+    }
+
+    private static bool TryQuotaFromSnapshotRow(SqliteDataReader r, out Dictionary<string, object?> card)
+    {
+        card = [];
+        decimal? remaining = null, used = null, total = null;
+        string? plan = null;
+        string? unit = null;
+        for (var i = 0; i < r.FieldCount; i++)
+        {
+            if (r.IsDBNull(i)) continue;
+            var col = r.GetName(i);
+            var raw = r.GetValue(i);
+            if (raw is string s && s.Length > 0)
+            {
+                if (LooksLikeJson(s))
+                {
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(s);
+                        if (TryQuotaFromJson(doc.RootElement, out card))
+                            return true;
+                    }
+                    catch (JsonException) { }
+                }
+                if (IsPlanColumn(col) && !string.IsNullOrWhiteSpace(s))
+                    plan ??= s.Trim();
+                continue;
+            }
+            if (raw is not (long or int or double or float or decimal or short)) continue;
+            var n = Convert.ToDecimal(raw, CultureInfo.InvariantCulture);
+            if (n < 0) continue;
+            if (IsRemainColumn(col)) remaining = n;
+            else if (IsUsedColumn(col)) used = n;
+            else if (IsTotalColumn(col)) total = n;
+        }
+        return TryWindowsFromParts(used, total, remaining, plan, unit, out card);
+    }
+
+    internal static bool TryQuotaFromJson(JsonElement el, out Dictionary<string, object?> card)
+    {
+        card = [];
+        return TryQuotaFromJson(el, 0, out card);
+    }
+
+    private static bool TryQuotaFromJson(JsonElement el, int depth, out Dictionary<string, object?> card)
+    {
+        card = [];
+        if (depth > 6) return false;
+        if (el.ValueKind == JsonValueKind.String)
+        {
+            var s = el.GetString();
+            if (string.IsNullOrWhiteSpace(s) || !LooksLikeJson(s)) return false;
+            try
+            {
+                using var doc = JsonDocument.Parse(s);
+                return TryQuotaFromJson(doc.RootElement, depth + 1, out card);
+            }
+            catch (JsonException) { return false; }
+        }
+        if (el.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in el.EnumerateArray())
+            {
+                if (TryQuotaFromJson(item, depth + 1, out card)) return true;
+            }
+            return false;
+        }
+        if (el.ValueKind != JsonValueKind.Object) return false;
+
+        if (el.TryGetProperty("userQuota", out var quota) && quota.ValueKind == JsonValueKind.Object)
+        {
+            var usage = el;
+            if (TryNormalizeRpcUsage(usage, el, null, out card))
+                return true;
+            if (TryWindowsFromQuotaObject(quota, PlanFromAuth(el), out card))
+                return true;
+        }
+
+        var http = NormalizeHttpUsage(el);
+        if (http is not null)
+        {
+            card = http;
+            return true;
+        }
+
+        if (TryWindowsFromQuotaObject(el, Str(el, "userType") ?? Str(el, "plan") ?? Str(el, "planName"),
+                requireCreditHint: true, out card))
+            return true;
+
+        foreach (var prop in el.EnumerateObject())
+        {
+            if (SkipQuotaWalk(prop.Name)) continue;
+            if (TryQuotaFromJson(prop.Value, depth + 1, out card))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool SkipQuotaWalk(string name)
+    {
+        if (name.StartsWith("auth", StringComparison.OrdinalIgnoreCase)) return true;
+        if (name.Contains("token", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("secret", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("password", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("cookie", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("credential", StringComparison.OrdinalIgnoreCase))
+            return true;
+        var n = name.Replace("_", "", StringComparison.Ordinal).ToLowerInvariant();
+        return n is "chatsessions" or "chatsessionmessages" or "payloadjson" or "payload"
+            or "messages" or "context" or "contextusage" or "cwd" or "content";
+    }
+
+    private static bool TryWindowsFromQuotaObject(JsonElement quota, string? plan, out Dictionary<string, object?> card)
+        => TryWindowsFromQuotaObject(quota, plan, requireCreditHint: false, out card);
+
+    private static bool TryWindowsFromQuotaObject(
+        JsonElement quota, string? plan, bool requireCreditHint, out Dictionary<string, object?> card)
+    {
+        card = [];
+        decimal? used = TryDec(quota, "used", out var u) || TryDec(quota, "usedValue", out u)
+            || TryDec(quota, "used_value", out u) || TryDec(quota, "usedCredits", out u)
+            ? u : null;
+        decimal? total = TryDec(quota, "total", out var t) || TryDec(quota, "limitValue", out t)
+            || TryDec(quota, "limit_value", out t) || TryDec(quota, "cap", out t)
+            || TryDec(quota, "limit", out t) || TryDec(quota, "totalCredits", out t)
+            ? t : null;
+        decimal? remaining = TryDec(quota, "remaining", out var rem) || TryDec(quota, "remainingValue", out rem)
+            || TryDec(quota, "remaining_value", out rem) || TryDec(quota, "remain", out rem)
+            || TryDec(quota, "remainingCredits", out rem)
+            ? rem : null;
+        var unit = Str(quota, "unit");
+        if (requireCreditHint && !LooksLikeCreditQuota(quota, plan, unit, used, total, remaining))
+            return false;
+        return TryWindowsFromParts(used, total, remaining, plan, unit, out card);
+    }
+
+    private static bool LooksLikeCreditQuota(
+        JsonElement quota, string? plan, string? unit, decimal? used, decimal? total, decimal? remaining)
+    {
+        if (!string.IsNullOrWhiteSpace(unit)
+            && unit.Contains("credit", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!string.IsNullOrWhiteSpace(plan)) return true;
+        foreach (var name in new[]
+                 { "remainingCredits", "totalCredits", "usedCredits", "remaining_credits", "total_credits" })
+        {
+            if (quota.TryGetProperty(name, out _)) return true;
+        }
+        return used is not null && total is not null && remaining is not null;
+    }
+
+    private static bool TryWindowsFromParts(
+        decimal? used, decimal? total, decimal? remaining, string? plan, string? unit,
+        out Dictionary<string, object?> card)
+    {
+        card = [];
+        if (remaining is null && used is not null && total is not null)
+            remaining = Math.Max(0, total.Value - used.Value);
+        if (used is null && remaining is not null && total is not null)
+            used = Math.Max(0, total.Value - remaining.Value);
+        if (total is null && used is not null && remaining is not null)
+            total = used.Value + remaining.Value;
+        if (used is null || total is null || remaining is null) return false;
+        if (used < 0 || total < 0 || remaining < 0) return false;
+        if (total == 0 && used == 0 && remaining == 0) return false;
+        var pct = total == 0 ? 0 : Clamp(used.Value / total.Value * 100);
+        card = WindowsCard(plan, [
+            Window("credits", pct, 100 - pct, null, remaining, unit ?? "credits"),
+        ]);
+        return true;
+    }
+
+    private static bool TryCopySqlite(string src, string tmpPrefix, out string db, out string tmp)
+    {
+        db = "";
+        tmp = "";
+        if (!File.Exists(src)) return false;
+        tmp = Path.Combine(Path.GetTempPath(), tmpPrefix + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tmp);
+        try
+        {
+            db = Path.Combine(tmp, Path.GetFileName(src));
+            using (var from = new FileStream(src, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            using (var to = new FileStream(db, FileMode.Create, FileAccess.Write, FileShare.None))
+                from.CopyTo(to);
+            CopySidecar(src + "-wal", db + "-wal");
+            CopySidecar(src + "-shm", db + "-shm");
+            return true;
+        }
+        catch
+        {
+            try { Directory.Delete(tmp, recursive: true); }
+            catch (IOException) { }
+            tmp = "";
+            db = "";
+            throw;
+        }
+    }
+
+    private static void CopySidecar(string from, string to)
+    {
+        if (!File.Exists(from)) return;
+        using var src = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var dst = new FileStream(to, FileMode.Create, FileAccess.Write, FileShare.None);
+        src.CopyTo(dst);
+    }
+
+    private static bool LooksLikeJson(string s)
+    {
+        var t = s.TrimStart();
+        return t.StartsWith('{') || t.StartsWith('[');
+    }
+
+    private static bool IsPlanColumn(string name)
+    {
+        var n = name.Replace("_", "", StringComparison.Ordinal).ToLowerInvariant();
+        return n is "plan" or "planname" or "usertype" or "partner" or "product";
+    }
+
+    private static bool IsRemainColumn(string name)
+    {
+        var n = name.Replace("_", "", StringComparison.Ordinal).ToLowerInvariant();
+        return n.Contains("remain", StringComparison.Ordinal);
+    }
+
+    private static bool IsUsedColumn(string name)
+    {
+        var n = name.Replace("_", "", StringComparison.Ordinal).ToLowerInvariant();
+        return n.Contains("used", StringComparison.Ordinal) && !n.Contains("user", StringComparison.Ordinal);
+    }
+
+    private static bool IsTotalColumn(string name)
+    {
+        var n = name.Replace("_", "", StringComparison.Ordinal).ToLowerInvariant();
+        return n is "total" or "totalcredits" or "cap" or "limit" or "limitvalue" or "quota";
     }
 
     // ------------------------------------------------------------------

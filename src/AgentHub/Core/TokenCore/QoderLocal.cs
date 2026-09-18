@@ -1,14 +1,22 @@
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace AgentHub.Core.TokenCore;
 
 /// <summary>
-/// Qoder / Qoder CN 本机用量：被动读 <c>SharedClientCache/cache/db/local.db</c>
-/// 的 assistant <c>token_info</c>。不读 prompt/response 正文，不用 <c>state.vscdb</c>。
-/// 口径对齐 TokenTracker <c>normalizeQoderTokens</c>：prompt 已含 cache，拆成净输入 + cached。
+/// Qoder 用量分两条互不混用的本机路径：
+/// <list type="bullet">
+/// <item>国际版 <c>qoder</c>：%APPDATA%/Qoder/SharedClientCache/cache/db/local.db 的 assistant token_info
+/// （对齐 TokenTracker normalizeQoderTokens：prompt 已含 cache）。不读 state.vscdb，不解密库内容。</item>
+/// <item>国内版 <c>qoder-cn</c>：桌面端是 Electron/Wails（product=qodercn），不是 VS Code 叉。
+/// 用量源是 ~/.qoder-cn/projects/**/*.jsonl（可用 QODER_CN_HOME / QODERCN_CONFIG_DIR 覆盖）。
+/// 同机若残留 %APPDATA%/Qoder 国际版目录，不得并入 qoder-cn。
+/// 国内桌面会话 UI 库是 %APPDATA%/com.qodercn.app.stable/main.sqlite，本类不拿它当 token 来源。</item>
+/// </list>
 /// </summary>
 internal static class QoderLocal
 {
@@ -53,11 +61,21 @@ internal static class QoderLocal
     public static string DbPath(QoderQuota.Site site) => QoderQuota.LocalDbPath(site);
     public static bool DbExists(QoderQuota.Site site) => File.Exists(DbPath(site));
 
-    public static IReadOnlyList<UsageRecord> ReadInternational() => Read(QoderQuota.International);
-    public static IReadOnlyList<UsageRecord> ReadChina() => Read(QoderQuota.China);
+    /// <summary>国内 CLI/桌面会话根：默认 ~/.qoder-cn，可用 QODER_CN_HOME 覆盖。</summary>
+    public static string ChinaHome => QoderQuota.ChinaConfigHome;
 
-    public static IReadOnlyList<UsageRecord> Read(QoderQuota.Site site)
+    public static string ChinaProjectsDir => Path.Combine(ChinaHome, "projects");
+
+    /// <summary>与 <see cref="GrokLocal.SessionsExist"/> 同形：有 projects 目录才入库，不要求国际版 local.db。</summary>
+    public static bool ChinaUsageExists => Directory.Exists(ChinaProjectsDir);
+
+    public static IReadOnlyList<UsageRecord> ReadInternational() => ReadSqlite(QoderQuota.International);
+
+    public static IReadOnlyList<UsageRecord> ReadChina() => ReadChinaJsonl();
+
+    private static IReadOnlyList<UsageRecord> ReadSqlite(QoderQuota.Site site)
     {
+        if (site.Id == "china") return [];
         if (!TrySnapshot(site, out var db, out var tmp)) return [];
         try { return ReadCopied(db, ToolId(site)); }
         finally { DeleteSnapshot(tmp); }
@@ -65,6 +83,255 @@ internal static class QoderLocal
 
     internal static string ToolId(QoderQuota.Site site) =>
         site.Id == "china" ? "qoder-cn" : "qoder";
+
+    // ------------------------------------------------------------------
+    // 国内版 jsonl（~/.qoder-cn/projects/**/*.jsonl）
+    // ------------------------------------------------------------------
+
+    private static List<UsageRecord> ReadChinaJsonl()
+    {
+        var root = ChinaProjectsDir;
+        if (!Directory.Exists(root)) return [];
+        var list = new List<UsageRecord>();
+        IEnumerable<string> files;
+        try { files = Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories); }
+        catch (IOException) { return list; }
+        catch (UnauthorizedAccessException) { return list; }
+        foreach (var file in files)
+        {
+            try { list.AddRange(ParseChinaJsonl(file)); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        return list;
+    }
+
+    /// <summary>解析一条会话 jsonl。国内版 assistant.usage 常把 token 记成 0、只给 credits；
+    /// 仪表盘 byAgent 按五列 token 之和，故 credits&gt;0 且 token 全 0 时用正文估一个 OutputTokens。
+    /// credits 不是 USD，ReportedCostUsd 保持空，qfmodel 走价表/noPrice。</summary>
+    internal static IEnumerable<UsageRecord> ParseChinaJsonl(string file)
+    {
+        var fallbackSession = Path.GetFileNameWithoutExtension(file);
+        var lineNo = 0;
+        foreach (var line in UsageParsers.ReadLinesShared(file))
+        {
+            lineNo++;
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            JsonDocument doc;
+            try { doc = JsonDocument.Parse(line); }
+            catch (JsonException) { continue; }
+            using (doc)
+            {
+                var rec = ParseChinaAssistantLine(doc.RootElement, fallbackSession, line, lineNo);
+                if (rec is not null) yield return rec;
+            }
+        }
+    }
+
+    internal static UsageRecord? ParseChinaAssistantLine(
+        JsonElement root, string fallbackSession, string line, int lineNo)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        var type = UsageParsers.GetStr(root, "type");
+        var msg = UsageParsers.GetObj(root, "message");
+        var role = msg is not null ? UsageParsers.GetStr(msg, "role") : UsageParsers.GetStr(root, "role");
+        var isAssistant = string.Equals(type, "assistant", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase);
+        if (!isAssistant) return null;
+
+        var usage = msg is not null ? UsageParsers.GetObj(msg, "usage") : null;
+        usage ??= UsageParsers.GetObj(root, "usage");
+        if (usage is null) return null;
+
+        var rawIn = TokenCount(usage, "input_tokens");
+        var rawOut = TokenCount(usage, "output_tokens");
+        var cacheRead = TokenCount(usage, "cache_read_input_tokens");
+        var cacheWrite = TokenCount(usage, "cache_creation_input_tokens");
+        var reasoning = TokenCount(usage, "reasoning_tokens") + TokenCount(usage, "reasoning_output_tokens");
+        var hasCredits = TryPositiveDec(usage.Value, "credits", out _)
+            || TryPositiveDec(usage.Value, "original_credits", out _);
+
+        UsageParsers.SplitInclusiveTokens(rawIn, rawOut, cacheRead, cacheWrite, reasoning,
+            out var input, out var output, cacheWriteInclusive: false);
+
+        if (input == 0 && output == 0 && cacheRead == 0 && cacheWrite == 0 && reasoning == 0)
+        {
+            if (!hasCredits) return null;
+            // 国内 jsonl 经常 token 全 0、credits 非 0：用 assistant 文本估输出 token，避免仪表盘环图仍为 0。
+            output = EstimateOutputTokens(msg);
+        }
+
+        var sessionId = UsageParsers.GetStr(root, "sessionId")
+            ?? UsageParsers.GetStr(root, "session_id")
+            ?? (msg is not null ? UsageParsers.GetStr(msg, "sessionId") : null)
+            ?? fallbackSession;
+        if (string.IsNullOrWhiteSpace(sessionId)) sessionId = fallbackSession;
+        sessionId = sessionId.Trim();
+
+        var requestKey = FirstNonEmpty(
+            StrFromUsage(usage, "request_id"),
+            StrFromUsage(usage, "requestId"),
+            msg is not null ? UsageParsers.GetStr(msg, "id") : null,
+            UsageParsers.GetStr(root, "uuid"),
+            UsageParsers.GetStr(root, "id"));
+        if (string.IsNullOrEmpty(requestKey))
+            requestKey = StableLineKey(sessionId, line, lineNo);
+
+        var ts = ReadLineTimestamp(root) ?? (msg is not null ? ReadLineTimestamp(msg.Value) : null);
+        if (ts is null) return null;
+
+        var model = (msg is not null ? UsageParsers.GetStr(msg, "model") : null)
+            ?? UsageParsers.GetStr(root, "model")
+            ?? "unknown";
+        var project = UsageParsers.GetStr(root, "cwd")
+            ?? (msg is not null ? UsageParsers.GetStr(msg, "cwd") : null);
+
+        return new UsageRecord
+        {
+            Tool = "qoder-cn",
+            SessionId = sessionId,
+            RequestKey = requestKey,
+            TsUtc = ts.Value,
+            InputTokens = input,
+            OutputTokens = output,
+            CachedInputTokens = cacheRead,
+            CacheWriteTokens = cacheWrite,
+            ReasoningTokens = reasoning,
+            Model = model,
+            Project = project,
+        };
+    }
+
+    /// <summary>UTF-8 字节/4，至少 1，保证 byAgent.tokens &gt; 0。</summary>
+    internal static long EstimateOutputTokens(JsonElement? message)
+    {
+        var text = ExtractAssistantText(message);
+        if (text.Length == 0) return 1;
+        var n = Encoding.UTF8.GetByteCount(text) / 4;
+        return n > 0 ? n : 1;
+    }
+
+    private static string ExtractAssistantText(JsonElement? message)
+    {
+        if (message is null || message.Value.ValueKind != JsonValueKind.Object) return "";
+        if (!message.Value.TryGetProperty("content", out var content)) return "";
+        if (content.ValueKind == JsonValueKind.String) return content.GetString() ?? "";
+        if (content.ValueKind == JsonValueKind.Object)
+            return UsageParsers.GetStr(content, "text") ?? UsageParsers.GetStr(content, "content") ?? "";
+        if (content.ValueKind != JsonValueKind.Array) return "";
+        var sb = new StringBuilder();
+        foreach (var part in content.EnumerateArray())
+        {
+            if (part.ValueKind == JsonValueKind.String)
+            {
+                sb.Append(part.GetString());
+                continue;
+            }
+            if (part.ValueKind != JsonValueKind.Object) continue;
+            var kind = UsageParsers.GetStr(part, "type");
+            if (kind is not (null or "text" or "output_text")) continue;
+            var t = UsageParsers.GetStr(part, "text") ?? UsageParsers.GetStr(part, "content");
+            if (!string.IsNullOrEmpty(t)) sb.Append(t);
+        }
+        return sb.ToString();
+    }
+
+    private static DateTime? ReadLineTimestamp(JsonElement root)
+    {
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        if (root.TryGetProperty("timestamp", out var v))
+        {
+            var parsed = TimestampValue(v);
+            if (parsed is not null) return parsed;
+        }
+        foreach (var name in new[] { "ts", "time", "createdAt", "created_at" })
+        {
+            if (!root.TryGetProperty(name, out var alt)) continue;
+            var parsed = TimestampValue(alt);
+            if (parsed is not null) return parsed;
+        }
+        return null;
+    }
+
+    private static DateTime? TimestampValue(JsonElement v)
+    {
+        if (v.ValueKind == JsonValueKind.String)
+        {
+            var s = v.GetString();
+            var iso = UsageParsers.ParseIso(s);
+            if (iso is not null) return iso;
+            if (long.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var n))
+                return UsageParsers.ParseMs(n);
+            return null;
+        }
+        if (v.ValueKind != JsonValueKind.Number) return null;
+        if (v.TryGetInt64(out var i)) return UsageParsers.ParseMs(i);
+        return UsageParsers.ParseMs((long)v.GetDouble());
+    }
+
+    private static string StableLineKey(string sessionId, string line, int lineNo)
+    {
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(line)));
+        if (hash.Length > 16) hash = hash[..16];
+        return sessionId + "|L" + lineNo.ToString(CultureInfo.InvariantCulture) + "|" + hash;
+    }
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var v in values)
+        {
+            if (!string.IsNullOrWhiteSpace(v)) return v.Trim();
+        }
+        return null;
+    }
+
+    private static string? StrFromUsage(JsonElement? usage, string name)
+    {
+        if (usage is null || usage.Value.ValueKind != JsonValueKind.Object) return null;
+        if (!usage.Value.TryGetProperty(name, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.String)
+        {
+            var s = v.GetString();
+            return string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        }
+        if (v.ValueKind == JsonValueKind.Number) return v.ToString();
+        return null;
+    }
+
+    private static long TokenCount(JsonElement? el, string name)
+    {
+        if (el is null || el.Value.ValueKind != JsonValueKind.Object) return 0;
+        if (!el.Value.TryGetProperty(name, out var v)) return 0;
+        return v.ValueKind switch
+        {
+            JsonValueKind.Number when v.TryGetInt64(out var n) => Math.Max(0, n),
+            JsonValueKind.Number => (long)Math.Max(0, v.GetDouble()),
+            JsonValueKind.String when decimal.TryParse(v.GetString(), NumberStyles.Any,
+                CultureInfo.InvariantCulture, out var d) => (long)Math.Max(0, d),
+            _ => 0,
+        };
+    }
+
+    private static bool TryPositiveDec(JsonElement el, string name, out decimal value)
+    {
+        value = 0;
+        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(name, out var v)) return false;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out value)) return value > 0;
+        if (v.ValueKind == JsonValueKind.Number)
+        {
+            value = (decimal)v.GetDouble();
+            return value > 0;
+        }
+        if (v.ValueKind == JsonValueKind.String && decimal.TryParse(v.GetString(),
+                NumberStyles.Any, CultureInfo.InvariantCulture, out value))
+            return value > 0;
+        value = 0;
+        return false;
+    }
+
+    // ------------------------------------------------------------------
+    // 国际版 SQLite（%APPDATA%/Qoder/.../local.db）
+    // ------------------------------------------------------------------
 
     /// <summary>prompt 已含 cached；净输入 = prompt − cache，billed = prompt + output。</summary>
     internal static bool TryNormalizeTokens(string? tokenInfo, out long input, out long cached, out long output)

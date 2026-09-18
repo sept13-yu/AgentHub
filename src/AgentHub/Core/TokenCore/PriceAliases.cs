@@ -46,7 +46,7 @@ public static class PriceAliases
 
 
 
-    /// auto / unknown / agent_review 无稳定牌价，不映射；mimo-x-*-preview 内测无公开价。
+    /// auto / unknown / agent_review / qfmodel（及 qoder/qfmodel 等国内系统路由名）无稳定牌价，不映射；mimo-x-*-preview 内测无公开价。
 
 
 
@@ -327,7 +327,8 @@ public static class PriceAliases
             }
         }
 
-        // grok-bot-automation 等：无独立价时一律 grok-bot-default
+        // grok-bot-automation 等：无独立价时一律 grok-bot-default
+        // qfmodel 等国内系统路由名：无公开牌价，不映射（HasPrice=false → 仪表盘 noPrice）
 
         if (name.StartsWith("grok-bot-", StringComparison.OrdinalIgnoreCase)
 

@@ -92,7 +92,8 @@ public static class UsageCost
     
     /// <summary>
     /// 用量名常带厂商/区域前缀：cn:deepseek-v4-flash、qoder/qwen3.8-flash、openai/gpt-6-astra。
-    /// 估价时去掉短前缀（或取 / 后段）再匹配价表 / 别名 / LiteLLM；原名优先精确命中。
+    /// 估价时去掉短前缀（或取 / 后段）再匹配价表 / 别名 / LiteLLM；原名优先精确命中。
+    /// qfmodel 等国内系统路由名不在价表里时保持未定价（noPrice），不编造牌价。
     /// </summary>
     internal static IEnumerable<string> ModelNameCandidates(string? model)
     {
