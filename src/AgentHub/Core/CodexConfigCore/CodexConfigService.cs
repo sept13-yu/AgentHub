@@ -1047,6 +1047,23 @@ public sealed class CodexConfigService
 
 
 
+
+    /// <summary>清空 live 登录并应用官方连接，供「新建官方空白」一步完成。</summary>
+    public async Task<CodexApplyResult> PrepareOfficialBlankAsync()
+    {
+        var clear = await ClearLiveAuthAsync();
+        if (!clear.Ok) return clear;
+        var apply = await ApplyAsync(CodexConnection.OfficialId);
+        if (!apply.Ok) return apply;
+        return new CodexApplyResult
+        {
+            Ok = true,
+            RestartRequired = clear.RestartRequired || apply.RestartRequired,
+            BackupPath = clear.BackupPath ?? apply.BackupPath,
+            Note = "已准备官方空白登录。请打开 Codex 用 ChatGPT 登录；登好后点「归档当前登录」。",
+        };
+    }
+
     public void DeleteAuthProfile(string id)
 
     {
