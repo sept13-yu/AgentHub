@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -47,6 +47,16 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
         return req;
     }
 
+
+    /// <summary>终态云 agent 不列入（与 Cursor UI 常隐藏一致）。</summary>
+    private static bool IsTerminalCloudStatus(string? status) =>
+        status is not null && (
+            status.Equals("EXPIRED", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("ERROR", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("FAILED", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("CANCELLED", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("CANCELED", StringComparison.OrdinalIgnoreCase));
+
     public async Task<IReadOnlyList<ConversationSummary>> ListAsync()
     {
         if (MissingReason is not null) return [];
@@ -76,6 +86,7 @@ public sealed class CursorCloudProvider(TitleOverrideStore titles, AgentHubConfi
                     var name = CodexProvider.GetString(a, "name");
                     var summary = CodexProvider.GetString(a, "summary");
                     var status = CodexProvider.GetString(a, "status");
+                    if (IsTerminalCloudStatus(status)) continue;
                     var created = CodexProvider.GetString(a, "createdAt");
                     var repo = RepoOf(a);
                     var overrideTitle = titles.Get(AgentId, id);

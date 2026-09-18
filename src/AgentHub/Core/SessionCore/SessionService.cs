@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net.Http;
 using System.IO;
 using AgentHub.Core.ProxyCore;
@@ -187,8 +187,6 @@ public sealed class SessionService
                 // 保留上次云端缓存，避免离线时列表被掏空；标记 ok 以免 NeedsRescan 死循环。
                 if (!ok.Contains("cursor-cloud", StringComparer.OrdinalIgnoreCase))
                     ok.Add("cursor-cloud");
-                foreach (var old in _index.ItemsForAgent("cursor-cloud"))
-                    all.Add(old);
                 startCloud = true;
             }
             else
@@ -283,8 +281,10 @@ public sealed class SessionService
         }
         catch (Exception ex)
         {
+            // 查不到就不显示云端：清空索引里的 cursor-cloud，不留缓存
+            _index.UpsertAgent("cursor-cloud", System.Array.Empty<ConversationSummary>(), markOk: true);
             _cloudScanHint = FriendlyCloudHint(ex);
-            _log?.Invoke($"[sessions] cursor-cloud 扫描失败 {ex.GetType().Name}: {ex.Message}");
+            _log?.Invoke($"[sessions] cursor-cloud 扫描失败 {ex.GetType().Name}: {ex.Message}（已清空云端）");
         }
     }
 
@@ -439,7 +439,12 @@ public sealed class SessionService
             }
         }
         foreach (var r in results)
-            if (r.Ok) _index.Remove(r.AgentId, r.Id);
+        {
+            var gone = r.Ok
+                || (r.Error?.Contains("404", StringComparison.Ordinal) == true)
+                || (r.Error?.Contains("Not Found", StringComparison.OrdinalIgnoreCase) == true);
+            if (gone) _index.Remove(r.AgentId, r.Id);
+        }
         return (results, skipped);
     }
 }
