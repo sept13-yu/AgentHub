@@ -9,7 +9,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>AgentHub</AssemblyName>
     <RootNamespace>AgentHub</RootNamespace>
-    <Version>1.1.9</Version>
+    <Version>1.1.11</Version>
     <Product>AgentHub</Product>
     <Description>Local control center for desktop coding agents</Description>
     <Company>AgentHub</Company>
@@ -17,13 +17,13 @@
     <Copyright>Copyright (c) 2026 AgentHub</Copyright>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <ApplicationIcon>assets\agenthub.ico</ApplicationIcon>
-    <!-- zh-CN 的日期与数字格式化必须可用（方案 §5.1 一致性验收的运行前提） -->
+    <!-- zh-CN 鐨勬棩鏈熶笌鏁板瓧鏍煎紡鍖栧繀椤诲彲鐢紙鏂规 搂5.1 涓€鑷存€ч獙鏀剁殑杩愯鍓嶆彁锛?-->
     <InvariantGlobalization>false</InvariantGlobalization>
     <StartupObject>AgentHub.Program</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 同进程本地 HTTP（方案 §3 后端服务层：静态 + REST，Kestrel 只绑 loopback） -->
+    <!-- 鍚岃繘绋嬫湰鍦?HTTP锛堟柟妗?搂3 鍚庣鏈嶅姟灞傦細闈欐€?+ REST锛孠estrel 鍙粦 loopback锛?-->
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
@@ -42,9 +42,9 @@
 
   <ItemGroup>
     <Content Include="wwwroot\**\*" Exclude="wwwroot\app\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <!-- 应用图标等桌面资源 -->
+    <!-- 搴旂敤鍥炬爣绛夋闈㈣祫婧?-->
     <Content Include="assets\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <!-- Vue 变更必须让工程过期，否则只改前端时 dotnet build 会整次跳过 -->
+    <!-- Vue 鍙樻洿蹇呴』璁╁伐绋嬭繃鏈燂紝鍚﹀垯鍙敼鍓嶇鏃?dotnet build 浼氭暣娆¤烦杩?-->
     <UpToDateCheckInput Include="frontend\src\**\*" />
     <UpToDateCheckInput Include="frontend\index.html" />
     <UpToDateCheckInput Include="frontend\vite.config.ts" />
@@ -60,15 +60,15 @@
     <Exec Command="npm run build" WorkingDirectory="$(MSBuildProjectDirectory)\frontend" />
   </Target>
 
-  <!-- wwwroot\app 动态并入 Content：vite 产物带 hash、文件名每次变，静态 Include 会漏新文件；
-       挂在 AssignTargetPaths 前（npm 构建已跑完），dotnet build / publish 都能带上。 -->
+  <!-- wwwroot\app 鍔ㄦ€佸苟鍏?Content锛歷ite 浜х墿甯?hash銆佹枃浠跺悕姣忔鍙橈紝闈欐€?Include 浼氭紡鏂版枃浠讹紱
+       鎸傚湪 AssignTargetPaths 鍓嶏紙npm 鏋勫缓宸茶窇瀹岋級锛宒otnet build / publish 閮借兘甯︿笂銆?-->
   <Target Name="IncludeVueApp" BeforeTargets="AssignTargetPaths">
     <ItemGroup>
       <Content Include="$(MSBuildProjectDirectory)\wwwroot\app\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
 
-  <!-- wwwroot\app 被排除出默认 Content；动态 Include 赶不上 CopyFilesToOutputDirectory，必须显式拷。 -->
+  <!-- wwwroot\app 琚帓闄ゅ嚭榛樿 Content锛涘姩鎬?Include 璧朵笉涓?CopyFilesToOutputDirectory锛屽繀椤绘樉寮忔嫹銆?-->
   <Target Name="CopyFrontendApp" AfterTargets="CopyFilesToOutputDirectory">
     <RemoveDir Directories="$(OutputPath)wwwroot\app" />
     <ItemGroup>
