@@ -930,7 +930,7 @@ onMounted(() => load())
 
         >
 
-          清空登录
+          新建空白
 
         </n-button>
 
@@ -958,7 +958,7 @@ onMounted(() => load())
 
         <p v-if="profilesError" class="usage-error">读取档案失败：{{ profilesError }}</p>
 
-        <div v-else-if="profiles.length === 0" class="profile-empty">还没有档案。可先点「清空登录」让 Codex 重新走 ChatGPT 登录，登好后再「导入当前」。额度用尽时再切换到另一份归档。</div>
+        <div v-else-if="profiles.length === 0" class="profile-empty">还没有档案。可先点「新建空白」让 Codex 重新走 ChatGPT 登录，登好后再「导入当前」。额度用尽时再切换到另一份归档。</div>
 
         <div v-else class="profile-list">
 
