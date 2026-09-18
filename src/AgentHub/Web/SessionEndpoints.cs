@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using AgentHub.Core.SessionCore;
 using AgentHub.Core.SessionCore.Providers;
@@ -27,7 +27,7 @@ public static class SessionEndpoints
                 limit = page.Limit,
                 lockedCount = page.LockedCount,
                 indexedCount = page.IndexedCount,
-                indexedAt = page.IndexedAt?.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"),
+                indexedAt = page.IndexedAt?.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"),
                 weekStart = weekStart.ToString("yyyy-MM-dd"),
                 cursorAvailable = sessions.Cursor.MissingReason is null,
                 cursorMissingReason = sessions.Cursor.MissingReason,

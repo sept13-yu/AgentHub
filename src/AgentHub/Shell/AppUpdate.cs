@@ -629,8 +629,11 @@ public static class AppUpdate
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
         if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
-        if (!string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase)) return false;
-        return uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub", StringComparison.OrdinalIgnoreCase);
+        if (string.Equals(uri.Host, "gitee.com", StringComparison.OrdinalIgnoreCase))
+            return uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub", StringComparison.OrdinalIgnoreCase);
+        return false;
     }
 
     static async Task<(string? latest, string? error)> ProbeLatestAsync()
@@ -665,7 +668,8 @@ public static class AppUpdate
     static AppUpdateStatus Compose(bool installed, string? current, string latest)
     {
         var newer = IsNewer(latest, current);
-        var page = GithubApiUpdateSource.RepoUrl + "/releases/tag/v" + latest;
+        // 安装源固定 Gitee（CreateManager），发布页优先 Gitee，避免「有更新却打开 GitHub 404」
+        var page = GiteeApiUpdateSource.RepoUrl + "/releases/tag/v" + latest;
         if (!installed)
         {
             // 便携/调试运行：只有真有更新才提示去下载安装包

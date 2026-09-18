@@ -7,6 +7,7 @@ import AhConfirm from '../components/AhConfirm.vue'
 import { get, post, put, WRITABLE } from '../api'
 import { usePageHotkeys } from '../hotkeys'
 import AgentMark from '../components/AgentMark.vue'
+import { invalidateDashCache } from '../dashCache'
 import {
   normalizeAgentOrder,
   SET_AGENTS,
@@ -311,6 +312,8 @@ async function save() {
     })
     setTokenUnit(f.tokenUnit)
     clearCursorCloudKey.value = false
+    invalidateDashCache()
+    window.dispatchEvent(new CustomEvent('agenthub-refresh'))
     await load()
     message.success('已保存并应用')
   } catch (e) {

@@ -510,14 +510,15 @@ public sealed class TokenService
 
         long todayTokens = 0, last7d = 0;
         int conversations = 0;
+        // 与 /api/usage 同一口径：所有工具都是 input+output+cached+cache_write
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = """
                 SELECT
-                  COALESCE(SUM(CASE WHEN local_date = $today THEN input_tokens + output_tokens
-                    + CASE WHEN tool = 'cursor' THEN cached_input_tokens + cache_write_tokens ELSE 0 END END), 0),
-                  COALESCE(SUM(CASE WHEN local_date BETWEEN $from7 AND $today THEN input_tokens + output_tokens
-                    + CASE WHEN tool = 'cursor' THEN cached_input_tokens + cache_write_tokens ELSE 0 END END), 0),
+                  COALESCE(SUM(CASE WHEN local_date = $today THEN
+                    input_tokens + output_tokens + cached_input_tokens + cache_write_tokens END), 0),
+                  COALESCE(SUM(CASE WHEN local_date BETWEEN $from7 AND $today THEN
+                    input_tokens + output_tokens + cached_input_tokens + cache_write_tokens END), 0),
                   COUNT(DISTINCT CASE WHEN local_date = $today THEN session_id END)
                 FROM usage_records
                 """;
@@ -537,8 +538,7 @@ public sealed class TokenService
         using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = """
-                SELECT model, SUM(input_tokens + output_tokens
-                    + CASE WHEN tool = 'cursor' THEN cached_input_tokens + cache_write_tokens ELSE 0 END) AS t
+                SELECT model, SUM(input_tokens + output_tokens + cached_input_tokens + cache_write_tokens) AS t
                 FROM usage_records WHERE local_date = $today
                 GROUP BY model ORDER BY t DESC LIMIT 5
                 """;
@@ -562,8 +562,7 @@ public sealed class TokenService
         {
             cmd.CommandText = """
                 SELECT DISTINCT local_date FROM usage_records
-                WHERE input_tokens + output_tokens
-                    + CASE WHEN tool = 'cursor' THEN cached_input_tokens + cache_write_tokens ELSE 0 END > 0
+                WHERE input_tokens + output_tokens + cached_input_tokens + cache_write_tokens > 0
                 ORDER BY local_date DESC
                 """;
             using var r = cmd.ExecuteReader();

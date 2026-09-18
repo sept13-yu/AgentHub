@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -37,6 +37,14 @@ public sealed class SingleInstanceGuard : IDisposable
         if (TryActivateOtherMainWindow())
             return false;
 
+        // 主窗可能仍在 OnStartup/WebView 初始化：再等一拍，能唤醒就不杀
+        Thread.Sleep(1200);
+        SignalExistingInstance();
+        if (TryActivateOtherMainWindow())
+            return false;
+        if (IsLocalApiAlive())
+            return false;
+
         KillOtherInstances();
         Thread.Sleep(700);
         ReleaseMutexHandle();
@@ -47,6 +55,21 @@ public sealed class SingleInstanceGuard : IDisposable
             return true;
         }
         return false;
+    }
+
+    /// <summary>本机 18780 仍在听，说明已有实例活着，不能 Kill。</summary>
+    private static bool IsLocalApiAlive()
+    {
+        try
+        {
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(800) };
+            using var resp = http.GetAsync("http://127.0.0.1:18780/health").GetAwaiter().GetResult();
+            return resp.IsSuccessStatusCode;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     private bool TryOwnMutex()

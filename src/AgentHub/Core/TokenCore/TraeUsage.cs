@@ -123,7 +123,8 @@ internal static class TraeUsage
     {
         var sid = Str(item, "session_id");
         if (string.IsNullOrEmpty(sid)) return;
-        var ts = UnixTs(item, "usage_time");
+        // 无 usage_time 的记录不要落成「今天」：丢弃，避免历史账单被摊进当日
+        if (!TryUnixTs(item, "usage_time", out var ts)) return;
         if (item.TryGetProperty("usage_group_details", out var details)
             && details.ValueKind == JsonValueKind.Array && details.GetArrayLength() > 0)
         {
@@ -266,11 +267,20 @@ internal static class TraeUsage
         return v.ValueKind == JsonValueKind.String && long.TryParse(v.GetString(), out var p) ? p : 0;
     }
 
-    private static DateTime UnixTs(JsonElement el, string name)
+    private static bool TryUnixTs(JsonElement el, string name, out DateTime utc)
     {
+        utc = default;
         var sec = Long(el, name);
-        if (sec <= 0) return DateTime.UtcNow;
-        return DateTimeOffset.FromUnixTimeSeconds(sec).UtcDateTime;
+        if (sec <= 0) return false;
+        try
+        {
+            utc = DateTimeOffset.FromUnixTimeSeconds(sec).UtcDateTime;
+            return true;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            return false;
+        }
     }
 
     private static string? NestedStr(JsonElement el, string a, string b)

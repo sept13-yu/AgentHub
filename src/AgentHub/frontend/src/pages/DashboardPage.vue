@@ -30,6 +30,8 @@ const refreshing = ref(false)
 const usage = ref(dashCache.usage)
 const quotasReady = ref(dashCache.quotasReady)
 const tiles = ref<QuotaTile[]>(dashCache.tiles)
+/** stale 磁盘缓存只补拉有限次，避免后台刷新慢时打满本地 API */
+let staleRetries = 0
 const due = reactive<Record<string, { ready: boolean; loading: boolean; error: string; text: string }>>({})
 const gridEl = ref<HTMLElement | null>(null)
 const press = ref<{ id: string; x: number; y: number; el: HTMLElement; pointerId: number } | null>(null)
@@ -198,8 +200,12 @@ async function loadQuotas(force = false) {
     quotasReady.value = true
     persist()
     for (const id of Object.keys(due)) delete due[id]
-    // 启动首次拿到的是盘上旧值（stale）：再拉一次，等服务端后台刷新完成换新值
-    if (!force && raw.stale) void loadQuotas(false)
+    // 启动首次拿到的是盘上旧值（stale）：有限次补拉，等服务端后台刷新完成换新
+    if (!force && raw.stale && staleRetries < 2) {
+      staleRetries++
+      window.setTimeout(() => { void loadQuotas(false) }, 1500 * staleRetries)
+    }
+    if (!raw.stale) staleRetries = 0
   } catch {
     if (!quotasReady.value) tiles.value = []
   }
@@ -489,6 +495,7 @@ usePageHotkeys({
 onMounted(() => {
   window.addEventListener('agenthub-refresh', onPushRefresh)
   window.addEventListener('resize', onResize)
+  staleRetries = 0
   if (dashCache.primed) {
     void measureModels()
     return

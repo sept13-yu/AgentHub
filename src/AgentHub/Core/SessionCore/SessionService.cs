@@ -246,8 +246,8 @@ public sealed class SessionService
             }
             catch (Exception ex)
             {
+                // 扫描失败不进 ok：Sources() 不再把故障源画成「可读」
                 _log?.Invoke($"[sessions] {p.AgentId} 扫描失败 {ex.GetType().Name}: {ex.Message}");
-                ok.Add(id);
             }
         }
         return (lists, ok);
