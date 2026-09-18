@@ -49,8 +49,9 @@ public sealed class McpMotherStore
                 EnsureDefaultTargets(doc);
                 return doc;
             }
-            catch (JsonException)
+            catch (JsonException ex)
             {
+                HubLog.Write("[mcp] mcp-mother.json 损坏，回空母本：" + ex.Message);
                 return new McpMotherDocument();
             }
         }
@@ -65,8 +66,8 @@ public sealed class McpMotherStore
             var tmp = _path + ".tmp";
             var json = JsonSerializer.Serialize(doc, JsonOpts);
             File.WriteAllText(tmp, json);
-            File.Copy(tmp, _path, overwrite: true);
-            File.Delete(tmp);
+            if (File.Exists(_path)) File.Replace(tmp, _path, destinationBackupFileName: null);
+            else File.Move(tmp, _path);
         }
     }
 

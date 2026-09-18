@@ -50,7 +50,10 @@ internal sealed class SessionIndex
                 _builtAt = dto.BuiltAt;
             }
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            HubLog.Write("[sessions] 读 session-index.json 失败 " + ex.GetType().Name + ": " + ex.Message);
+        }
     }
 
     public IReadOnlyList<string> OkAgents
@@ -311,10 +314,13 @@ internal sealed class SessionIndex
             Directory.CreateDirectory(AgentHubConfig.Dir);
             var tmp = PathFile + ".tmp";
             File.WriteAllText(tmp, JsonSerializer.Serialize(dto, JsonOpts));
-            File.Copy(tmp, PathFile, overwrite: true);
-            File.Delete(tmp);
+            if (File.Exists(PathFile)) File.Replace(tmp, PathFile, destinationBackupFileName: null);
+            else File.Move(tmp, PathFile);
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            HubLog.Write("[sessions] 写 session-index.json 失败 " + ex.GetType().Name + ": " + ex.Message);
+        }
     }
 
     private sealed class IndexFile

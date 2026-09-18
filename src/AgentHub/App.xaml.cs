@@ -260,8 +260,7 @@ public partial class App : Application
         Shutdown();
     }
 
-    private static void Log(string message) =>
-        System.Diagnostics.Debug.WriteLine("[AgentHub] " + message);
+    private static void Log(string message) => HubLog.Write(message);
 
     protected override void OnExit(ExitEventArgs e)
     {

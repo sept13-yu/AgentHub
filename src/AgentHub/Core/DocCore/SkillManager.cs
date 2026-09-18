@@ -926,7 +926,27 @@ public sealed class SkillManager
             state.Skills = new Dictionary<string, SkillStateEntry>(state.Skills, StringComparer.OrdinalIgnoreCase);
             return state;
         }
-        catch (Exception) { return new(); }
+        catch (Exception ex)
+        {
+            QuarantineCorruptState(ex);
+            return new();
+        }
+    }
+
+    /// <summary>损坏的 state 改名备份，避免下次 Save 把坏文件盖掉后无法追查。</summary>
+    private void QuarantineCorruptState(Exception ex)
+    {
+        try
+        {
+            if (!File.Exists(StatePath)) return;
+            var bak = StatePath + ".corrupt-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            File.Move(StatePath, bak);
+            _log?.Invoke("[skills] skills-state.json 损坏，已改名为 " + Path.GetFileName(bak) + "：" + ex.Message);
+        }
+        catch (Exception moveEx)
+        {
+            _log?.Invoke("[skills] skills-state.json 损坏且备份失败：" + ex.Message + " / " + moveEx.Message);
+        }
     }
 
     private void SaveState(SkillStateFile state)

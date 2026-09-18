@@ -397,7 +397,8 @@ public sealed class SessionService
 
     public void SetLocked(string agent, string id, bool locked) => _locks.Set(agent, id, locked);
 
-    /// <summary>批量删除。已锁的跳过（单条不跳过）。删父则子集一起删。</summary>
+    /// <summary>批量删除。已锁的列表行跳过（单条不跳过）。
+    /// 子会话在列表里并进父行，不能单独加锁；删父则挂在下面的子会话一起删。</summary>
     public async Task<(IReadOnlyList<DeleteItemResult> Results, int Skipped)> DeleteAsync(
         IReadOnlyList<(string Agent, string Id)> items)
     {
@@ -415,12 +416,6 @@ public sealed class SessionService
             if (seen.Add($"{agent}:{id}")) work.Add((agent, id));
             foreach (var child in _index.ChildOf(agent, id))
             {
-                // 删父时展开的子会话同样受锁保护，避免锁定项被物理删除
-                if (!single && _locks.IsLocked(child.AgentId, child.Id))
-                {
-                    skipped++;
-                    continue;
-                }
                 if (seen.Add($"{agent}:{child.Id}")) work.Add((agent, child.Id));
             }
         }

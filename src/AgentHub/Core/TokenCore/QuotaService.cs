@@ -68,27 +68,41 @@ public sealed class QuotaService
     {
         if (ExpiryCacheFresh(id))
             return _expiryCache!;
+        if (id == "trae" && !_config.Dashboard.ShowQuotaTrae)
+            return ExpiryNone("trae");
+        if (id != "trae" && !_config.Dashboard.ShowQuotaWorkBuddy)
+            return ExpiryNone("workbuddy");
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        await _fetchGate.WaitAsync();
+        try
+        {
+            if (ExpiryCacheFresh(id))
+                return _expiryCache!;
 
-        Dictionary<string, object?> result;
-        if (id == "trae")
-        {
-            if (!_config.Dashboard.ShowQuotaTrae)
-                return ExpiryNone("trae");   // 开关关闭不进缓存：设置里打开后立即可查
-            result = await TraeExpiryAsync();
-        }
-        else
-        {
-            if (!_config.Dashboard.ShowQuotaWorkBuddy)
-                return ExpiryNone("workbuddy");
-            result = await WorkBuddyExpiryAsync();
-        }
-        if (result.ContainsKey("error"))
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            Dictionary<string, object?> result;
+            if (id == "trae")
+            {
+                if (!_config.Dashboard.ShowQuotaTrae)
+                    return ExpiryNone("trae");   // 开关关闭不进缓存：设置里打开后立即可查
+                result = await TraeExpiryAsync();
+            }
+            else
+            {
+                if (!_config.Dashboard.ShowQuotaWorkBuddy)
+                    return ExpiryNone("workbuddy");
+                result = await WorkBuddyExpiryAsync();
+            }
+            if (result.ContainsKey("error"))
+                return result;
+            _expiryCache = result;
+            _expiryCacheAt = now;
             return result;
-        _expiryCache = result;
-        _expiryCacheAt = now;
-        return result;
+        }
+        finally
+        {
+            _fetchGate.Release();
+        }
     }
 
     public async Task<Dictionary<string, object?>> GetQuotasAsync(bool force = false)
@@ -105,7 +119,7 @@ public sealed class QuotaService
                 _ = System.Threading.Tasks.Task.Run(async () =>
                 {
                     try { await GetQuotasAsync(); }
-                    catch (Exception) { }
+                    catch (Exception ex) { HubLog.Write("[quota] 后台刷新失败 " + ex.GetType().Name + ": " + ex.Message); }
                 });
                 return new Dictionary<string, object?>(_cache, StringComparer.Ordinal)
                 {
@@ -115,6 +129,8 @@ public sealed class QuotaService
         }
 
         await _fetchGate.WaitAsync();
+        var warmupExpiry = false;
+        Dictionary<string, object?> result;
         try
         {
             if (!force && TryServeCache())
@@ -150,21 +166,26 @@ public sealed class QuotaService
             _cacheUnhealthy = IsUnhealthy(sources);
             WriteDiskCache();
 
-            // 额度拉完顺带预热到期积分缓存（后台，不阻塞本次响应）：用户点「!」时几乎总是命中，
-            // 省掉「打开应用后第一次点」的冷启动等待。失败了不影响额度，下次点击再拉。
-            if (dash.ShowQuotaWorkBuddy && !ExpiryCacheFresh("workbuddy"))
-                _ = System.Threading.Tasks.Task.Run(async () =>
-                {
-                    try { await GetCreditExpiryAsync("workbuddy"); }
-                    catch (Exception) { }
-                });
-            return _cache;
+            // 预热放到闸门外：expiry 也进同一把闸，闸内再 Task.Run 会自己等自己
+            warmupExpiry = dash.ShowQuotaWorkBuddy && !ExpiryCacheFresh("workbuddy");
+            result = _cache;
         }
         finally
         {
             _retryHttp = false;
             _fetchGate.Release();
         }
+
+        // 额度拉完顺带预热到期积分缓存（后台，不阻塞本次响应）：用户点「!」时几乎总是命中。
+        if (warmupExpiry)
+        {
+            _ = System.Threading.Tasks.Task.Run(async () =>
+            {
+                try { await GetCreditExpiryAsync("workbuddy"); }
+                catch (Exception ex) { HubLog.Write("[quota] 到期预热失败 " + ex.GetType().Name + ": " + ex.Message); }
+            });
+        }
+        return result;
     }
 
     // ------------------------------------------------------------------
@@ -1128,7 +1149,10 @@ public sealed class QuotaService
                 _cacheAt = 0;   // 视为已过期：首次请求触发后台刷新
             }
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            HubLog.Write("[quota] 读磁盘缓存失败 " + ex.GetType().Name + ": " + ex.Message);
+        }
     }
 
     private void WriteDiskCache()
@@ -1138,12 +1162,15 @@ public sealed class QuotaService
             Directory.CreateDirectory(AgentHubConfig.Dir);
             File.WriteAllText(CacheFile, JsonSerializer.Serialize(_cache));
         }
-        catch (Exception) { }
+        catch (Exception ex)
+        {
+            HubLog.Write("[quota] 写磁盘缓存失败 " + ex.GetType().Name + ": " + ex.Message);
+        }
     }
 
     private static bool IsUnhealthy(IReadOnlyDictionary<string, Dictionary<string, object?>> sources)
     {
-        foreach (var key in new[] { "cursor", "deepseek", "codex", "relay", "trae", "workbuddy" })
+        foreach (var key in new[] { "cursor", "deepseek", "codex", "relay", "trae", "workbuddy", "zcode" })
         {
             if (!sources.TryGetValue(key, out var card))
                 continue;
@@ -1178,7 +1205,16 @@ public sealed class QuotaService
         var next = CreateHttp();
         var old = _http;
         _http = next;
-        old.Dispose();
+        // 延迟释放：闸门外的到期查询可能还拿着旧 client
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(20));
+                old.Dispose();
+            }
+            catch (Exception) { }
+        });
     }
 
     /// <summary>attempts 显式传 1 时不做重试：到期积分这类手动触发的低频链路不该继承额度链路的 _retryHttp，
@@ -1188,12 +1224,13 @@ public sealed class QuotaService
     {
         var attempts = attemptsOverride ?? (_retryHttp ? 3 : 1);
         Exception? last = null;
+        var http = _http;
         for (var i = 1; i <= attempts; i++)
         {
             try
             {
                 using var req = factory();
-                return await _http.SendAsync(req);
+                return await http.SendAsync(req);
             }
             catch (Exception ex) when (IsTransientHttp(ex) && i < attempts)
             {

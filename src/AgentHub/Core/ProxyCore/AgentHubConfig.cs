@@ -323,6 +323,8 @@ public sealed class AgentHubConfig
     /// <summary>Codex 连接管理（方案 §6）：连接记录存这里，live config.toml 只是当前连接的投影。</summary>
     public CodexConfigSettings Codex { get; set; } = new();
 
+    private readonly object _saveLock = new();
+
     public static string Dir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "AgentHub");
     /// <summary>Velopack 安装根。Setup 只要看到这个目录非空就弹「已安装」。</summary>
@@ -379,9 +381,9 @@ public sealed class AgentHubConfig
                     File.Move(src, dest);
                 }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // 占用时下次启动再搬，不能挡启动
+                HubLog.Write("[config] 安装目录迁移跳过 " + name + "：" + ex.Message);
             }
         }
     }
@@ -403,15 +405,18 @@ public sealed class AgentHubConfig
             cfg = JsonSerializer.Deserialize<AgentHubConfig>(raw, JsonOpts)
                 ?? new AgentHubConfig();
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // 损坏配置：备份后回默认（对齐旧 config.py 行为）
+            HubLog.Write("[config] 配置损坏，已尝试备份后回默认：" + ex.Message);
             try
             {
                 if (File.Exists(ConfigPath))
                     File.Copy(ConfigPath, ConfigPath + ".bak", overwrite: true);
             }
-            catch (IOException) { }
+            catch (IOException io)
+            {
+                HubLog.Write("[config] 损坏配置备份失败：" + io.Message);
+            }
             return new AgentHubConfig();
         }
 
@@ -446,12 +451,16 @@ public sealed class AgentHubConfig
 
     public void Save()
     {
-        Directory.CreateDirectory(Dir);
-        var temp = ConfigPath + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this, JsonOpts));
-        // 原子替换（方案 §6.2）：避免「active 标记已前移、配置只写了一半」
-        if (File.Exists(ConfigPath)) File.Replace(temp, ConfigPath, destinationBackupFileName: null);
-        else File.Move(temp, ConfigPath);
+        lock (_saveLock)
+        {
+            Directory.CreateDirectory(Dir);
+            var json = JsonSerializer.Serialize(this, JsonOpts);
+            var temp = ConfigPath + ".tmp";
+            File.WriteAllText(temp, json);
+            // 原子替换（方案 §6.2）：避免「active 标记已前移、配置只写了一半」
+            if (File.Exists(ConfigPath)) File.Replace(temp, ConfigPath, destinationBackupFileName: null);
+            else File.Move(temp, ConfigPath);
+        }
     }
 
     /// <summary>规范化资料根路径；空值回落到默认用户目录，不改用户已配置的其它绝对路径。</summary>
