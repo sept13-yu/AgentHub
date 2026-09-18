@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace AgentHub.Core.SessionCore.Providers;
 
-/// <summary>Qoder 国内桌面会话库：%APPDATA%/com.qodercn.app.stable/main.sqlite。
+/// <summary>Qoder CN 桌面会话库：%APPDATA%/com.qodercn.app.stable/main.sqlite。
 /// 读库拷三件套；路径探测对齐 <see cref="QoderQuota.ChinaDataRoots"/>，不含国际版 Qoder / QoderCN。</summary>
 internal static class QoderCnStore
 {

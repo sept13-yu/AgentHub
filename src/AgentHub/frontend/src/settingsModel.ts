@@ -11,7 +11,7 @@ export const SET_AGENTS = [
   { id: 'mimocode', name: 'MiMo', windows: '会话 · 用量', show: 'showAgentMimocode' },
   { id: 'grok', name: 'Grok', windows: '用量', show: 'showAgentGrok' },
   { id: 'qoder', name: 'Qoder', windows: '额度 · 用量', show: 'showQuotaQoder' },
-  { id: 'qoder-cn', name: 'Qoder 国内', windows: '额度 · 用量 · 会话', show: 'showQuotaQoderCn' },
+  { id: 'qoder-cn', name: 'Qoder CN', windows: '额度 · 用量 · 会话', show: 'showQuotaQoderCn' },
   { id: 'cursor', name: 'Cursor', windows: '总用量 · Auto · API · Grok', show: 'showQuotaCursor' },
   { id: 'codex', name: 'Codex', windows: '5 小时 + 每周', show: 'showQuotaCodex' },
 ] as const

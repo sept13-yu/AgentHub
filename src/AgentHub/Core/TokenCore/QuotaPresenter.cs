@@ -32,8 +32,8 @@ public static class QuotaPresenter
         });
         AddWindows(bag, sources, "qoder-cn", new Dictionary<string, (string Id, string Name)>(StringComparer.Ordinal)
         {
-            ["credits"] = ("qoder-cn-credits", "Qoder 国内额度"),
-            ["calls"] = ("qoder-cn-calls", "Qoder 国内体验"),
+            ["credits"] = ("qoder-cn-credits", "Qoder CN 额度"),
+            ["calls"] = ("qoder-cn-calls", "Qoder CN 体验"),
         });
 
         var items = new List<Dictionary<string, object?>>();

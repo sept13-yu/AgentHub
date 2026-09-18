@@ -7,7 +7,7 @@ using Microsoft.Data.Sqlite;
 
 namespace AgentHub.Core.SessionCore.Providers;
 
-/// <summary>Qoder 国内会话：%APPDATA%/com.qodercn.app.stable/main.sqlite 的
+/// <summary>Qoder CN 会话：%APPDATA%/com.qodercn.app.stable/main.sqlite 的
 /// chat_sessions / chat_session_messages（payload_json 明文）。
 /// 列表/详情优先 sqlite；sqlite 正文缺行时再读 ~/.qoder-cn/projects/**/&lt;id&gt;.jsonl。
 /// 改名默认写覆盖表（Qoder CN 在跑时不碰库）；删除须先退出，否则明确失败。</summary>
@@ -132,7 +132,7 @@ public sealed class QoderCnProvider(TitleOverrideStore titles) : IConversationPr
         {
             using var conn = QoderCnStore.OpenWrite(db);
             if (!QoderCnStore.TableExists(conn, "chat_sessions"))
-                throw new FileNotFoundException("未找到 Qoder 国内会话表");
+                throw new FileNotFoundException("未找到 Qoder CN 会话表");
             var cols = QoderCnStore.TableColumns(conn, "chat_sessions");
             if (!cols.Contains("title")) return Task.CompletedTask;
             var idCol = cols.Contains("session_id") ? "session_id" : cols.Contains("id") ? "id" : null;
@@ -146,7 +146,7 @@ public sealed class QoderCnProvider(TitleOverrideStore titles) : IConversationPr
         }
         catch (SqliteException ex)
         {
-            throw new IOException("无法写入 Qoder 国内会话库，请先退出 Qoder 国内版再改标题。", ex);
+            throw new IOException("无法写入 Qoder CN 会话库，请先退出 Qoder CN再改标题。", ex);
         }
         return Task.CompletedTask;
     }
@@ -163,7 +163,7 @@ public sealed class QoderCnProvider(TitleOverrideStore titles) : IConversationPr
                     AgentId = AgentId,
                     Id = id,
                     Ok = false,
-                    Error = "删除需要先完全退出 Qoder 国内版（包括托盘）后重试——应用还在跑时写入会损坏数据库。",
+                    Error = "删除需要先完全退出 Qoder CN（包括托盘）后重试——应用还在跑时写入会损坏数据库。",
                 });
             }
             return results;
@@ -173,7 +173,7 @@ public sealed class QoderCnProvider(TitleOverrideStore titles) : IConversationPr
         if (db is null)
         {
             foreach (var id in ids)
-                results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = false, Error = "未找到 Qoder 国内会话库" });
+                results.Add(new DeleteItemResult { AgentId = AgentId, Id = id, Ok = false, Error = "未找到 Qoder CN 会话库" });
             return results;
         }
 
@@ -209,7 +209,7 @@ public sealed class QoderCnProvider(TitleOverrideStore titles) : IConversationPr
                         Id = id,
                         Ok = true,
                         FreedBytes = size,
-                        Note = "已从 Qoder 国内会话库删除。",
+                        Note = "已从 Qoder CN 会话库删除。",
                     });
                 }
                 catch (Exception ex)
@@ -229,7 +229,7 @@ public sealed class QoderCnProvider(TitleOverrideStore titles) : IConversationPr
                     AgentId = AgentId,
                     Id = id,
                     Ok = false,
-                    Error = "无法写入 Qoder 国内会话库，请先退出 Qoder 国内版再删除。",
+                    Error = "无法写入 Qoder CN 会话库，请先退出 Qoder CN再删除。",
                 });
             }
         }

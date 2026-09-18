@@ -55,7 +55,7 @@ export const AGENT_NAME: Record<string, string> = {
   grok: 'Grok',
   relay: 'Sub2API',
   qoder: 'Qoder',
-  'qoder-cn': 'Qoder 国内',
+  'qoder-cn': 'Qoder CN',
 }
 
 export function agentName(id: string): string {
