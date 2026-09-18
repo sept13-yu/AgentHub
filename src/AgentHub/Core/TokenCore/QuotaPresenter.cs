@@ -25,6 +25,16 @@ public static class QuotaPresenter
             ["5h"] = ("zcode-5h", "ZCode 5 小时"),
             ["week"] = ("zcode-week", "ZCode 每周"),
         });
+        AddWindows(bag, sources, "qoder", new Dictionary<string, (string Id, string Name)>(StringComparer.Ordinal)
+        {
+            ["credits"] = ("qoder-credits", "Qoder 额度"),
+            ["calls"] = ("qoder-calls", "Qoder 体验"),
+        });
+        AddWindows(bag, sources, "qoder-cn", new Dictionary<string, (string Id, string Name)>(StringComparer.Ordinal)
+        {
+            ["credits"] = ("qoder-cn-credits", "Qoder 国内额度"),
+            ["calls"] = ("qoder-cn-calls", "Qoder 国内体验"),
+        });
 
         var items = new List<Dictionary<string, object?>>();
         foreach (var group in DashboardSettings.NormalizeQuotaOrder(groupOrder))
@@ -43,6 +53,8 @@ public static class QuotaPresenter
         "zcode" => ["zcode-5h", "zcode-week"],
         "cursor" => ["cursor-total", "cursor-auto", "cursor-api", "cursor-grok"],
         "codex" => ["codex-5h", "codex-7d"],
+        "qoder" => ["qoder-credits", "qoder-calls"],
+        "qoder-cn" => ["qoder-cn-credits", "qoder-cn-calls"],
         _ => [group],
     };
 

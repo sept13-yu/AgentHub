@@ -4,9 +4,9 @@ using System.Text.Json;
 
 namespace AgentHub.Core.TokenCore;
 
-/// <summary>一次计费请求的用量（移植 probe contract.UsageRecord，口径注释见方案 §5.1）。
-/// input_tokens 一律是净新增（不含缓存命中）；cached / cache_write 与 input 三列互不重叠；
-/// total = input + output，不含缓存。model 缺字段归 unknown。</summary>
+/// <summary>一次计费请求的用量。
+/// input / cached / cache_write / output / reasoning 五列互不重叠（含税字段先拆再存）；
+/// billed total = 五列之和。model 缺字段归 unknown。</summary>
 public sealed record UsageRecord
 {
     public required string Tool { get; init; }
@@ -18,6 +18,8 @@ public sealed record UsageRecord
     public long CachedInputTokens { get; init; }
     public long CacheWriteTokens { get; init; }
     public long ReasoningTokens { get; init; }
+    /// <summary>厂商回报成本（USD）。Grok costUsdTicks 等；空则走价表估算。</summary>
+    public double? ReportedCostUsd { get; init; }
     public bool IsSubagent { get; init; }
     public string Model { get; init; } = "unknown";
     public string? Project { get; init; }
@@ -31,11 +33,14 @@ public static class UsageParsers
     // ------------------------------------------------------------------
     // Codex：event_msg/payload.type=token_count → info.last_token_usage（增量）
     // 限流快照（total 未前进、last 原样重写）必须跳过；input 含 cached 需减。
+    // 模型取最近 turn_context.model（忽略 model_provider）；session_meta.model
+    // 仅作兜底；model/rerouted 在本回合内提升有效模型。reasoning 是 output 子集。
     // ------------------------------------------------------------------
 
     public static IEnumerable<UsageRecord> ParseCodex(string file, string sessionId)
     {
-        string? cwd = null, threadSource = null, model = null;
+        string? cwd = null, threadSource = null, forkedFrom = null;
+        string? selectedModel = null, effectiveModel = null;
         long[]? prevTotalSig = null;
 
         foreach (var line in ReadLinesShared(file))
@@ -53,12 +58,29 @@ public static class UsageParsers
                 {
                     cwd = GetStr(payload, "cwd") ?? cwd;
                     threadSource = GetStr(payload, "thread_source") ?? threadSource;
+                    forkedFrom = GetStr(payload, "forked_from_id") ?? forkedFrom;
+                    // model_provider 是来源标注，不是模型名。
+                    var metaModel = GetStr(payload, "model");
+                    if (metaModel is not null && selectedModel is null)
+                    {
+                        selectedModel = metaModel;
+                        effectiveModel ??= metaModel;
+                    }
                     continue;
                 }
                 if (type == "turn_context" && payload is not null)
                 {
                     cwd = GetStr(payload, "cwd") ?? cwd;
-                    model = GetStr(payload, "model") ?? model;
+                    var turnModel = GetStr(payload, "model");
+                    if (turnModel is not null) selectedModel = turnModel;
+                    effectiveModel = selectedModel ?? effectiveModel;
+                    continue;
+                }
+
+                if (TryCodexReroute(root, payload, out var fromModel, out var toModel))
+                {
+                    selectedModel = fromModel ?? selectedModel ?? effectiveModel;
+                    effectiveModel = toModel;
                     continue;
                 }
 
@@ -67,14 +89,15 @@ public static class UsageParsers
 
                 var last = ReadUsage(info, "last_token_usage");
                 var total = ReadUsage(info, "total_token_usage");
-                var sig = new[] { total.Input, total.Cached, total.Output, total.Reasoning, total.Total };
+                var sig = new[] { total.Input, total.Cached, total.CacheWrite, total.Output, total.Reasoning, total.Total };
                 if (prevTotalSig is not null && SigEquals(sig, prevTotalSig))
                     continue;   // 限流快照：total 未前进，last 是重放
                 prevTotalSig = sig;
 
-                // Codex input 含缓存命中：拆开（cached ≤ input 才减）
-                long inputTokens = last.Cached <= last.Input ? last.Input - last.Cached : last.Input;
-                if (inputTokens == 0 && last.Output == 0) continue;
+                SplitInclusiveTokens(last.Input, last.Output, last.Cached, last.CacheWrite, last.Reasoning,
+                    out var inputTokens, out var outputTokens, cacheWriteInclusive: false);
+                if (inputTokens == 0 && outputTokens == 0 && last.Cached == 0 && last.CacheWrite == 0 && last.Reasoning == 0)
+                    continue;
 
                 var ts = ParseIso(GetStr(root, "timestamp"));
                 if (ts is null) continue;
@@ -87,15 +110,59 @@ public static class UsageParsers
                     RequestKey = $"{ts:yyyy-MM-dd'T'HH:mm:ss'Z'}|in={last.Input}|out={last.Output}|cached={last.Cached}|tot={total.Total}",
                     TsUtc = ts.Value,
                     InputTokens = inputTokens,
-                    OutputTokens = last.Output,
+                    OutputTokens = outputTokens,
                     CachedInputTokens = last.Cached,
-                    IsSubagent = !string.IsNullOrEmpty(threadSource)
-                        && !threadSource.Equals("user", StringComparison.OrdinalIgnoreCase),
-                    Model = model ?? "unknown",
+                    CacheWriteTokens = last.CacheWrite,
+                    ReasoningTokens = last.Reasoning,
+                    IsSubagent = IsCodexSubagent(threadSource, forkedFrom),
+                    Model = effectiveModel ?? selectedModel ?? "unknown",
                     Project = cwd,
                 };
             }
         }
+    }
+
+    internal static bool IsCodexSubagent(string? threadSource, string? forkedFrom) =>
+        (!string.IsNullOrEmpty(threadSource) && !threadSource.Equals("user", StringComparison.OrdinalIgnoreCase))
+        || !string.IsNullOrEmpty(forkedFrom);
+
+    /// <summary>把 cache / reasoning 从含税的 input/output 里拆出来。
+    /// ZCode/Grok：input 含 cache 读+写，output 含 reasoning。
+    /// Codex：input 只含 cache 读（不含 write），output 含 reasoning。</summary>
+    internal static void SplitInclusiveTokens(
+        long rawIn, long rawOut, long cacheRead, long cacheWrite, long reasoning,
+        out long input, out long output, bool cacheWriteInclusive = true)
+    {
+        input = rawIn;
+        if (cacheRead > 0 && cacheRead <= input) input -= cacheRead;
+        if (cacheWriteInclusive && cacheWrite > 0 && cacheWrite <= input) input -= cacheWrite;
+        output = Math.Max(0, rawOut - Math.Max(0, reasoning));
+    }
+
+    private static bool TryCodexReroute(JsonElement root, JsonElement? payload, out string? fromModel, out string toModel)
+    {
+        fromModel = null;
+        toModel = "";
+        if (TryReadReroute(root, out fromModel, out toModel)) return true;
+        if (payload is { } p && TryReadReroute(p, out fromModel, out toModel)) return true;
+        var msg = GetObj(payload, "msg");
+        if (msg is { } m && TryReadReroute(m, out fromModel, out toModel)) return true;
+        return false;
+    }
+
+    private static bool TryReadReroute(JsonElement el, out string? fromModel, out string toModel)
+    {
+        fromModel = null;
+        toModel = "";
+        var method = GetStr(el, "method") ?? GetStr(el, "type");
+        if (string.IsNullOrEmpty(method)) return false;
+        var name = method.Trim().ToLowerInvariant().Replace('_', '/');
+        if (name is not ("model/rerouted" or "modelrerouted")) return false;
+        var data = GetObj(el, "params") ?? GetObj(el, "payload") ?? el;
+        toModel = GetStr(data, "toModel") ?? GetStr(data, "to_model") ?? "";
+        if (toModel.Length == 0) return false;
+        fromModel = GetStr(data, "fromModel") ?? GetStr(data, "from_model");
+        return true;
     }
 
     private static JsonElement? ExtractTokenInfo(string? type, JsonElement? payload)
@@ -197,14 +264,16 @@ public static class UsageParsers
         return details is not null ? GetInt(details, "cached_tokens") : 0;
     }
 
-    /// <summary>info.last/total_token_usage 五字段快照（Codex 专用）。</summary>
-    private readonly record struct Usage5(long Input, long Cached, long Output, long Reasoning, long Total);
+    /// <summary>info.last/total_token_usage 快照（Codex 专用）。</summary>
+    private readonly record struct Usage5(long Input, long Cached, long CacheWrite, long Output, long Reasoning, long Total);
 
     private static Usage5 ReadUsage(JsonElement? info, string name)
     {
         var u = GetObj(info, name);
+        var cacheWrite = GetInt(u, "cache_creation_input_tokens");
+        if (cacheWrite == 0) cacheWrite = GetInt(u, "cache_write_input_tokens");
         return new Usage5(
-            GetInt(u, "input_tokens"), GetInt(u, "cached_input_tokens"),
+            GetInt(u, "input_tokens"), GetInt(u, "cached_input_tokens"), cacheWrite,
             GetInt(u, "output_tokens"), GetInt(u, "reasoning_output_tokens"),
             GetInt(u, "total_tokens"));
     }

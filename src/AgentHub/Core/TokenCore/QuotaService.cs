@@ -11,7 +11,8 @@ namespace AgentHub.Core.TokenCore;
 /// <summary>额度台账（方案 §5.2）：只画官方接口实际返回的字段。
 /// DeepSeek 走 API Key（DPAPI 保护）；Cursor 走 usage-summary（登录态从 vscdb 只读提取，
 /// 凭证不落盘不打日志）；Codex 走 ChatGPT backend wham/usage（auth.json OAuth）；
-/// Sub2API 走 API Key 的 GET /v1/usage；WorkBuddy / Trae 先本机登录态，设置 Cookie 兜底。拿不到写原因，不写 0。</summary>
+/// Sub2API 走 API Key 的 GET /v1/usage；WorkBuddy / Trae 先本机登录态，设置 Cookie 兜底；
+/// Qoder / Qoder CN 优先本机 IPC（named pipe JSON-RPC），失败再 cookie/env、日志刮取、上次成功缓存。拿不到写原因，不写 0。</summary>
 public sealed class QuotaService
 {
     private readonly AgentHubConfig _config;
@@ -150,6 +151,8 @@ public sealed class QuotaService
             if (dash.ShowQuotaWorkBuddy) jobs.Add(("workbuddy", WorkBuddyAsync()));
             if (dash.ShowQuotaTrae) jobs.Add(("trae", TraeAsync()));
             if (dash.ShowQuotaZcode) jobs.Add(("zcode", ZcodeAsync()));
+            if (dash.ShowQuotaQoder) jobs.Add(("qoder", QoderQuota.FetchInternationalAsync(_http, CancellationToken.None)));
+            if (dash.ShowQuotaQoderCn) jobs.Add(("qoder-cn", QoderQuota.FetchChinaAsync(_http, CancellationToken.None)));
             if (jobs.Count > 0)
                 await Task.WhenAll(jobs.Select(j => j.Task));
 
@@ -1200,7 +1203,7 @@ public sealed class QuotaService
 
     private static bool IsUnhealthy(IReadOnlyDictionary<string, Dictionary<string, object?>> sources)
     {
-        foreach (var key in new[] { "cursor", "deepseek", "codex", "relay", "trae", "workbuddy", "zcode" })
+        foreach (var key in new[] { "cursor", "deepseek", "codex", "relay", "trae", "workbuddy", "zcode", "qoder", "qoder-cn" })
         {
             if (!sources.TryGetValue(key, out var card))
                 continue;

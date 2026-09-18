@@ -89,8 +89,11 @@ public static class UsageEndpoints
                     config.Dashboard.ShowQuotaZcode,
                     config.Dashboard.ShowQuotaCursor,
                     config.Dashboard.ShowQuotaCodex,
+                    config.Dashboard.ShowQuotaQoder,
+                    config.Dashboard.ShowQuotaQoderCn,
                     config.Dashboard.ShowAgentDsh,
                     config.Dashboard.ShowAgentMimocode,
+                    config.Dashboard.ShowAgentGrok,
                     agentOrder = config.Dashboard.ResolvedAgentOrder(),
                     quotaOrder = config.Dashboard.ResolvedQuotaOrder(),
                     costCurrency = DashboardSettings.NormalizeCurrency(config.Dashboard.CostCurrency),
@@ -236,8 +239,11 @@ public static class UsageEndpoints
                     });
                     ApplyBool(dash, "showQuotaZcode", v => config.Dashboard.ShowQuotaZcode = v);
                     ApplyBool(dash, "showQuotaCodex", v => config.Dashboard.ShowQuotaCodex = v);
+                    ApplyBool(dash, "showQuotaQoder", v => config.Dashboard.ShowQuotaQoder = v);
+                    ApplyBool(dash, "showQuotaQoderCn", v => config.Dashboard.ShowQuotaQoderCn = v);
                     ApplyBool(dash, "showAgentDsh", v => config.Dashboard.ShowAgentDsh = v);
                     ApplyBool(dash, "showAgentMimocode", v => config.Dashboard.ShowAgentMimocode = v);
+                    ApplyBool(dash, "showAgentGrok", v => config.Dashboard.ShowAgentGrok = v);
                     var wroteAgent = false;
                     if (dash.TryGetProperty("agentOrder", out var agentEl) && agentEl.ValueKind == JsonValueKind.Array)
                     {

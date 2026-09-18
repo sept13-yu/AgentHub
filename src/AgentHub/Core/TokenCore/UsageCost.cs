@@ -5,12 +5,13 @@ namespace AgentHub.Core.TokenCore;
 /// <summary>Estimate spend from vendor list prices (input, output, cache-read, cache-write).
 /// Price table keeps vendor currency (USD overseas / CNY domestic); no hard-coded FX in the table.
 /// At estimate time convert to defaultCurrency (costCurrency setting) with fxUsdToCny from caller.
-/// Aligns with LiteLLM/TokenTracker: netInput*input + cacheRead*cacheRead + cacheWrite*cacheWrite + output*output;
-/// missing cache unit price falls back to input price.</summary>
+/// Aligns with LiteLLM/TokenTracker: netInput*input + cacheRead*cacheRead + cacheWrite*cacheWrite
+/// + (output+reasoning)*output; missing cache unit price falls back to input price.
+/// Rows with ReportedUsd set (including 0, e.g. Grok costUsdTicks) use provider USD instead of list prices.</summary>
 public static class UsageCost
 {
     public static (double? Cost, bool? Partial, string? Currency) Estimate(
-        IEnumerable<(string Model, long Input, long Output, long Cached, long CacheWrite)> rows,
+        IEnumerable<(string Model, long Input, long Output, long Cached, long CacheWrite, long Reasoning, double? ReportedUsd)> rows,
         IEnumerable<PriceRow> prices,
         bool enabled,
         string? defaultCurrency,
@@ -18,7 +19,7 @@ public static class UsageCost
     {
         if (!enabled) return (null, null, null);
         var table = BuildTable(prices, defaultCurrency);
-        if (table.Count == 0) return (null, null, null);
+        if (table.Count == 0 && !rows.Any(r => r.ReportedUsd is not null)) return (null, null, null);
 
         var targetCny = !string.Equals(defaultCurrency, "USD", StringComparison.OrdinalIgnoreCase);
         var target = targetCny ? "CNY" : "USD";
@@ -28,7 +29,15 @@ public static class UsageCost
         var rate = NormalizeRate(fxUsdToCny);
         foreach (var row in rows)
         {
+            if (row.ReportedUsd is not null)
+            {
+                any = true;
+                sum += targetCny ? row.ReportedUsd.Value * rate : row.ReportedUsd.Value;
+                continue;
+            }
             var name = row.Model.Trim();
+            if (name.EndsWith(" · 子代理", StringComparison.Ordinal))
+                name = name[..^" · 子代理".Length].Trim();
             // Exact hit → PriceAliases → LiteLLM fallback; still missing -> costPartial.
             if (!TryResolve(name, table, out var p))
             {
@@ -40,7 +49,7 @@ public static class UsageCost
             sum += row.Input / 1_000_000d * unitIn
                  + row.Cached / 1_000_000d * unitCr
                  + row.CacheWrite / 1_000_000d * unitCw
-                 + row.Output / 1_000_000d * unitOut;
+                 + (row.Output + row.Reasoning) / 1_000_000d * unitOut;
         }
         if (!any) return missed ? (null, true, target) : (null, null, null);
         return (sum, missed, target);
