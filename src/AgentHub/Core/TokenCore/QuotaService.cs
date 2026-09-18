@@ -324,11 +324,36 @@ public sealed class QuotaService
             if (!resp.IsSuccessStatusCode)
                 return Status("error", $"接口返回 HTTP {(int)resp.StatusCode}");
             using var doc = JsonDocument.Parse(await resp.Content.ReadAsStreamAsync());
+            var root = doc.RootElement;
+            // 新版 wham/usage：窗口在 rate_limit 下；字段 limit_window_seconds / reset_at(unix)
+            var scope = root;
+            if (root.TryGetProperty("rate_limit", out var rateLimit) && rateLimit.ValueKind == JsonValueKind.Object)
+                scope = rateLimit;
 
-            // 窗口按秒数识别（Free 档可能只有周窗，不要按字段名把周窗标成 5h，方案 §5.2）
+            long WindowSecs(JsonElement w)
+            {
+                var secs = (long)GetNum(w, "window_length_seconds");
+                if (secs <= 0) secs = (long)GetNum(w, "limit_window_seconds");
+                return secs;
+            }
+            string? ResetAt(JsonElement w)
+            {
+                var s = GetStr(w, "resets_at") ?? GetStr(w, "reset_at");
+                if (!string.IsNullOrEmpty(s)) return s;
+                if (w.ValueKind == JsonValueKind.Object && w.TryGetProperty("reset_at", out var ra)
+                    && ra.ValueKind == JsonValueKind.Number)
+                {
+                    long unix = ra.TryGetInt64(out var i) ? i : (long)ra.GetDouble();
+                    if (unix > 10_000_000_000L) unix /= 1000;
+                    return DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime.ToString("o");
+                }
+                return null;
+            }
+
+            // 窗口按长度识别：Free 账号可能只有长窗；不要硬按字段名当长短窗（§5.2）
             string Classify(JsonElement w, string fallback)
             {
-                long secs = (long)GetNum(w, "window_length_seconds");
+                long secs = WindowSecs(w);
                 if (secs >= 86_400 * 2) return "7d";
                 if (secs > 0) return "5h";
                 return fallback;
@@ -342,20 +367,25 @@ public sealed class QuotaService
                     ["id"] = id,
                     ["usedPercent"] = used,
                     ["remainPercent"] = 100 - used,
-                    ["resetAt"] = GetStr(w, "resets_at") ?? GetStr(w, "reset_at"),
-                    ["windowSeconds"] = (long)GetNum(w, "window_length_seconds"),
+                    ["resetAt"] = ResetAt(w),
+                    ["windowSeconds"] = WindowSecs(w),
                 });
             }
-            if (doc.RootElement.TryGetProperty("primary_window", out var pw)) AddWindow(pw, Classify(pw, "5h"));
-            if (doc.RootElement.TryGetProperty("secondary_window", out var sw)) AddWindow(sw, Classify(sw, "7d"));
-            if (windows.Count == 0 && doc.RootElement.TryGetProperty("windows", out var ws) && ws.ValueKind == JsonValueKind.Array)
+            if (scope.TryGetProperty("primary_window", out var pw)) AddWindow(pw, Classify(pw, "5h"));
+            if (scope.TryGetProperty("secondary_window", out var sw)) AddWindow(sw, Classify(sw, "7d"));
+            if (windows.Count == 0 && !ReferenceEquals(scope, root))
+            {
+                if (root.TryGetProperty("primary_window", out pw)) AddWindow(pw, Classify(pw, "5h"));
+                if (root.TryGetProperty("secondary_window", out sw)) AddWindow(sw, Classify(sw, "7d"));
+            }
+            if (windows.Count == 0 && root.TryGetProperty("windows", out var ws) && ws.ValueKind == JsonValueKind.Array)
                 foreach (var w in ws.EnumerateArray())
                     AddWindow(w, Classify(w, "5h"));
             if (windows.Count == 0)
-                return Status("error", "接口响应不含可识别的窗口字段");
-            var codexPlan = GetStr(doc.RootElement, "plan_type")
-                ?? GetStr(doc.RootElement, "planType")
-                ?? GetStr(doc.RootElement, "plan_name");
+                return Status("error", "接口响应没有可识别的窗口字段");
+            var codexPlan = GetStr(root, "plan_type")
+                ?? GetStr(root, "planType")
+                ?? GetStr(root, "plan_name");
             var codexCard = new Dictionary<string, object?>
             {
                 ["status"] = "ok",
