@@ -449,9 +449,15 @@ internal static class QoderQuota
                     ? reported
                     : used / total * 100;
         usedPercent = Clamp(usedPercent);
-        var resetAt = NormalizeResetAt(root, "expiresAt") ?? NormalizeResetAt(root, "expires_at");
+        var resetAt = NormalizeResetAt(root, "expiresAt")
+            ?? NormalizeResetAt(root, "expires_at")
+            ?? NormalizeResetAt(quota, "expiresAt")
+            ?? NormalizeResetAt(quota, "expires_at")
+            ?? NormalizeResetAt(root, "nextResetAt")
+            ?? NormalizeResetAt(root, "next_reset_at");
+        // 超远日期表示「无月度重置」：保留哨兵，前端显示「不限期」，避免 period 为空挤短进度条
         if (resetAt is not null && DateTimeOffset.TryParse(resetAt, out var exp) && exp.UtcDateTime >= new DateTime(2100, 1, 1))
-            resetAt = null;
+            resetAt = "never";
         var plan = Str(root, "userType") ?? PlanFromAuth(auth);
         var unit = Str(quota, "unit") ?? "credits";
         var windows = new List<Dictionary<string, object?>>

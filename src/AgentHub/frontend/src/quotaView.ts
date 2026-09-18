@@ -132,11 +132,14 @@ function formatBalance(value: number, unit: string): string {
 }
 
 function formatPeriod(period: string): string {
-  if (!period) return ''
+  if (!period) return '不限期'
   const end = period.includes('—') ? period.split('—').pop()!.trim() : period.trim()
+  if (!end || end === 'never') return '不限期'
   const ms = Date.parse(end)
   if (Number.isNaN(ms)) return end
   const d = new Date(ms)
+  // Qoder 等会用超远 expiresAt 表示无重置日；填「不限期」避免空 period 挤短进度条
+  if (d.getFullYear() >= 2100) return '不限期'
   const now = new Date()
   const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
   if (sameDay) {
