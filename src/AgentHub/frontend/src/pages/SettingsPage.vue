@@ -33,8 +33,7 @@ interface PriceSyncInfo {
 
 interface SettingsPayload {
   app: {
-    petEnabled: boolean
-    petSize: string
+    autostart?: boolean
   }
   dashboard: {
     costEstimate: boolean
@@ -104,8 +103,6 @@ const LATEST_RELEASE_URL = 'https://github.com/sept13-yu/AgentHub/releases/lates
 const f = reactive({
   relayPanelBaseUrl: '',
   autostart: false,
-  petEnabled: false,
-  petSize: 'medium' as 'small' | 'medium' | 'large',
   costEstimate: false,
   tokenUnit: 'zh' as TokenUnit,
   scanIntervalMinutes: 15,
@@ -175,8 +172,6 @@ const dirty = computed(() => {
 function applyLoaded(s: SettingsPayload) {
   f.relayPanelBaseUrl = s.credentials.relayPanelBaseUrl
   f.autostart = s.autostartActual
-  f.petEnabled = !!s.app.petEnabled
-  f.petSize = s.app.petSize === 'small' || s.app.petSize === 'large' ? s.app.petSize : 'medium'
   const d = s.dashboard
   f.costEstimate = !!d.costEstimate
   if (d.tokenUnit === 'en' || d.tokenUnit === 'zh') {
@@ -289,8 +284,6 @@ async function save() {
     await put<{ ok: boolean }>('/api/settings', {
       app: {
         autostart: !!f.autostart,
-        petEnabled: !!f.petEnabled,
-        petSize: f.petSize,
       },
       dashboard: {
         costEstimate: !!f.costEstimate,
@@ -546,20 +539,6 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta"><label class="lbl" for="s-autostart">开机自启</label></div>
           <div class="ctrl"><n-switch id="s-autostart" :disabled="readonly" v-model:value="f.autostart" /></div>
-        </div>
-        <div class="row">
-          <div class="meta"><label class="lbl" for="s-pet">显示宠物</label></div>
-          <div class="ctrl"><n-switch id="s-pet" :disabled="readonly" v-model:value="f.petEnabled" /></div>
-        </div>
-        <div class="row">
-          <div class="meta"><span class="lbl">宠物尺寸</span></div>
-          <div class="ctrl">
-            <div class="segs" role="radiogroup" aria-label="宠物尺寸">
-              <button type="button" role="radio" :aria-checked="f.petSize === 'small'" :disabled="readonly || !f.petEnabled" @click="f.petSize = 'small'">小</button>
-              <button type="button" role="radio" :aria-checked="f.petSize === 'medium'" :disabled="readonly || !f.petEnabled" @click="f.petSize = 'medium'">中</button>
-              <button type="button" role="radio" :aria-checked="f.petSize === 'large'" :disabled="readonly || !f.petEnabled" @click="f.petSize = 'large'">大</button>
-            </div>
-          </div>
         </div>
         <div class="row">
           <div class="meta">

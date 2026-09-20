@@ -19,16 +19,16 @@ jobs:
           cache: npm
           cache-dependency-path: src/AgentHub/frontend/package-lock.json
 
-      - name: 校验 tag 与 csproj 版本一致
+      - name: 校验 tag 与 props 版本一致
         shell: pwsh
         run: |
           $tag = "${env:GITHUB_REF_NAME}" -replace '^v',''
-          [xml]$p = Get-Content -Raw src/AgentHub/AgentHub.csproj
+          [xml]$p = Get-Content -Raw src/Directory.Build.props
           $pg = $p.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1
           $v = [string]$pg.Version
-          if ($tag -ne $v) { throw "tag v$tag 与 csproj Version $v 不一致" }
+          if ($tag -ne $v) { throw "tag v$tag 与 Directory.Build.props Version $v 不一致" }
           $latest = Get-Content -Raw latest.json | ConvertFrom-Json
-          if ([string]$latest.version -ne $v) { throw "latest.json $($latest.version) 与 csproj Version $v 不一致" }
+          if ([string]$latest.version -ne $v) { throw "latest.json $($latest.version) 与 props Version $v 不一致" }
 
       - name: 发布 win-x64
         shell: pwsh

@@ -1,0 +1,9 @@
+{
+  "solution": {
+    "path": "AgentHub.sln",
+    "projects": [
+      "src\\AgentHub.Runtime\\AgentHub.Runtime.csproj",
+      "src\\AgentHub.Backend\\AgentHub.Backend.csproj"
+    ]
+  }
+}

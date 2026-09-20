@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AgentHub.Backend</AssemblyName>
+    <RootNamespace>AgentHub.Backend</RootNamespace>
+    <Description>AgentHub headless backend (local HTTP API host)</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgentHub.Runtime\AgentHub.Runtime.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\AgentHub\wwwroot\**\*"
+             Link="wwwroot\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

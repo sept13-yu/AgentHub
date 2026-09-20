@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
+using AgentHub.Core.Platform;
 using AgentHub.Core.ProxyCore;
 using Velopack;
 using Velopack.Logging;
@@ -10,24 +11,10 @@ using Velopack.Sources;
 
 namespace AgentHub.Shell;
 
-/// <summary>检查 / 下载更新的结果，给设置页用。</summary>
-public sealed class AppUpdateStatus
-{
-    public bool installed { get; init; }
-    public bool busy { get; init; }
-    public bool canApply { get; init; }
-    public bool needsInstaller { get; init; }
-    public string? current { get; init; }
-    public string? latest { get; init; }
-    public string? releaseUrl { get; init; }
-    public string? error { get; init; }
-    public string? message { get; init; }
-}
-
 /// <summary>走 api.github.com 列 Release，再用 API 资源地址落到 release-assets.githubusercontent.com。</summary>
 public sealed class GithubApiUpdateSource : IUpdateSource
 {
-    public const string RepoUrl = "https://github.com/sept13-yu/AgentHub";
+    public const string RepoUrl = ProjectLinks.RepoUrl;
     const string ApiLatest = "https://api.github.com/repos/sept13-yu/AgentHub/releases/latest";
     const string ApiReleases = "https://api.github.com/repos/sept13-yu/AgentHub/releases?per_page=10";
 
@@ -472,16 +459,6 @@ public sealed class GiteeApiUpdateSource : IUpdateSource
     }
 }
 
-/// <summary>立即更新的进度快照，设置页轮询用。</summary>
-public sealed record UpdateProgressSnapshot
-{
-    public bool running { get; init; }
-    public int percent { get; init; }
-    /// <summary>checking | downloading | applying | done | error</summary>
-    public string phase { get; init; } = "";
-    public string? message { get; init; }
-}
-
 /// <summary>设置页的检查 / 下载更新。</summary>
 public static class AppUpdate
 {
@@ -625,16 +602,7 @@ public static class AppUpdate
         }
     }
 
-    public static bool IsReleasePage(string? url)
-    {
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
-        if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
-        if (string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
-            return uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub", StringComparison.OrdinalIgnoreCase);
-        if (string.Equals(uri.Host, "gitee.com", StringComparison.OrdinalIgnoreCase))
-            return uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub", StringComparison.OrdinalIgnoreCase);
-        return false;
-    }
+    public static bool IsReleasePage(string? url) => ProjectLinks.IsReleasePage(url);
 
     static async Task<(string? latest, string? error)> ProbeLatestAsync()
     {
