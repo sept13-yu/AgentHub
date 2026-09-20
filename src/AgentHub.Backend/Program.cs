@@ -1,3 +1,11 @@
+using AgentHub.Core.CodexConfigCore;
+using AgentHub.Core.Platform;
+using AgentHub.Core.ProxyCore;
+using AgentHub.Hosting;
+using AgentHub.Web;
+using System.Diagnostics;
+using System.Text;
+
 namespace AgentHub.Backend;
 
 /// <summary>无界面后端入口：启动 Runtime 并保持进程，直到父进程退出或收到终止信号。</summary>
@@ -5,22 +13,22 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
-        if (CodexCredentialGateAdapter.IsCredentialRequest(args))
+        if (CodexCredentialGate.IsCredentialRequest(args))
         {
-            CodexCredentialGateAdapter.Handle(args);
+            CodexCredentialGate.Handle(args);
             return 0;
         }
 
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        Console.OutputEncoding = Encoding.UTF8;
 
-        AgentHub.Hosting.AgentHubRuntime? rt = null;
+        AgentHubRuntime? rt = null;
         try
         {
-            rt = AgentHub.Hosting.AgentHubRuntime.Create(new AgentHub.Hosting.RuntimeHostOptions
+            rt = AgentHubRuntime.Create(new RuntimeHostOptions
             {
                 Log = m =>
                 {
-                    AgentHub.Core.ProxyCore.HubLog.Write(m);
+                    HubLog.Write(m);
                     Console.Error.WriteLine(m);
                 },
             });
@@ -35,7 +43,7 @@ internal static class Program
                 return 3;
             }
 
-            Console.WriteLine($"AGENTHUB_READY {{\"port\":{AgentHub.Web.WebHostService.Port},\"pid\":{Environment.ProcessId},\"version\":\"{AgentHub.Core.Platform.RuntimeVersion.Current}\"}}");
+            Console.WriteLine($"AGENTHUB_READY {{\"port\":{WebHostService.Port},\"pid\":{Environment.ProcessId},\"version\":\"{RuntimeVersion.Current}\"}}");
             rt.RunInitialScanInBackground();
 
             var exit = new ManualResetEventSlim(false);
@@ -53,7 +61,7 @@ internal static class Program
                 {
                     try
                     {
-                        using var parent = System.Diagnostics.Process.GetProcessById(pid);
+                        using var parent = Process.GetProcessById(pid);
                         if (parent.HasExited) break;
                     }
                     catch (ArgumentException)
@@ -72,7 +80,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            try { AgentHub.Core.ProxyCore.HubLog.Write("[backend] " + ex); } catch { }
+            try { HubLog.Write("[backend] " + ex); } catch { }
             Console.Error.WriteLine(ex.Message);
             return 1;
         }
@@ -90,14 +98,5 @@ internal static class Program
                 return pid;
         }
         return null;
-    }
-
-    private static class CodexCredentialGateAdapter
-    {
-        public static bool IsCredentialRequest(string[] args) =>
-            AgentHub.Core.CodexConfigCore.CodexCredentialGate.IsCredentialRequest(args);
-
-        public static void Handle(string[] args) =>
-            AgentHub.Core.CodexConfigCore.CodexCredentialGate.Handle(args);
     }
 }

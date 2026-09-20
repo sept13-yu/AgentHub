@@ -361,6 +361,9 @@ public sealed class AgentHubConfig
     private static readonly string[] InstallDirUserDataNames =
     [
         "WebView2",
+        // 宠物功能已下线，但老版本安装目录里可能残留这两项，必须继续挪出安装目录，否则卸载后目录非空、Velopack Setup 会误判「已安装」。
+        "WebView2Pet",
+        "pet-placement.json",
         "SkillStore",
         "skills-state.json",
         "SkillStaging",

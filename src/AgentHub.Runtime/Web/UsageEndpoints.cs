@@ -277,22 +277,22 @@ public static class UsageEndpoints
                 {
                     ApplyStr(cred, "relayPanelBaseUrl", v => config.Credentials.RelayPanelBaseUrl = v.Trim().TrimEnd('/'));
                     if (cred.TryGetProperty("deepseekKey", out var dk) && dk.ValueKind == JsonValueKind.String)
-                        config.Credentials.DeepSeekKey = ProtectCredential(dk.GetString()!);
+                        config.Credentials.DeepSeekKey = Secrets.Protect(dk.GetString()!);
                     if (cred.TryGetProperty("relayKey", out var rk) && rk.ValueKind == JsonValueKind.String)
-                        config.Credentials.RelayKey = ProtectCredential(rk.GetString()!);
+                        config.Credentials.RelayKey = Secrets.Protect(rk.GetString()!);
                     if (cred.TryGetProperty("workbuddySession", out var wbs) && wbs.ValueKind == JsonValueKind.String
                         && !string.IsNullOrWhiteSpace(wbs.GetString()))
-                        config.Credentials.WorkBuddySession = ProtectCredential(wbs.GetString()!.Trim());
+                        config.Credentials.WorkBuddySession = Secrets.Protect(wbs.GetString()!.Trim());
                     if (cred.TryGetProperty("traeSession", out var trs) && trs.ValueKind == JsonValueKind.String
                         && !string.IsNullOrWhiteSpace(trs.GetString()))
-                        config.Credentials.TraeSession = ProtectCredential(trs.GetString()!.Trim());
+                        config.Credentials.TraeSession = Secrets.Protect(trs.GetString()!.Trim());
                     if (cred.TryGetProperty("cursorCloudApiKey", out var cck))
                     {
                         if (cck.ValueKind == JsonValueKind.Null
                             || (cck.ValueKind == JsonValueKind.String && string.IsNullOrWhiteSpace(cck.GetString())))
                             config.Credentials.CursorCloudApiKey = "";
                         else if (cck.ValueKind == JsonValueKind.String)
-                            config.Credentials.CursorCloudApiKey = ProtectCredential(cck.GetString()!.Trim());
+                            config.Credentials.CursorCloudApiKey = Secrets.Protect(cck.GetString()!.Trim());
                     }
                 }
 
@@ -314,20 +314,6 @@ public static class UsageEndpoints
                 return Results.Json(new { error = ex.Message }, statusCode: 400);
             }
         });
-
-        return;
-
-        static string ProtectCredential(string plain)
-        {
-            try
-            {
-                return Secrets.Protect(plain);
-            }
-            catch (InvalidOperationException ex)
-            {
-                throw new InvalidOperationException(ex.Message);
-            }
-        }
     }
 
     private static void ApplyInt(JsonElement el, string name, Action<int> apply)

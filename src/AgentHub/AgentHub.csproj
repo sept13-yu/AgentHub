@@ -10,8 +10,6 @@
     <Description>Local control center for desktop coding agents</Description>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <ApplicationIcon>assets\agenthub.ico</ApplicationIcon>
-    <!-- zh-CN 的日期与数字格式化必须可用（方案 §5.1 一致性验收的运行前提）-->
-    <InvariantGlobalization>false</InvariantGlobalization>
     <StartupObject>AgentHub.Program</StartupObject>
   </PropertyGroup>
 
