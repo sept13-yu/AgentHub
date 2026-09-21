@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, provide, ref } from 'vue'
 import { ahMenuKey, isEditableTarget, type AhMenuItem } from '../ahMenu'
+import { MOD } from '../hostBridge'
 
 const open = ref(false)
 const x = ref(0)
@@ -86,9 +87,9 @@ function hoverItem(i: number, it: AhMenuItem) {
 
 function editItems(el: HTMLElement): AhMenuItem[] {
   return [
-    { key: 'copy', label: '复制', shortcut: 'Ctrl+C', handler: () => doEdit('copy', el) },
-    { key: 'paste', label: '粘贴', shortcut: 'Ctrl+V', handler: () => doEdit('paste', el) },
-    { key: 'all', label: '全选', shortcut: 'Ctrl+A', handler: () => doEdit('selectAll', el) },
+    { key: 'copy', label: '复制', shortcut: `${MOD}+C`, handler: () => doEdit('copy', el) },
+    { key: 'paste', label: '粘贴', shortcut: `${MOD}+V`, handler: () => doEdit('paste', el) },
+    { key: 'all', label: '全选', shortcut: `${MOD}+A`, handler: () => doEdit('selectAll', el) },
   ]
 }
 

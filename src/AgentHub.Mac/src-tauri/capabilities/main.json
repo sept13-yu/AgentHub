@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "windows": ["main", "bootstrap"],
+  "remote": { "urls": ["http://127.0.0.1:18780/*"] },
+  "permissions": ["core:default", "allow-set-theme", "allow-pick-folder", "allow-retry", "allow-quit"]
+}

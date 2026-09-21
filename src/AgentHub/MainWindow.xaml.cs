@@ -65,16 +65,18 @@ public partial class MainWindow : Window
             var tokenJson = JsonSerializer.Serialize(_web.WriteToken);
             var themeJson = JsonSerializer.Serialize(_theme);
             await Web.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
+                "window.__AGENTHUB_HOST__='wpf';" +
                 "window.__AGENTHUB_SHELL__=true;" +
                 "window.__AGENTHUB_TOKEN__=" + tokenJson + ";" +
                 "window.__AGENTHUB_THEME__=" + themeJson + ";" +
                 "(function(){var t=window.__AGENTHUB_TOKEN__;" +
                 "if(!t||!window.fetch)return;" +
                 "var of=window.fetch;" +
-                "window.fetch=function(input,init){init=init||{};" +
-                "init.headers=new Headers(init.headers||{});" +
-                "init.headers.set('X-AgentHub-Token',t);" +
-                "return of.call(window,input,init);};})();" +
+                "window.fetch=function(input,init){" +
+                "var u=new URL(typeof input==='string'?input:input.url,location.href);" +
+                "if(u.origin!==location.origin)return of.call(window,input,init);" +
+                "init=init||{};init.headers=new Headers(init.headers||{});" +
+                "init.headers.set('X-AgentHub-Token',t);return of.call(window,input,init);};})();" +
                 "(function(){try{var th=window.__AGENTHUB_THEME__||'dark';" +
                 "document.documentElement.setAttribute('data-theme',th);" +
                 "localStorage.setItem('agenthub-theme',th);" +
@@ -168,23 +170,6 @@ public partial class MainWindow : Window
         _pageReady = true;
         LoadingOverlay.Visibility = Visibility.Collapsed;
         Web.Visibility = Visibility.Visible;
-        (Application.Current as App)?.FlushPendingDashboardRefresh();
-    }
-
-    /// <summary>CoreWebView2 已就绪则派发 agenthub-refresh（主窗隐藏也可以）。</summary>
-    public bool TryDispatchRefresh()
-    {
-        if (Web.CoreWebView2 is null) return false;
-        try
-        {
-            _ = Web.CoreWebView2.ExecuteScriptAsync(
-                "window.dispatchEvent(new CustomEvent('agenthub-refresh'));");
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     private static bool IsLight(string? theme) =>

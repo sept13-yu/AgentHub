@@ -12,9 +12,9 @@ $frontendPath = Join-Path $repoRoot 'src\AgentHub\frontend'
 $distPath = Join-Path $repoRoot 'dist'
 $publishPath = Join-Path $distPath 'win-x64'
 
-[xml]$project = Get-Content -Raw -LiteralPath $projectPath
+[xml]$project = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'src\Directory.Build.props')
 $version = [string]$project.Project.PropertyGroup.Version
-if ([string]::IsNullOrWhiteSpace($version)) { throw 'AgentHub.csproj is missing Version' }
+if ([string]::IsNullOrWhiteSpace($version)) { throw 'Directory.Build.props is missing Version' }
 
 if (Test-Path -LiteralPath $publishPath) {
     $resolvedDist = [System.IO.Path]::GetFullPath($distPath).TrimEnd('\') + '\'

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AgentHub",
+  "version": "0.0.0",
+  "identifier": "io.github.sept13-yu.agenthub",
+  "build": { "frontendDist": "../bootstrap" },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["icons/icon.icns"],
+    "resources": { "../../../dist/macos/backend/": "backend/" },
+    "macOS": { "minimumSystemVersion": "14.0" }
+  }
+}

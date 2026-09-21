@@ -1,0 +1,12 @@
+﻿<Project>
+  <PropertyGroup>
+    <Version>1.1.11</Version>
+    <Product>AgentHub</Product>
+    <Company>AgentHub</Company>
+    <Authors>AgentHub</Authors>
+    <Copyright>Copyright (c) 2026 AgentHub</Copyright>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+</Project>

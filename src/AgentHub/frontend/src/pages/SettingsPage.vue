@@ -33,8 +33,7 @@ interface PriceSyncInfo {
 
 interface SettingsPayload {
   app: {
-    petEnabled: boolean
-    petSize: string
+    autostart?: boolean
   }
   dashboard: {
     costEstimate: boolean
@@ -63,6 +62,9 @@ interface SettingsPayload {
     cursorCloudApiKeySet?: boolean
   }
   autostartActual: boolean
+  autostartSupported?: boolean
+  updateSupported?: boolean
+  secretsSupported?: boolean
   configPath: string
   appVersion?: string
   updateInstalled?: boolean
@@ -100,12 +102,13 @@ const progressText = ref('')
 let progressTimer: number | null = null
 const priceSync = ref<PriceSyncInfo | null>(null)
 const LATEST_RELEASE_URL = 'https://github.com/sept13-yu/AgentHub/releases/latest'
+const autostartSupported = ref(true)
+const updateSupported = ref(true)
+const secretsSupported = ref(true)
 
 const f = reactive({
   relayPanelBaseUrl: '',
   autostart: false,
-  petEnabled: false,
-  petSize: 'medium' as 'small' | 'medium' | 'large',
   costEstimate: false,
   tokenUnit: 'zh' as TokenUnit,
   scanIntervalMinutes: 15,
@@ -175,8 +178,9 @@ const dirty = computed(() => {
 function applyLoaded(s: SettingsPayload) {
   f.relayPanelBaseUrl = s.credentials.relayPanelBaseUrl
   f.autostart = s.autostartActual
-  f.petEnabled = !!s.app.petEnabled
-  f.petSize = s.app.petSize === 'small' || s.app.petSize === 'large' ? s.app.petSize : 'medium'
+  autostartSupported.value = s.autostartSupported !== false
+  updateSupported.value = s.updateSupported !== false
+  secretsSupported.value = s.secretsSupported !== false
   const d = s.dashboard
   f.costEstimate = !!d.costEstimate
   if (d.tokenUnit === 'en' || d.tokenUnit === 'zh') {
@@ -288,9 +292,7 @@ async function save() {
   try {
     await put<{ ok: boolean }>('/api/settings', {
       app: {
-        autostart: !!f.autostart,
-        petEnabled: !!f.petEnabled,
-        petSize: f.petSize,
+        ...(autostartSupported.value ? { autostart: !!f.autostart } : {}),
       },
       dashboard: {
         costEstimate: !!f.costEstimate,
@@ -310,17 +312,19 @@ async function save() {
         showAgentGrok: !!f.showAgentGrok,
         agentOrder: f.agentOrder,
       },
-      credentials: {
-        relayPanelBaseUrl: f.relayPanelBaseUrl,
-        ...(f.deepseekKey.trim() ? { deepseekKey: f.deepseekKey.trim() } : {}),
-        ...(f.relayKey.trim() ? { relayKey: f.relayKey.trim() } : {}),
-        ...(f.workbuddySession.trim() ? { workbuddySession: f.workbuddySession.trim() } : {}),
-        ...(f.cursorCloudApiKey.trim()
-          ? { cursorCloudApiKey: f.cursorCloudApiKey.trim() }
-          : clearCursorCloudKey.value
-            ? { cursorCloudApiKey: null }
-            : {}),
-      },
+      credentials: secretsSupported.value
+        ? {
+            relayPanelBaseUrl: f.relayPanelBaseUrl,
+            ...(f.deepseekKey.trim() ? { deepseekKey: f.deepseekKey.trim() } : {}),
+            ...(f.relayKey.trim() ? { relayKey: f.relayKey.trim() } : {}),
+            ...(f.workbuddySession.trim() ? { workbuddySession: f.workbuddySession.trim() } : {}),
+            ...(f.cursorCloudApiKey.trim()
+              ? { cursorCloudApiKey: f.cursorCloudApiKey.trim() }
+              : clearCursorCloudKey.value
+                ? { cursorCloudApiKey: null }
+                : {}),
+          }
+        : { relayPanelBaseUrl: f.relayPanelBaseUrl },
     })
     setTokenUnit(f.tokenUnit)
     clearCursorCloudKey.value = false
@@ -543,23 +547,9 @@ onUnmounted(() => {
     <section id="settings-general" class="card set-card">
       <div class="card-head">常规外观</div>
       <div class="card-body">
-        <div class="row">
+        <div v-if="autostartSupported" class="row">
           <div class="meta"><label class="lbl" for="s-autostart">开机自启</label></div>
           <div class="ctrl"><n-switch id="s-autostart" :disabled="readonly" v-model:value="f.autostart" /></div>
-        </div>
-        <div class="row">
-          <div class="meta"><label class="lbl" for="s-pet">显示宠物</label></div>
-          <div class="ctrl"><n-switch id="s-pet" :disabled="readonly" v-model:value="f.petEnabled" /></div>
-        </div>
-        <div class="row">
-          <div class="meta"><span class="lbl">宠物尺寸</span></div>
-          <div class="ctrl">
-            <div class="segs" role="radiogroup" aria-label="宠物尺寸">
-              <button type="button" role="radio" :aria-checked="f.petSize === 'small'" :disabled="readonly || !f.petEnabled" @click="f.petSize = 'small'">小</button>
-              <button type="button" role="radio" :aria-checked="f.petSize === 'medium'" :disabled="readonly || !f.petEnabled" @click="f.petSize = 'medium'">中</button>
-              <button type="button" role="radio" :aria-checked="f.petSize === 'large'" :disabled="readonly || !f.petEnabled" @click="f.petSize = 'large'">大</button>
-            </div>
-          </div>
         </div>
         <div class="row">
           <div class="meta">
@@ -580,12 +570,14 @@ onUnmounted(() => {
             <span class="hint">{{ updateHint || (appVersion ? `当前 ${appVersion}` : '检查最新版本') }}</span>
           </div>
           <div class="ctrl ctrl--actions">
+            <template v-if="updateSupported">
             <n-button type="button" :disabled="updateBusy" :loading="updateBusy" @click="checkUpdate">
               检查更新
             </n-button>
             <n-button type="button" :disabled="readonly || updateBusy || !updateInstalled || (updateLatest !== '' && !updateCanApply)" :loading="updateBusy" @click="applyShow = true">
               立即更新并重启
             </n-button>
+            </template>
             <n-button type="button" @click="openReleasePage">
               手动下载
             </n-button>
@@ -601,6 +593,7 @@ onUnmounted(() => {
         <span class="hint">Key 留空不修改</span>
       </div>
       <div class="card-body">
+        <p v-if="!secretsSupported" class="usage-error">当前平台尚未支持凭据加密存储</p>
         <div class="row row--fill">
           <div class="meta">
             <label class="lbl" for="s-relay-base">Sub2API 地址</label>
@@ -617,12 +610,12 @@ onUnmounted(() => {
               id="s-dsk"
               type="password"
               show-password-on="click"
-              :disabled="readonly"
+              :disabled="readonly || !secretsSupported"
               autocomplete="off"
               :placeholder="f.deepseekKeySet ? '已配置（留空不修改）' : ' '"
               v-model:value="f.deepseekKey"
             />
-            <span v-if="f.deepseekKeySet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> DPAPI</span>
+            <span v-if="f.deepseekKeySet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
           </div>
         </div>
         <div class="row row--fill">
@@ -635,12 +628,12 @@ onUnmounted(() => {
               id="s-relay"
               type="password"
               show-password-on="click"
-              :disabled="readonly"
+              :disabled="readonly || !secretsSupported"
               autocomplete="off"
               :placeholder="f.relayKeySet ? '已配置（留空不修改）' : ' '"
               v-model:value="f.relayKey"
             />
-            <span v-if="f.relayKeySet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> DPAPI</span>
+            <span v-if="f.relayKeySet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
           </div>
         </div>
         <div class="row row--fill">
@@ -653,12 +646,12 @@ onUnmounted(() => {
               id="s-wb"
               type="password"
               show-password-on="click"
-              :disabled="readonly"
+              :disabled="readonly || !secretsSupported"
               autocomplete="off"
               :placeholder="f.workbuddySessionSet ? '已配置（留空不修改）' : ' '"
               v-model:value="f.workbuddySession"
             />
-            <span v-if="f.workbuddySessionSet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> DPAPI</span>
+            <span v-if="f.workbuddySessionSet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
           </div>
         </div>
         <div class="row row--fill">
@@ -671,12 +664,12 @@ onUnmounted(() => {
               id="s-ccloud"
               type="password"
               show-password-on="click"
-              :disabled="readonly"
+              :disabled="readonly || !secretsSupported"
               autocomplete="off"
               :placeholder="f.cursorCloudApiKeySet && !clearCursorCloudKey ? '已配置（留空不修改）' : ' '"
               v-model:value="f.cursorCloudApiKey"
             />
-            <span v-if="f.cursorCloudApiKeySet && !clearCursorCloudKey" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> DPAPI</span>
+            <span v-if="f.cursorCloudApiKeySet && !clearCursorCloudKey" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
             <n-button
               v-if="(f.cursorCloudApiKeySet || clearCursorCloudKey) && !readonly"
               quaternary

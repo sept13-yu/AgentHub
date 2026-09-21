@@ -73,3 +73,9 @@ icons/
 src/AgentHub/frontend/node_modules/
 src/AgentHub/wwwroot/app/
 
+# AgentHub.Mac / Tauri
+src/AgentHub.Mac/node_modules/
+src/AgentHub.Mac/src-tauri/target/
+src/AgentHub.Mac/src-tauri/gen/
+src/AgentHub.Mac/src-tauri/icons/
+

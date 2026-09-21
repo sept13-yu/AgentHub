@@ -1,0 +1,138 @@
+name: macos-check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'src/AgentHub.Mac/**'
+      - 'src/AgentHub.Runtime/**'
+      - 'src/AgentHub.Backend/**'
+      - 'src/AgentHub/frontend/**'
+      - 'src/AgentHub/wwwroot/**'
+      - 'src/Directory.Build.props'
+      - 'pack/macos/**'
+      - '.github/workflows/macos-check.yml'
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - 'src/AgentHub.Mac/**'
+      - 'src/AgentHub.Runtime/**'
+      - 'src/AgentHub.Backend/**'
+      - 'src/AgentHub/frontend/**'
+      - 'pack/macos/**'
+      - '.github/workflows/macos-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  macos-compile:
+    name: macOS arm64 compile check
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 确认 runner 为 Apple Silicon
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          echo "uname -m=$arch"
+          test "$arch" = "arm64"
+          sw_vers
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            src/AgentHub/frontend/package-lock.json
+            src/AgentHub.Mac/package-lock.json
+
+      - name: 安装 Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/AgentHub.Mac/src-tauri/target
+          key: macos-cargo-${{ hashFiles('src/AgentHub.Mac/src-tauri/Cargo.lock') }}
+          restore-keys: macos-cargo-
+
+      - name: 构建前端
+        working-directory: src/AgentHub/frontend
+        run: |
+          npm ci
+          npm run build
+          test -f ../wwwroot/app/index.html
+
+      - name: 确认锁文件
+        run: |
+          set -euo pipefail
+          test -f src/AgentHub.Mac/package-lock.json
+          if [ ! -f src/AgentHub.Mac/src-tauri/Cargo.lock ]; then
+            echo "Cargo.lock 缺失，正在生成…"
+            (cd src/AgentHub.Mac/src-tauri && cargo generate-lockfile)
+          fi
+          test -f src/AgentHub.Mac/src-tauri/Cargo.lock
+
+      - name: 编译跨平台工程
+        run: |
+          set -euo pipefail
+          dotnet build AgentHub.CrossPlatform.slnf -c Release
+          dotnet publish src/AgentHub.Backend/AgentHub.Backend.csproj \
+            -c Release -r osx-arm64 --self-contained true \
+            -p:PublishSingleFile=false -p:PublishTrimmed=false \
+            -p:InvariantGlobalization=false \
+            -o dist/macos/backend
+          test -x dist/macos/backend/AgentHub.Backend
+          test -f dist/macos/backend/wwwroot/app/index.html
+          file dist/macos/backend/AgentHub.Backend
+
+      - name: Tauri 工程依赖与 cargo check
+        working-directory: src/AgentHub.Mac
+        run: |
+          set -euo pipefail
+          npm ci
+          mkdir -p src-tauri/icons
+          if [ ! -f src-tauri/icons/icon.icns ]; then
+            npx tauri icon ../AgentHub/wwwroot/icon.png -o src-tauri/icons
+          fi
+          cd src-tauri
+          cargo check --locked
+
+      - name: tauri build（开发签名，产物仅作编译证明）
+        working-directory: src/AgentHub.Mac
+        env:
+          # 不签名、不上传；只为验证 bundle 资源与 apphost
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' ../../src/Directory.Build.props | head -1)"
+          test -n "$version"
+          npx tauri build --config "{\"version\":\"$version\"}"
+          app="src-tauri/target/release/bundle/macos/AgentHub.app"
+          test -x "$app/Contents/Resources/backend/AgentHub.Backend" \
+            || test -x "$app/Contents/MacOS/AgentHub"
+          # backend 多文件布局：资源目录里应能找到 apphost
+          find "$app" -name 'AgentHub.Backend' -type f | head -5
+          find "$app" -name 'index.html' | head -5
+
+      - name: 上传编译产物（仅 Actions 内 7 天）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agenthub-macos-check
+          path: |
+            dist/macos/backend/AgentHub.Backend
+            src/AgentHub.Mac/src-tauri/target/release/bundle/macos/
+          if-no-files-found: ignore
+          retention-days: 7
