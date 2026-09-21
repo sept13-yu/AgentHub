@@ -1,19 +1,26 @@
 export const SET_PAYGO = [
   { id: 'deepseek', name: 'DeepSeek', show: 'showQuotaDeepSeek' },
   { id: 'relay', name: 'Sub2API', show: 'showQuotaRelay' },
+  { id: 'qoder', name: 'Qoder', tag: '国际', show: 'showQuotaQoder' },
+  { id: 'qoder-cn', name: 'Qoder CN', show: 'showQuotaQoderCn' },
+  { id: 'trae', name: 'Trae', show: 'showQuotaTrae' },
+  { id: 'workbuddy', name: 'WorkBuddy', show: 'showQuotaWorkBuddy' },
+  { id: 'zcode', name: 'ZCode', show: 'showQuotaZcode' },
+  { id: 'cursor', name: 'Cursor', show: 'showQuotaCursor' },
+  { id: 'codex', name: 'Codex', show: 'showQuotaCodex' },
 ] as const
 
 export const SET_AGENTS = [
-  { id: 'dsh', name: 'DSH', windows: '会话 · 用量', show: 'showAgentDsh' },
-  { id: 'trae', name: 'Trae', windows: '积分 · 用量', show: 'showQuotaTrae' },
-  { id: 'workbuddy', name: 'WorkBuddy', windows: '积分 · 用量', show: 'showQuotaWorkBuddy' },
-  { id: 'zcode', name: 'ZCode', windows: '5 小时 + 每周', show: 'showQuotaZcode' },
-  { id: 'mimocode', name: 'MiMo', windows: '会话 · 用量', show: 'showAgentMimocode' },
-  { id: 'grok', name: 'Grok', windows: '用量', show: 'showAgentGrok' },
-  { id: 'qoder', name: 'Qoder', windows: '额度 · 用量', show: 'showQuotaQoder' },
-  { id: 'qoder-cn', name: 'Qoder CN', windows: '额度 · 用量 · 会话', show: 'showQuotaQoderCn' },
-  { id: 'cursor', name: 'Cursor', windows: '总用量 · Auto · API · Grok', show: 'showQuotaCursor' },
-  { id: 'codex', name: 'Codex', windows: '5 小时 + 每周', show: 'showQuotaCodex' },
+  { id: 'dsh', name: 'DSH', show: 'showAgentDsh' },
+  { id: 'trae', name: 'Trae', show: 'showAgentTrae' },
+  { id: 'workbuddy', name: 'WorkBuddy', show: 'showAgentWorkBuddy' },
+  { id: 'zcode', name: 'ZCode', show: 'showAgentZcode' },
+  { id: 'mimocode', name: 'MiMo', show: 'showAgentMimocode' },
+  { id: 'grok', name: 'Grok', show: 'showAgentGrok' },
+  { id: 'qoder', name: 'Qoder', tag: '国际', show: 'showAgentQoder' },
+  { id: 'qoder-cn', name: 'Qoder CN', show: 'showAgentQoderCn' },
+  { id: 'cursor', name: 'Cursor', show: 'showAgentCursor' },
+  { id: 'codex', name: 'Codex', show: 'showAgentCodex' },
 ] as const
 
 export type AgentId = (typeof SET_AGENTS)[number]['id']
