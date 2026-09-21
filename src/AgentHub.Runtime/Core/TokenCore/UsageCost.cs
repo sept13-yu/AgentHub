@@ -91,7 +91,7 @@ public static class UsageCost
 
     
     /// <summary>
-    /// 用量名常带厂商/区域前缀：cn:deepseek-v4-flash、qoder/qwen3.8-flash、openai/gpt-6-astra。
+    /// 用量名常带厂商/区域前缀：cn:deepseek-v4-flash、qoder/qwen3.8-flash、openai/gpt-6-astra；以及 deepseek-flash--max 一类脏后缀。
     /// 估价时去掉短前缀（或取 / 后段）再匹配价表 / 别名 / LiteLLM；原名优先精确命中。
     /// qfmodel 等国内系统路由名不在价表里时保持未定价（noPrice），不编造牌价。
     /// </summary>
@@ -107,36 +107,25 @@ public static class UsageCost
         }
     }
 
-    private static IEnumerable<string> ExpandModelNameCandidates(string name)
-    {
-        yield return name;
-
-        // cn:xxx / us:xxx
-        var colon = name.IndexOf(':');
-        if (colon is > 0 and <= 8)
-        {
-            var prefix = name[..colon];
-            var rest = name[(colon + 1)..].Trim();
-            if (rest.Length > 0
-                && prefix.All(c => char.IsLetterOrDigit(c) || c == '-' || c == '_'))
-                yield return rest;
-        }
-
-        // qoder/qwen3.8-flash、openai/gpt-6-astra：去掉第一段厂商前缀，并再试最后一段
-        var slash = name.IndexOf('/');
-        if (slash is > 0 and <= 24)
-        {
-            var vendor = name[..slash];
-            var rest = name[(slash + 1)..].Trim();
-            if (rest.Length > 0
-                && vendor.All(c => char.IsLetterOrDigit(c) || c == '-' || c == '_'))
-            {
-                yield return rest;
-                var last = rest.LastIndexOf('/');
-                if (last >= 0 && last < rest.Length - 1)
-                    yield return rest[(last + 1)..].Trim();
-            }
-        }
+    private static IEnumerable<string> ExpandModelNameCandidates(string name)
+    {
+        yield return name;
+
+        // cn:xxx / us:xxx
+        var colon = name.IndexOf(':');
+        if (colon is > 0 and <= 8)
+        {
+            var prefix = name[..colon];
+            var rest = name[(colon + 1)..].Trim();
+            if (rest.Length > 0
+                && prefix.All(c => char.IsLetterOrDigit(c) || c == '-' || c == '_'))
+                yield return rest;
+        }
+
+        // qoder/...、qoder-custom-uuid/workbuddy/model：任意长度前缀，只留最后一段（含剥 --max 脏后缀）
+        var leaf = ModelNameNormalizer.Leaf(name);
+        if (leaf.Length > 0 && !leaf.Equals(name, StringComparison.OrdinalIgnoreCase))
+            yield return leaf;
     }
 
     private static bool TryResolve(

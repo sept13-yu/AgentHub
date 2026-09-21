@@ -365,7 +365,15 @@ public sealed class TokenService
         long Reasoning, double? ReportedUsd)
     {
         public long Tokens => Input + Output + Cached + CacheWrite + Reasoning;
-        public string DisplayName => IsSub ? Model + " · 子代理" : Model;
+        public string DisplayName
+        {
+            get
+            {
+                // 旧库里可能仍是 qoder-custom-.../workbuddy/model；展示时剥路径
+                var label = QoderLocal.ResolveChinaModelDisplay(Model);
+                return IsSub ? label + " · 子代理" : label;
+            }
+        }
     }
 
     private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to, string filter)

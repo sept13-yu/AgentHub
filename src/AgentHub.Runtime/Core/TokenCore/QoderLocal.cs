@@ -212,10 +212,10 @@ internal static class QoderLocal
     internal static string ResolveChinaModelDisplay(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return "unknown";
-        var key = raw.Trim();
-        if (key.StartsWith("qoder/", StringComparison.OrdinalIgnoreCase))
-            key = key["qoder/".Length..].Trim();
-        return ChinaModelDisplay.TryGetValue(key, out var label) ? label : raw.Trim();
+        // qoder/...、qoder-custom-uuid/workbuddy/deepseek-v4.1-flash → 只留最后一段
+        var key = ModelNameNormalizer.Leaf(raw);
+        if (key.Length == 0) return "unknown";
+        return ChinaModelDisplay.TryGetValue(key, out var label) ? label : key;
     }
 
     private static readonly Dictionary<string, string> ChinaModelDisplay =
