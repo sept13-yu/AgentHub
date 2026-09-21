@@ -123,8 +123,7 @@ impl Backend {
         });
 
         let deadline = Instant::now() + Duration::from_secs(20);
-        let mut ready: Option<ReadyLine> = None;
-        loop {
+        let ready = loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 let _ = child.kill();
@@ -141,8 +140,7 @@ impl Backend {
                     let trimmed = line.trim();
                     if let Some(json) = trimmed.strip_prefix("AGENTHUB_READY ") {
                         if let Ok(v) = serde_json::from_str::<ReadyLine>(json) {
-                            ready = Some(v);
-                            break;
+                            break v;
                         }
                     }
                     if trimmed.starts_with("AGENTHUB_START_FAILED") {
@@ -160,9 +158,7 @@ impl Backend {
                     return Err(StartError::Timeout);
                 }
             }
-        }
-
-        let ready = ready.expect("ready set");
+        };
         let child_pid = child.id();
         if ready.pid != child_pid {
             let _ = child.kill();
@@ -219,13 +215,18 @@ impl Backend {
             .map(|s| s.to_string())
     }
 
-    /// SIGTERM → 最多等 5 秒 → SIGKILL
+    /// SIGTERM → 最多等 5 秒 → SIGKILL（Unix）；Windows 调试仅用 kill()
     pub fn stop(&mut self) {
         if self.has_exited() {
             return;
         }
+        #[cfg(unix)]
         unsafe {
             libc::kill(self.pid as i32, libc::SIGTERM);
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = self.child.kill();
         }
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {

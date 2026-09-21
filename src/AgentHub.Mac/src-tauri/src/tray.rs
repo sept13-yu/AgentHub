@@ -3,7 +3,7 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager};
 
-// 编译期嵌入，避免 Resources 目录缺 icons/32x32.png 导致托盘静默消失
+// 编译期嵌入；Cargo.toml 需 tauri feature "image-png" 才有 Image::from_bytes
 const TRAY_ICON_PNG: &[u8] = include_bytes!("../../../AgentHub/wwwroot/icon.png");
 
 pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -29,20 +29,22 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 }
             }
             "sync" => {
-                let state = app.state::<AppState>();
-                if let Ok(guard) = state.backend.lock() {
-                    if let Some(backend) = guard.as_ref() {
-                        let token = backend.token.clone();
-                        let port = backend.port;
-                        std::thread::spawn(move || {
-                            let url = format!("http://127.0.0.1:{port}/api/usage/scan");
-                            let _ = ureq::post(&url)
-                                .set("X-AgentHub-Token", &token)
-                                .set("Host", "127.0.0.1:18780")
-                                .timeout(std::time::Duration::from_secs(30))
-                                .call();
-                        });
-                    }
+                // 先取出 token/port 再开线程，避免 MutexGuard 借用跨线程
+                let snapshot = {
+                    let state = app.state::<AppState>();
+                    state.backend.lock().ok().and_then(|guard| {
+                        guard.as_ref().map(|b| (b.token.clone(), b.port))
+                    })
+                };
+                if let Some((token, port)) = snapshot {
+                    std::thread::spawn(move || {
+                        let url = format!("http://127.0.0.1:{port}/api/usage/scan");
+                        let _ = ureq::post(&url)
+                            .set("X-AgentHub-Token", &token)
+                            .set("Host", "127.0.0.1:18780")
+                            .timeout(std::time::Duration::from_secs(30))
+                            .call();
+                    });
                 }
             }
             "quit" => app.exit(0),

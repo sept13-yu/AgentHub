@@ -56,6 +56,8 @@ pub fn run() {
         .expect("failed to build tauri app");
 
     app.run(|app_handle, event| match event {
+        // Reopen（Dock 图标点击）仅 macOS
+        #[cfg(target_os = "macos")]
         RunEvent::Reopen { .. } => {
             if let Some(win) = app_handle.get_webview_window("main") {
                 let _ = win.show();
