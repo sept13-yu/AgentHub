@@ -3,6 +3,7 @@ import { computed, inject, nextTick, onMounted, ref, watch, type Ref } from 'vue
 import { NButton, NCheckbox, NIcon, NInput, useMessage } from 'naive-ui'
 import { ChevronDown, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
+import { MOD } from '../hostBridge'
 import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
 import AhConfirm from '../components/AhConfirm.vue'
@@ -190,7 +191,7 @@ function dismissGcHint() {
 async function copyGcCommand() {
   try {
     await navigator.clipboard.writeText(GC_COMMAND)
-    message.success('命令已复制，去 Cursor 按 Ctrl+Shift+P 粘贴运行')
+    message.success(`命令已复制，去 Cursor 按 ${MOD}+Shift+P 粘贴运行`)
   } catch {
     message.error('复制失败，请手动输入：' + GC_COMMAND)
   }
@@ -780,7 +781,7 @@ onMounted(() => { void load() })
               Cursor 内容共享库（agentKv，{{ formatBytes(cursorStorage!.agentKvBytes) }} / 库共
               {{ formatBytes(cursorStorage!.mainDbBytes) }}）会随使用持续增长。AgentHub
               删除会话不触碰它；孤儿数据可在 Cursor 中按
-              <b>Ctrl+Shift+P</b> 运行 <code class="mono">{{ GC_COMMAND }}</code>
+              <b>{{ MOD }}+Shift+P</b> 运行 <code class="mono">{{ GC_COMMAND }}</code>
               回收（官方命令，不删聊天，需数分钟与约 2 倍库大小的空闲磁盘）。
             </span>
             <span class="gc-ops">

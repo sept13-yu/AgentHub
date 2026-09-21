@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AgentHub</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font: 14px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+        background: #18181c;
+        color: #e8e8ec;
+      }
+      .card {
+        width: min(420px, 90vw);
+        padding: 28px 24px;
+        border: 1px solid #2e2e36;
+        border-radius: 12px;
+        background: #1f1f26;
+        text-align: center;
+      }
+      h1 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+      p { margin: 0 0 16px; color: #a8aea9; word-break: break-word; }
+      pre {
+        margin: 0 0 20px;
+        padding: 10px 12px;
+        max-height: 160px;
+        overflow: auto;
+        text-align: left;
+        font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: #f0b4b4;
+        background: #141418;
+        border-radius: 8px;
+      }
+      .actions { display: flex; gap: 10px; justify-content: center; }
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 16px;
+        font: inherit;
+        cursor: pointer;
+        background: #2ec4b6;
+        color: #0b0b0e;
+      }
+      button.secondary { background: #2e2e36; color: #e8e8ec; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1 id="title">正在启动 AgentHub…</h1>
+      <p id="msg">等待本地服务就绪</p>
+      <pre id="detail" hidden></pre>
+      <div class="actions" id="actions" hidden>
+        <button id="retry" type="button">重试</button>
+        <button id="quit" class="secondary" type="button">退出</button>
+      </div>
+    </div>
+    <script>
+      const q = new URLSearchParams(location.search)
+      const msg = q.get('msg') || ''
+      const detail = q.get('detail') || ''
+      if (msg) {
+        document.getElementById('title').textContent = 'AgentHub 启动失败'
+        document.getElementById('msg').textContent = msg
+        document.getElementById('actions').hidden = false
+      }
+      if (detail) {
+        const el = document.getElementById('detail')
+        el.hidden = false
+        el.textContent = detail
+      }
+      function invoke(cmd) {
+        if (window.__TAURI__?.core?.invoke) return window.__TAURI__.core.invoke(cmd)
+        return Promise.reject(new Error('tauri bridge unavailable'))
+      }
+      document.getElementById('retry').addEventListener('click', () => invoke('retry').catch(console.error))
+      document.getElementById('quit').addEventListener('click', () => invoke('quit').catch(() => window.close()))
+    </script>
+  </body>
+</html>

@@ -50,6 +50,9 @@ public sealed class WebHostService
 
     public event Action? SettingsSaved;
 
+    /// <summary>进程内 SSE 扇出。</summary>
+    public EventHub Events { get; } = new();
+
     /// <summary>用量扫描管线（ScanAll + 索引刷新 + 页面刷新）。由 App 挂上。</summary>
     public Func<Task<ScanAllResult>>? UsageScan { get; set; }
     public Func<string, string?>? PickFolder { get; set; }
@@ -117,8 +120,15 @@ public sealed class WebHostService
         };
         app.UseDefaultFiles();
         app.UseStaticFiles(staticFiles);
-        app.MapGet("/health", () => Results.Json(
-            new { status = "ok", service = "AgentHub", port = Port }));
+        app.MapGet("/health", () => Results.Json(new
+        {
+            status = "ok",
+            service = "AgentHub",
+            port = Port,
+            pid = Environment.ProcessId,
+            version = RuntimeVersion.Current,
+        }));
+        app.MapEventEndpoints(Events);
 
         if (_sessions is not null)
             app.MapSessionEndpoints(_sessions, WriteAuth);

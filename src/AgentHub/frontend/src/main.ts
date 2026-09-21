@@ -10,9 +10,11 @@ import RulesPage from './pages/RulesPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
 import { applyCssVars } from './tokens'
 import { theme } from './theme'
+import { startEventStream } from './events'
 import './styles.css'
 
 applyCssVars(document.documentElement, theme.value)
+startEventStream()
 
 const router = createRouter({
   history: createWebHashHistory(),

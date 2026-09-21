@@ -4,6 +4,7 @@ using AgentHub.Core.ProxyCore;
 using AgentHub.Hosting;
 using AgentHub.Web;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace AgentHub.Backend;
@@ -53,6 +54,13 @@ internal static class Program
                 exit.Set();
             };
             AppDomain.CurrentDomain.ProcessExit += (_, _) => exit.Set();
+            using var sigterm = OperatingSystem.IsWindows()
+                ? null
+                : PosixSignalRegistration.Create(PosixSignal.SIGTERM, ctx =>
+                {
+                    ctx.Cancel = true;
+                    exit.Set();
+                });
 
             int? parentPid = ParseParentPid(args);
             if (parentPid is int pid)

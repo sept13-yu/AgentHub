@@ -20,7 +20,6 @@ public partial class App : Application
     private SingleInstanceGuard? _guard;
     private TrayIconService? _tray;
     private AgentHubRuntime? _rt;
-    private bool _refreshPending;
     private int _exiting;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -91,7 +90,6 @@ public partial class App : Application
                 return dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK ? dialog.SelectedPath : null;
             }),
         });
-        _rt.DashboardRefreshRequested += () => Dispatcher.BeginInvoke(RequestDashboardRefresh);
         _rt.Start();
 
         var win = new MainWindow(_rt.Web, _rt.Config);
@@ -108,21 +106,11 @@ public partial class App : Application
         SyncNow = SyncNow,
     };
 
-    /// <summary>托盘「立即同步」：走同一把 ScanAll，扫完派发页面刷新。</summary>
-    private void SyncNow() => _ = _rt?.SyncNowAsync();
-
-    private void RequestDashboardRefresh()
+    /// <summary>托盘「立即同步」：后台跑 ScanAll（本地扫描是同步 IO，不能占 UI 线程），扫完由 SSE 刷新页面。</summary>
+    private void SyncNow()
     {
-        var hidden = MainWindow is not { IsVisible: true };
-        var ok = MainWindow is MainWindow win && win.TryDispatchRefresh();
-        if (hidden || !ok) _refreshPending = true;
-    }
-
-    internal void FlushPendingDashboardRefresh()
-    {
-        if (!_refreshPending) return;
-        if (MainWindow is MainWindow win && win.TryDispatchRefresh() && win.IsVisible)
-            _refreshPending = false;
+        if (_rt is null) return;
+        _ = System.Threading.Tasks.Task.Run(() => _rt.SyncNowAsync());
     }
 
     internal void NotifyHiddenToTray() => _tray?.NotifyHiddenToTray();
@@ -160,12 +148,6 @@ public partial class App : Application
         MainWindow.Topmost = true;
         MainWindow.Topmost = false;
         MainWindow.Focus();
-        if (_refreshPending)
-        {
-            _refreshPending = false;
-            if (MainWindow is MainWindow win)
-                win.TryDispatchRefresh();
-        }
     }
 
     /// <summary>托盘「退出」：停止本地服务；若退出路径卡住，约 8 秒后强制结束。</summary>

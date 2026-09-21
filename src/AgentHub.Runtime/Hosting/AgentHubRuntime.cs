@@ -63,6 +63,8 @@ public sealed class AgentHubRuntime : IDisposable
             Scan.Reconfigure();
             SettingsSaved?.Invoke();
         };
+        DashboardRefreshRequested += () => Web.Events.Publish("dashboard-refresh");
+        SettingsSaved += () => Web.Events.Publish("settings-saved", new { theme = Config.App.Theme });
     }
 
     public static AgentHubRuntime Create(RuntimeHostOptions options) => new(options);
@@ -114,14 +116,14 @@ public sealed class AgentHubRuntime : IDisposable
         });
     }
 
-    public async Task SyncNowAsync()
+    public Task SyncNowAsync() => Task.Run(async () =>
     {
         try { await Scan.RunAsync(); }
         catch (Exception ex)
         {
             _log("[tokencore] 同步失败: " + ex.GetType().Name + ": " + ex.Message);
         }
-    }
+    });
 
     public void Stop()
     {

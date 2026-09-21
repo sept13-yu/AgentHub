@@ -6,6 +6,7 @@ import { ExternalLink, FolderOpen, RefreshCw, Save, X } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import AgentMark from '../components/AgentMark.vue'
 import { get, post, put, WRITABLE } from '../api'
+import { CAN_PICK_FOLDER, pickFolder } from '../hostBridge'
 import { usePageHotkeys } from '../hotkeys'
 
 const message = useMessage()
@@ -361,13 +362,11 @@ async function openAgent(a: AgentRuleItem) {
 }
 
 async function browseLibrary() {
-  if (readonly || busy.value) return
+  if (readonly || busy.value || !CAN_PICK_FOLDER) return
   try {
-    const result = await post<{ path?: string; cancelled?: boolean }>('/api/settings/browse-folder', {
-      initialPath: libDraft.value || libSaved.value,
-    })
-    if (!result.path) return
-    libDraft.value = result.path
+    const path = await pickFolder(libDraft.value || libSaved.value)
+    if (!path) return
+    libDraft.value = path
     askLibraryIfNeeded()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '选择目录失败')
@@ -539,7 +538,7 @@ onUnmounted(() => {
           v-model:value="libDraft"
           @blur="askLibraryIfNeeded"
         />
-        <n-button :disabled="readonly || busy" @click="browseLibrary">
+        <n-button :disabled="readonly || busy || !CAN_PICK_FOLDER" @click="browseLibrary">
           <template #icon><n-icon><FolderOpen :size="16" :stroke-width="1.8" /></n-icon></template>
           浏览
         </n-button>
