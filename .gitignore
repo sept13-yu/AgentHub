@@ -40,7 +40,7 @@ credentials.json
 secrets.json
 appsettings.*.local.json
 
-# Python 探针：整体只留本机 docs/探测/probe/，不入 git
+# 探针与临时脚本不入 git
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -63,9 +63,10 @@ AGENTS.md
 WebView2/
 *-verify.png
 
-# 方案、需求、探测、对照稿、隐私与本机路径：只留本机 docs/，不上 git
+# 方案、需求、探测、对照稿：外置资料库，不进 git
 .tmp*/
 docs/
+Plans/
 style-boards/
 icons/
 

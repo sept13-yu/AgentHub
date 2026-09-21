@@ -7,7 +7,7 @@ using ZstdSharp;
 
 namespace AgentHub.Core.SessionCore.Providers;
 
-/// <summary>DSH 会话（方案 §4.2 + docs/探测/dsh.md）：
+/// <summary>DSH 会话：
 /// ~/.dsh/sessions/--&lt;编码项目&gt;--/session-&lt;uuid&gt;/session.jsonl.zstd。
 /// 多帧 zstd——必须按魔数 28 B5 2F FD 切帧逐帧解压（朴素解压静默丢 99.99%）；
 /// 尾帧写入中可能截断：失败即停，保留已解压部分并在 Note 里说明。
@@ -177,7 +177,7 @@ public sealed class DshProvider(TitleOverrideStore titles) : IConversationProvid
     });
 
     // ------------------------------------------------------------------
-    // 多帧 zstd（docs/探测/dsh.md 硬性规则）
+    // 多帧 zstd：必须按魔数切帧，朴素整包解压会静默丢帧
     // ------------------------------------------------------------------
 
     /// <summary>按魔数切帧逐帧解压。某帧失败即停，已解压部分保留（返回 truncated=true）。</summary>

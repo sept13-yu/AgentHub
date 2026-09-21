@@ -4,7 +4,7 @@ using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.SessionCore;
 
-/// <summary>会话摘要索引：扫四源一次后落盘，列表/筛选走缓存；手动刷新才重扫；删除按 id 改缓存。</summary>
+/// <summary>会话摘要索引：各源扫一次后落盘，列表/筛选走缓存；手动刷新才重扫；删除按 id 改缓存。</summary>
 internal sealed class SessionIndex
 {
     private readonly object _gate = new();

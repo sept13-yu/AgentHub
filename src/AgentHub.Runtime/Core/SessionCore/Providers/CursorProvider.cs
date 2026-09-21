@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 
 namespace AgentHub.Core.SessionCore.Providers;
 
-/// <summary>Cursor 会话（方案 §4.2 + docs/探测/cursor.md）：
+/// <summary>Cursor 会话：
 /// 主库 state.vscdb（~1GB+，宿主常驻）：composerHeaders（列表）+ cursorDiskKV（正文）。
 /// 只读一律 Mode=ReadOnly + PRAGMA query_only=ON（实测 0.6ms，宿主在跑不报 locked；
 /// 禁止 copy / immutable=1 / wal_checkpoint）。

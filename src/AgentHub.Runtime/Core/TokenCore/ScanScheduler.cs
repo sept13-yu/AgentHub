@@ -41,7 +41,7 @@ public sealed class ScanScheduler : IDisposable
         }
     }
 
-    /// <summary>分两阶段：本地源入库（亚秒级）后立即通知页面/宠物并返回——刷新按钮不等网络；
+    /// <summary>分两阶段：本地源入库（亚秒级）后立即通知页面并返回——刷新按钮不等网络；
     /// Cursor CSV、Trae 用量、会话索引转后台收尾，完成后再通知一次，前端经 agenthub-refresh 自动补数据。</summary>
     public Task<ScanAllResult> RunAsync()
     {
