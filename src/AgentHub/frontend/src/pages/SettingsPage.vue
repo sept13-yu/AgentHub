@@ -52,6 +52,13 @@ interface SettingsPayload {
     showAgentDsh?: boolean
     showAgentMimocode?: boolean
     showAgentGrok?: boolean
+    showAgentTrae?: boolean
+    showAgentWorkBuddy?: boolean
+    showAgentZcode?: boolean
+    showAgentCursor?: boolean
+    showAgentCodex?: boolean
+    showAgentQoder?: boolean
+    showAgentQoderCn?: boolean
     agentOrder?: string[]
   }
   credentials: {
@@ -124,6 +131,13 @@ const f = reactive({
   showAgentDsh: true,
   showAgentMimocode: true,
   showAgentGrok: true,
+  showAgentTrae: true,
+  showAgentWorkBuddy: true,
+  showAgentZcode: true,
+  showAgentCursor: true,
+  showAgentCodex: true,
+  showAgentQoder: true,
+  showAgentQoderCn: true,
   agentOrder: normalizeAgentOrder([]),
   deepseekKey: '',
   relayKey: '',
@@ -202,6 +216,13 @@ function applyLoaded(s: SettingsPayload) {
   f.showAgentDsh = d.showAgentDsh !== false
   f.showAgentMimocode = d.showAgentMimocode !== false
   f.showAgentGrok = d.showAgentGrok !== false
+  f.showAgentTrae = d.showAgentTrae !== false
+  f.showAgentWorkBuddy = d.showAgentWorkBuddy !== false
+  f.showAgentZcode = d.showAgentZcode !== false
+  f.showAgentCursor = d.showAgentCursor !== false
+  f.showAgentCodex = d.showAgentCodex !== false
+  f.showAgentQoder = d.showAgentQoder !== false
+  f.showAgentQoderCn = d.showAgentQoderCn !== false
   f.agentOrder = normalizeAgentOrder(d.agentOrder)
   f.deepseekKey = ''
   f.relayKey = ''
@@ -310,6 +331,13 @@ async function save() {
         showAgentDsh: !!f.showAgentDsh,
         showAgentMimocode: !!f.showAgentMimocode,
         showAgentGrok: !!f.showAgentGrok,
+        showAgentTrae: !!f.showAgentTrae,
+        showAgentWorkBuddy: !!f.showAgentWorkBuddy,
+        showAgentZcode: !!f.showAgentZcode,
+        showAgentCursor: !!f.showAgentCursor,
+        showAgentCodex: !!f.showAgentCodex,
+        showAgentQoder: !!f.showAgentQoder,
+        showAgentQoderCn: !!f.showAgentQoderCn,
         agentOrder: f.agentOrder,
       },
       credentials: secretsSupported.value
@@ -723,10 +751,10 @@ onUnmounted(() => {
         </div>
         <div class="block">
           <div class="meta">
-            <span class="lbl">额度</span>
-            <span class="hint">只控制首页余额砖。点一下开/关</span>
+            <span class="lbl">余额</span>
+            <span class="hint">只控制首页砖。点一下开/关</span>
           </div>
-          <div class="paygo" role="group" aria-label="额度">
+          <div class="paygo" role="group" aria-label="余额">
             <button
               v-for="p in SET_PAYGO"
               :key="p.id"
@@ -737,29 +765,27 @@ onUnmounted(() => {
             >
               <AgentMark :id="p.id" />
               {{ p.name }}
+              <span v-if="'tag' in p && p.tag" class="paygo-tag">{{ p.tag }}</span>
             </button>
           </div>
         </div>
         <div class="block">
           <div class="meta">
             <span class="lbl">Agent</span>
-            <span class="hint">一家一个开关：额度、用量、会话一起关。顺序在首页拖额度砖</span>
-          </div>
-          <div class="order-grid order-head" aria-hidden="true">
-            <span>Agent</span><span>窗口</span><span>显示</span>
+            <span class="hint">只控制用量和会话，不管首页砖。顺序在首页拖砖</span>
           </div>
           <ol class="order">
             <li
               v-for="a in SET_AGENTS"
               :key="a.id"
-              class="order-grid"
+              class="order-row"
               :class="{ 'is-off': !agentOn(a.id) }"
             >
               <span class="order-who">
                 <AgentMark :id="a.id" />
                 <span class="order-name">{{ a.name }}</span>
+                <span v-if="'tag' in a && a.tag" class="order-tag">{{ a.tag }}</span>
               </span>
-              <span class="order-parts">{{ a.windows }}</span>
               <n-switch
                 :disabled="readonly"
                 :value="agentOn(a.id)"
@@ -1025,16 +1051,10 @@ onUnmounted(() => {
   border-color: transparent;
 }
 .paygo button:disabled { cursor: not-allowed; color: var(--disabled-fg); }
-.order-grid {
-  display: grid;
-  grid-template-columns: 148px minmax(120px, 1fr) 56px;
-  gap: var(--sp-3);
-  align-items: center;
-}
-.order-head {
-  padding: 0 0 var(--sp-2);
+.paygo-tag {
   font-size: var(--fs-caption);
   color: var(--faint);
+  font-weight: 400;
 }
 .order {
   list-style: none;
@@ -1042,12 +1062,16 @@ onUnmounted(() => {
   padding: 0;
   width: 100%;
 }
-.order li {
+.order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
   min-height: var(--h-row);
   padding: var(--sp-2) 0;
   box-shadow: var(--rule-hi);
 }
-.order li:last-child { box-shadow: none; }
+.order-row:last-child { box-shadow: none; }
 .order-who {
   display: flex;
   align-items: center;
@@ -1055,19 +1079,18 @@ onUnmounted(() => {
   min-width: 0;
 }
 .order-name { font-size: var(--fs-body); font-weight: 500; }
-.order li.is-off .order-name { color: var(--faint); font-weight: 400; }
-.order-parts {
+.order-tag {
+  flex: none;
   font-size: var(--fs-caption);
   color: var(--faint);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 400;
 }
+.order-row.is-off .order-name,
+.order-row.is-off .order-tag { color: var(--disabled-fg); font-weight: 400; }
 @media (max-width: 1279px) {
   .row { grid-template-columns: 1fr; }
   .ctrl { justify-content: flex-start; }
   .ctrl--secret { grid-template-columns: minmax(0, 1fr); }
   .lock { justify-self: start; }
-  .order-grid { grid-template-columns: minmax(96px, 1fr) minmax(80px, 1.2fr) 44px; }
 }
 </style>

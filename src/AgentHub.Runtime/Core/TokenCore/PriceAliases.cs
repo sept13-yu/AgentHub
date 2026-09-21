@@ -94,7 +94,7 @@ public static class PriceAliases
 
 
 
-    /// auto / unknown / agent_review / qfmodel（及 qoder/qfmodel 等国内系统路由名）无稳定牌价，不映射；mimo-x-*-preview 内测无公开价。
+    /// unknown / agent_review / mimo-x-*-preview 仍无公开价不映射；auto 按 Cursor Grok（grok-bot-default）估价；
 
 
 
@@ -167,6 +167,7 @@ public static class PriceAliases
 
 
             ["deepseek-flash"] = "deepseek-v4.1-flash",
+            ["deepseek-flash--max"] = "deepseek-flash",
 
 
 
@@ -475,6 +476,8 @@ public static class PriceAliases
 
 
             ["grok-bot-automation"] = "grok-bot-default",
+            ["grok-bot-cua"] = "grok-bot-default",
+            ["auto"] = "grok-bot-default",
 
 
 
@@ -610,52 +613,29 @@ public static class PriceAliases
 
         // qoder/qwen3.8-flash 等：去掉厂商前缀后再查别名表
 
-        var slash = name.IndexOf('/');
-
-        if (slash is > 0 and <= 24)
-
+        // 任意 path/.../model：用最后一段查别名（含 qoder-custom-uuid/workbuddy/...）
+        var leaf = ModelNameNormalizer.Leaf(name);
+        if (leaf.Length > 0
+            && !leaf.Equals(name, StringComparison.OrdinalIgnoreCase)
+            && Map.TryGetValue(leaf, out target)
+            && !string.IsNullOrWhiteSpace(target))
         {
+            canonical = target.Trim();
+            return canonical.Length > 0;
+        }
 
+        // 兼容短厂商前缀仅剥一层：qoder/qwen3.8-flash
+        var slash = name.IndexOf('/');
+        if (slash is > 0 and <= 24)
+        {
             var rest = name[(slash + 1)..].Trim();
-
             if (rest.Length > 0
-
                 && Map.TryGetValue(rest, out target)
-
                 && !string.IsNullOrWhiteSpace(target))
-
             {
-
                 canonical = target.Trim();
-
                 return canonical.Length > 0;
-
             }
-
-            var last = rest.LastIndexOf('/');
-
-            if (last >= 0 && last < rest.Length - 1)
-
-            {
-
-                var leaf = rest[(last + 1)..].Trim();
-
-                if (leaf.Length > 0
-
-                    && Map.TryGetValue(leaf, out target)
-
-                    && !string.IsNullOrWhiteSpace(target))
-
-                {
-
-                    canonical = target.Trim();
-
-                    return canonical.Length > 0;
-
-                }
-
-            }
-
         }
 
 

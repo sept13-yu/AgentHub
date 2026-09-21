@@ -156,7 +156,7 @@ public sealed class TokenService
     /// <summary>Trae 官网按会话用量入库。网络在锁外；开关关或本机/设置都没有登录态则跳过。</summary>
     public SourceScanStat ScanTraeUsage()
     {
-        if (!_config.Dashboard.ShowQuotaTrae)
+        if (!_config.Dashboard.ShowAgentTrae)
             return new SourceScanStat(0, 0, 0);
         if (!TraeAuth.HasCredentials(_config))
             return new SourceScanStat(0, 0, 0);
@@ -349,13 +349,13 @@ public sealed class TokenService
         if (!dash.ShowAgentDsh) hide.Add("dsh");
         if (!dash.ShowAgentMimocode) hide.Add("mimocode");
         if (!dash.ShowAgentGrok) hide.Add("grok");
-        if (!dash.ShowQuotaQoder) hide.Add("qoder");
-        if (!dash.ShowQuotaQoderCn) hide.Add("qoder-cn");
-        if (!dash.ShowQuotaTrae) hide.Add("trae");
-        if (!dash.ShowQuotaWorkBuddy) hide.Add("workbuddy");
-        if (!dash.ShowQuotaZcode) hide.Add("zcode");
-        if (!dash.ShowQuotaCursor) hide.Add("cursor");
-        if (!dash.ShowQuotaCodex) hide.Add("codex");
+        if (!dash.ShowAgentQoder) hide.Add("qoder");
+        if (!dash.ShowAgentQoderCn) hide.Add("qoder-cn");
+        if (!dash.ShowAgentTrae) hide.Add("trae");
+        if (!dash.ShowAgentWorkBuddy) hide.Add("workbuddy");
+        if (!dash.ShowAgentZcode) hide.Add("zcode");
+        if (!dash.ShowAgentCursor) hide.Add("cursor");
+        if (!dash.ShowAgentCodex) hide.Add("codex");
         if (hide.Count == 0) return "";
         return "AND tool NOT IN (" + string.Join(", ", hide.Select(t => "'" + t + "'")) + ")";
     }
@@ -365,7 +365,15 @@ public sealed class TokenService
         long Reasoning, double? ReportedUsd)
     {
         public long Tokens => Input + Output + Cached + CacheWrite + Reasoning;
-        public string DisplayName => IsSub ? Model + " · 子代理" : Model;
+        public string DisplayName
+        {
+            get
+            {
+                // 旧库里可能仍是 qoder-custom-.../workbuddy/model；展示时剥路径
+                var label = QoderLocal.ResolveChinaModelDisplay(Model);
+                return IsSub ? label + " · 子代理" : label;
+            }
+        }
     }
 
     private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to, string filter)

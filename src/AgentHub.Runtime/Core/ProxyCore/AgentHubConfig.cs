@@ -138,9 +138,9 @@ public sealed class DashboardSettings
     public bool ShowQuotaTrae { get; set; } = true;
     public bool ShowQuotaZcode { get; set; } = true;
     public bool ShowQuotaCodex { get; set; } = true;
-    /// <summary>Qoder 国际版：IPC 额度砖 + %APPDATA%/Qoder/.../local.db 用量（无会话页）。</summary>
+    /// <summary>Qoder 国际版首页额度砖。用量走 ShowAgentQoder。</summary>
     public bool ShowQuotaQoder { get; set; } = true;
-    /// <summary>Qoder CN：额度砖 + ~/.qoder-cn jsonl 用量 + com.qodercn.app.stable/main.sqlite 会话页。</summary>
+    /// <summary>Qoder CN 首页额度砖。用量和会话走 ShowAgentQoderCn。</summary>
     public bool ShowQuotaQoderCn { get; set; } = true;
     /// <summary>DSH 无额度砖，只控制用量和会话。</summary>
     public bool ShowAgentDsh { get; set; } = true;
@@ -148,6 +148,20 @@ public sealed class DashboardSettings
     public bool ShowAgentMimocode { get; set; } = true;
     /// <summary>本机 Grok 用量（~/.grok），无额度砖、无会话页。</summary>
     public bool ShowAgentGrok { get; set; } = true;
+    /// <summary>Trae 用量。额度砖走 ShowQuotaTrae。</summary>
+    public bool ShowAgentTrae { get; set; } = true;
+    /// <summary>WorkBuddy 用量和会话。额度砖走 ShowQuotaWorkBuddy。</summary>
+    public bool ShowAgentWorkBuddy { get; set; } = true;
+    /// <summary>ZCode 用量和会话。额度砖走 ShowQuotaZcode。</summary>
+    public bool ShowAgentZcode { get; set; } = true;
+    /// <summary>Cursor 用量和会话（含云端）。额度砖走 ShowQuotaCursor。</summary>
+    public bool ShowAgentCursor { get; set; } = true;
+    /// <summary>Codex 用量和会话。额度砖走 ShowQuotaCodex。</summary>
+    public bool ShowAgentCodex { get; set; } = true;
+    /// <summary>Qoder 国际版用量（无会话页）。额度砖走 ShowQuotaQoder。</summary>
+    public bool ShowAgentQoder { get; set; } = true;
+    /// <summary>Qoder CN 用量和会话。额度砖走 ShowQuotaQoderCn。</summary>
+    public bool ShowAgentQoderCn { get; set; } = true;
     /// <summary>Agent 表顺序。空或未调过按 DefaultAgentOrder。</summary>
     public List<string> AgentOrder { get; set; } = [];
     /// <summary>额度条目顺序。空或未调过按 DefaultQuotaOrder。</summary>
@@ -220,7 +234,7 @@ public sealed class DashboardSettings
         if (ShowQuotaQoderCn) q.Add("qoder-cn");
         foreach (var id in ResolvedAgentOrder())
         {
-            if (id is "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud" || !AgentEnabled(id)) continue;
+            if (id is "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud" || !QuotaVisible(id)) continue;
             q.Add(id);
         }
         return q;
@@ -256,19 +270,34 @@ public sealed class DashboardSettings
         return NormalizeQuotaOrder(result);
     }
 
-    public bool AgentEnabled(string id) => id.ToLowerInvariant() switch
+    public bool QuotaVisible(string id) => id.ToLowerInvariant() switch
     {
-        "dsh" => ShowAgentDsh,
-        "mimocode" => ShowAgentMimocode,
-        "grok" => ShowAgentGrok,
+        "deepseek" => ShowQuotaDeepSeek,
+        "relay" => ShowQuotaRelay,
         "qoder" => ShowQuotaQoder,
         "qoder-cn" => ShowQuotaQoderCn,
         "trae" => ShowQuotaTrae,
         "workbuddy" => ShowQuotaWorkBuddy,
         "zcode" => ShowQuotaZcode,
         "cursor" => ShowQuotaCursor,
-        "cursor-cloud" => ShowQuotaCursor,
         "codex" => ShowQuotaCodex,
+        _ => false,
+    };
+
+    /// <summary>用量和会话。不控制首页额度砖。</summary>
+    public bool AgentEnabled(string id) => id.ToLowerInvariant() switch
+    {
+        "dsh" => ShowAgentDsh,
+        "mimocode" => ShowAgentMimocode,
+        "grok" => ShowAgentGrok,
+        "qoder" => ShowAgentQoder,
+        "qoder-cn" => ShowAgentQoderCn,
+        "trae" => ShowAgentTrae,
+        "workbuddy" => ShowAgentWorkBuddy,
+        "zcode" => ShowAgentZcode,
+        "cursor" => ShowAgentCursor,
+        "cursor-cloud" => ShowAgentCursor,
+        "codex" => ShowAgentCodex,
         _ => false,
     };
 
@@ -447,6 +476,7 @@ public sealed class AgentHubConfig
         {
             var changed = NormalizeAndMigrateLibraryRoot(cfg);
             changed |= MigrateRelayPanelBaseUrl(cfg, raw);
+            changed |= MigrateSplitAgentShowFlags(cfg, raw);
             if (changed) cfg.Save();
         }
         catch (Exception)
@@ -471,6 +501,41 @@ public sealed class AgentHubConfig
         cfg.Credentials.RelayPanelBaseUrl = value.TrimEnd('/');
         return true;
     }
+
+    /// <summary>旧开关一家全关。缺独立 Agent 键时从对应 ShowQuota* 继承，避免拆开后用量自己跳回来。</summary>
+    private static bool MigrateSplitAgentShowFlags(AgentHubConfig cfg, string raw)
+    {
+        using var doc = JsonDocument.Parse(raw);
+        JsonElement dash;
+        if (doc.RootElement.TryGetProperty("Dashboard", out var pascal) && pascal.ValueKind == JsonValueKind.Object)
+            dash = pascal;
+        else if (doc.RootElement.TryGetProperty("dashboard", out var camel) && camel.ValueKind == JsonValueKind.Object)
+            dash = camel;
+        else
+            return false;
+
+        var d = cfg.Dashboard;
+        var changed = false;
+        void Inherit(string name, Action<bool> set, bool fromQuota)
+        {
+            if (dash.TryGetProperty(name, out _) || dash.TryGetProperty(ToCamel(name), out _))
+                return;
+            set(fromQuota);
+            changed = true;
+        }
+
+        Inherit("ShowAgentTrae", v => d.ShowAgentTrae = v, d.ShowQuotaTrae);
+        Inherit("ShowAgentWorkBuddy", v => d.ShowAgentWorkBuddy = v, d.ShowQuotaWorkBuddy);
+        Inherit("ShowAgentZcode", v => d.ShowAgentZcode = v, d.ShowQuotaZcode);
+        Inherit("ShowAgentCursor", v => d.ShowAgentCursor = v, d.ShowQuotaCursor);
+        Inherit("ShowAgentCodex", v => d.ShowAgentCodex = v, d.ShowQuotaCodex);
+        Inherit("ShowAgentQoder", v => d.ShowAgentQoder = v, d.ShowQuotaQoder);
+        Inherit("ShowAgentQoderCn", v => d.ShowAgentQoderCn = v, d.ShowQuotaQoderCn);
+        return changed;
+    }
+
+    private static string ToCamel(string pascal) =>
+        pascal.Length == 0 ? pascal : char.ToLowerInvariant(pascal[0]) + pascal[1..];
 
     public void Save()
     {
