@@ -20,7 +20,7 @@ public class MimoV26PriceTests
     [InlineData("MiMo V2.6 Pro", "mimo-v2.6-pro")]
     [InlineData("mimo-x-pro-ultraspeed-preview", "mimo-v2.6-pro-ultraspeed")]
     [InlineData("MiMo V2.6 Pro Ultraspeed", "mimo-v2.6-pro-ultraspeed")]
-    [InlineData("MiMo-V2.6-Pro-UltraSpeed", "mimo-v2.6-pro-ultraspeed")]
+    [InlineData("mimo-v2.6-pro-ultra-speed", "mimo-v2.6-pro-ultraspeed")]
     public void PreviewAndDisplayNames_AliasToOfficialIds(string raw, string canonical)
     {
         Assert.True(PriceAliases.TryMap(raw, out var mapped));
@@ -31,8 +31,9 @@ public class MimoV26PriceTests
     [InlineData("mimo-v2.6-flash")]
     [InlineData("mimo-v2.6-pro")]
     [InlineData("mimo-v2.6-pro-ultraspeed")]
-    public void OfficialIds_AreCanonicalPriceKeys_NotAliases(string id)
+    public void OfficialIds_AreCanonicalPriceKeys(string id)
     {
+        // Map 大小写不敏感：不要写入 MiMo-V2.6-Flash 这类键，否则会变成官方 id 自映射。
         Assert.False(PriceAliases.TryMap(id, out _));
         Assert.Contains(PriceSyncService.DefaultPrices,
             p => string.Equals(p.Model, id, StringComparison.OrdinalIgnoreCase));
