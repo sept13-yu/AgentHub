@@ -58,15 +58,23 @@ export const AGENT_NAME: Record<string, string> = {
   'qoder-cn': 'Qoder CN',
 }
 
+function normalizeAgentId(id: string): string {
+  if (id.startsWith('codex:') || id.startsWith('codex-')) return 'codex'
+  if (id === 'cursor-cloud') return 'cursor'
+  return id
+}
+
 export function agentName(id: string): string {
-  return AGENT_NAME[id] ?? id
+  const nid = normalizeAgentId(id)
+  return AGENT_NAME[nid] ?? AGENT_NAME[id] ?? id
 }
 
 export function agentIcon(id: string | null | undefined): string | undefined {
   if (!id) return undefined
-  return AGENT_ICON[id]
+  return AGENT_ICON[normalizeAgentId(id)] ?? AGENT_ICON[id]
 }
 
 export function agentColor(id: string): string {
-  return AGENT_COLOR[id] ?? 'var(--idle)'
+  const nid = normalizeAgentId(id)
+  return AGENT_COLOR[nid] ?? AGENT_COLOR[id] ?? 'var(--idle)'
 }

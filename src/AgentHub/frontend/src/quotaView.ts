@@ -11,7 +11,7 @@ export type QuotaTile =
   | { kind: 'balance'; id: string; name: string; color: string; text: string; dueHint?: boolean; plan?: string }
   | { kind: 'windows'; id: string; name: string; color: string; span: 1 | 2; windows: QuotaWindow[]; plan?: string }
 
-/** remain 条目归属的 Agent 组与短名（同组可多窗拼成一块砖）。 */
+/** remain 条目归属的 Agent 组与短名（同组可多窗拼成一块砖）。动态 codex:{key}:* 不在此表。 */
 const WINDOW_META: Record<string, { group: string; short: string }> = {
   'cursor-auto': { group: 'cursor', short: 'Auto' },
   'cursor-api': { group: 'cursor', short: 'API' },
@@ -24,6 +24,17 @@ const WINDOW_META: Record<string, { group: string; short: string }> = {
   'qoder-calls': { group: 'qoder', short: '体验' },
   'qoder-cn-credits': { group: 'qoder-cn', short: '额度' },
   'qoder-cn-calls': { group: 'qoder-cn', short: '体验' },
+}
+
+/** 多账号 Codex：codex:live:5h / codex:auth-xxx:7d */
+function codexWindow(id: string): { group: string; short: string } | null {
+  const m = /^codex:([^:]+):(5h|7d)$/.exec(id)
+  if (!m) return null
+  return { group: `codex:${m[1]}`, short: m[2] === '5h' ? '5 小时' : '每周' }
+}
+
+function windowMeta(id: string): { group: string; short: string } | null {
+  return WINDOW_META[id] ?? codexWindow(id)
 }
 
 export function toQuotaTiles(raw: unknown): QuotaTile[] {
@@ -47,7 +58,7 @@ export function toQuotaTiles(raw: unknown): QuotaTile[] {
       continue
     }
     if (kind !== 'remain') continue
-    const meta = WINDOW_META[id]
+    const meta = windowMeta(id)
     if (!meta) continue
 
     const members: { id: string; rec: Record<string, unknown> }[] = []
@@ -55,7 +66,7 @@ export function toQuotaTiles(raw: unknown): QuotaTile[] {
       if (used.has(j)) continue
       if (str(list[j].kind) !== 'remain') continue
       const rid = str(list[j].id)
-      const rmeta = WINDOW_META[rid]
+      const rmeta = windowMeta(rid)
       if (!rmeta || rmeta.group !== meta.group) continue
       members.push({ id: rid, rec: list[j] })
       used.add(j)
@@ -64,11 +75,13 @@ export function toQuotaTiles(raw: unknown): QuotaTile[] {
     const windows = members
       .map((m) => windowOf(m.id, m.rec))
       .filter((w): w is QuotaWindow => !!w)
+    const label = str(rec.label)
+    const isCodexAccount = meta.group.startsWith('codex:')
     tiles.push({
       kind: 'windows',
       id: meta.group,
-      name: AGENT_NAME[meta.group] ?? meta.group,
-      color: AGENT_COLOR[meta.group] ?? 'var(--idle)',
+      name: label || (isCodexAccount ? meta.group.slice(6) : AGENT_NAME[meta.group] ?? meta.group),
+      color: AGENT_COLOR[isCodexAccount ? 'codex' : meta.group] ?? 'var(--idle)',
       span: 1,
       windows,
       plan: subscriptionPlan(str(rec.plan)) || undefined,
@@ -93,7 +106,7 @@ function balanceTile(id: string, rec: Record<string, unknown>): QuotaTile {
 function windowOf(id: string, rec: Record<string, unknown>): QuotaWindow {
   const remain = clamp(num(rec.remainPercent), 0, 100)
   return {
-    name: WINDOW_META[id]?.short || str(rec.name) || id,
+    name: windowMeta(id)?.short || str(rec.name) || id,
     remain,
     period: formatPeriod(str(rec.period)),
     hot: remain < 10,

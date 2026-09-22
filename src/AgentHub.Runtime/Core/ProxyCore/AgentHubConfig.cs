@@ -121,6 +121,23 @@ public sealed class DashboardSettings
         ["codex-7d"] = "codex",
     };
 
+    /// <summary>额度排序键：多账号 Codex 砖（codex:live / codex:auth-…）各自成组，便于拖拽持久化。</summary>
+    private static string ResolveQuotaGroup(string id)
+    {
+        if (id.StartsWith("codex:", StringComparison.Ordinal)) return id;
+        if (QuotaGroupOf.TryGetValue(id, out var group)) return group;
+        return id;
+    }
+
+    private static string? ResolveAgentGroup(string id)
+    {
+        if (AgentGroupOf.TryGetValue(id, out var group)) return group;
+        if (id.StartsWith("codex:", StringComparison.Ordinal)
+            || id.StartsWith("codex-", StringComparison.Ordinal))
+            return "codex";
+        return null;
+    }
+
     public bool CursorUsage { get; set; } = true;
     public bool CostEstimate { get; set; } = false;
     /// <summary>Token 显示单位。zh = 万/百万/千万/亿；en = K/M/B/T。默认中文。</summary>
@@ -185,13 +202,19 @@ public sealed class DashboardSettings
         {
             foreach (var id in raw)
             {
-                if (id is null || !QuotaGroupOf.TryGetValue(id, out var group) || !seen.Add(group))
-                    continue;
+                if (id is null) continue;
+                var group = ResolveQuotaGroup(id);
+                if (!seen.Add(group)) continue;
                 result.Add(group);
             }
         }
         foreach (var id in DefaultQuotaOrder)
+        {
+            // 已有账号级 codex:* 时不再补默认 "codex"，避免双份
+            if (id == "codex" && result.Any(x => x.StartsWith("codex:", StringComparison.Ordinal)))
+                continue;
             if (seen.Add(id)) result.Add(id);
+        }
         return result;
     }
 
@@ -201,8 +224,9 @@ public sealed class DashboardSettings
         var result = new List<string>();
         void Add(string? id)
         {
-            if (id is null || !AgentGroupOf.TryGetValue(id, out var group) || !seen.Add(group))
-                return;
+            if (id is null) return;
+            var group = ResolveAgentGroup(id);
+            if (group is null || !seen.Add(group)) return;
             result.Add(group);
         }
         if (agentOrder is not null)
@@ -270,19 +294,26 @@ public sealed class DashboardSettings
         return NormalizeQuotaOrder(result);
     }
 
-    public bool QuotaVisible(string id) => id.ToLowerInvariant() switch
+    public bool QuotaVisible(string id)
     {
-        "deepseek" => ShowQuotaDeepSeek,
-        "relay" => ShowQuotaRelay,
-        "qoder" => ShowQuotaQoder,
-        "qoder-cn" => ShowQuotaQoderCn,
-        "trae" => ShowQuotaTrae,
-        "workbuddy" => ShowQuotaWorkBuddy,
-        "zcode" => ShowQuotaZcode,
-        "cursor" => ShowQuotaCursor,
-        "codex" => ShowQuotaCodex,
-        _ => false,
-    };
+        var lower = id.ToLowerInvariant();
+        if (lower.StartsWith("codex:", StringComparison.Ordinal)
+            || lower.StartsWith("codex-", StringComparison.Ordinal))
+            return ShowQuotaCodex;
+        return lower switch
+        {
+            "deepseek" => ShowQuotaDeepSeek,
+            "relay" => ShowQuotaRelay,
+            "qoder" => ShowQuotaQoder,
+            "qoder-cn" => ShowQuotaQoderCn,
+            "trae" => ShowQuotaTrae,
+            "workbuddy" => ShowQuotaWorkBuddy,
+            "zcode" => ShowQuotaZcode,
+            "cursor" => ShowQuotaCursor,
+            "codex" => ShowQuotaCodex,
+            _ => false,
+        };
+    }
 
     /// <summary>用量和会话。不控制首页额度砖。</summary>
     public bool AgentEnabled(string id) => id.ToLowerInvariant() switch

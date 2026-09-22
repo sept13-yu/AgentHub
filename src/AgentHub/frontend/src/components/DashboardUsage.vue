@@ -88,7 +88,14 @@ onUnmounted(() => observer?.disconnect())
 <template>
   <section ref="card" class="card usage-card" aria-labelledby="usage-title" :style="layoutStyle">
     <div class="card-body">
-      <h2 id="usage-title">用量分布</h2>
+      <div class="usage-heading">
+        <h2 id="usage-title">用量分布</h2>
+        <div v-if="!usage.error && usage.delta" class="delta" :class="usage.delta.kind">
+          <span class="hint">{{ usage.delta.vs }}</span>
+          <ArrowUpRight v-if="usage.delta.kind === 'up'" :size="14" aria-hidden="true" /><ArrowDownRight v-else-if="usage.delta.kind === 'down'" :size="14" aria-hidden="true" />
+          <span class="num">{{ usage.delta.text }}</span>
+        </div>
+      </div>
       <p v-if="usage.error" class="usage-error" role="alert">{{ usage.error }}</p>
       <div v-else class="usage-layout" :class="{ 'is-empty': !usage.agents.length }">
         <div class="overview" :class="{ 'many-agents': usage.agents.length > 5 }">
@@ -140,20 +147,15 @@ onUnmounted(() => observer?.disconnect())
           </div>
           <p v-else class="hint model-empty">暂无模型明细</p>
           <nav v-if="ranked.length" class="model-pager" aria-label="模型分页">
-            <span class="num" aria-live="polite">{{ pageLabel }}</span>
-            <button type="button" aria-label="上一页模型" :disabled="page === 0" @click="page--"><ChevronLeft :size="16" /></button>
-            <button type="button" aria-label="下一页模型" :disabled="page >= pageCount - 1" @click="page++"><ChevronRight :size="16" /></button>
+            <span class="num" aria-live="polite">{{ pageCount === 1 ? `共 ${ranked.length} 个模型` : pageLabel }}</span>
+            <template v-if="pageCount > 1">
+              <button type="button" aria-label="上一页模型" :disabled="page === 0" @click="page--"><ChevronLeft :size="16" /></button>
+              <button type="button" aria-label="下一页模型" :disabled="page >= pageCount - 1" @click="page++"><ChevronRight :size="16" /></button>
+            </template>
           </nav>
         </section>
       </div>
-      <div v-if="!usage.error && (usage.delta || partial)" class="usage-foot">
-        <div v-if="usage.delta" class="delta" :class="usage.delta.kind">
-          <span class="hint">{{ usage.delta.vs }}</span>
-          <ArrowUpRight v-if="usage.delta.kind === 'up'" :size="14" /><ArrowDownRight v-else-if="usage.delta.kind === 'down'" :size="14" />
-          <span class="num">{{ usage.delta.text }}</span>
-        </div>
-        <span v-if="partial" class="hint">部分模型暂无报价</span>
-      </div>
+      <p v-if="!usage.error && partial" class="price-note hint">部分模型暂无报价</p>
     </div>
   </section>
 </template>
@@ -161,7 +163,7 @@ onUnmounted(() => observer?.disconnect())
 <style scoped>
 .usage-card { container: usage / inline-size; }
 h2, h3 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
-h2 { margin-bottom: var(--sp-5); }
+.usage-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); margin-bottom: var(--sp-5); }
 h3 { font-size: var(--fs-small); }
 .hint { color: var(--dim); font-size: var(--fs-caption); }
 .usage-layout { display: grid; grid-template-columns: clamp(380px, 32cqi, 440px) minmax(0, 1fr); gap: clamp(24px, 3cqi, 48px); align-items: center; }
@@ -187,20 +189,26 @@ h3 { font-size: var(--fs-small); }
 .model-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
 .model-table th { height: 28px; font-weight: 400; color: var(--dim); text-align: left; }
 .model-table td { height: 44px; padding: 0; vertical-align: middle; }
+.model-table tbody tr { position: relative; }
+.model-table tbody tr:has(.model-name:focus-visible) { background: var(--wash); outline: 2px solid var(--accent-solid); outline-offset: -2px; }
+@media (hover: hover) { .model-table tbody tr:hover { background: var(--wash); } }
 .model-table th:nth-child(2), .model-table td:nth-child(2) { width: 84px; text-align: right; white-space: nowrap; }
 .model-table th:last-child, .model-table td:last-child { width: 48px; text-align: right; white-space: nowrap; color: var(--dim); }
-.model-table td:nth-child(2) { font-weight: 500; }
+.model-table td:nth-child(2) { font-size: var(--fs-body); font-weight: 500; }
 .model-name { display: flex; align-items: center; gap: var(--sp-2); width: 100%; border: 0; padding: 0 var(--sp-2) 0 0; background: transparent; text-align: left; color: var(--text); font: inherit; cursor: pointer; }
-.model-name:hover .model-label { color: var(--accent-solid); }
+.model-name { min-height: 40px; font-size: var(--fs-body); border-radius: var(--r-in); }
+/* 扩展原生按钮的命中区域到整行，数字区域同样支持点击，键盘仍只有一个焦点。 */
+.model-name::after { content: ''; position: absolute; inset: 0; }
+.model-name:focus-visible { outline: none; }
+.model-name:hover .model-label, .model-name:focus-visible .model-label { color: var(--accent-solid); }
 .model-label { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 18px; }
 .no-price { color: var(--danger); flex: none; }
 .model-detail { display: flex; flex-direction: column; gap: var(--sp-2); max-width: min(320px, 75vw); overflow-wrap: anywhere; font-size: var(--fs-small); }
-.model-pager { display: flex; justify-content: flex-end; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-size: var(--fs-caption); color: var(--dim); }
+.model-pager { display: flex; justify-content: flex-end; align-items: center; gap: var(--sp-2); min-height: 28px; margin-top: var(--sp-3); font-size: var(--fs-caption); color: var(--dim); }
 .model-pager button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--r-in); background: transparent; color: var(--text); cursor: pointer; }
 .model-pager button:hover:not(:disabled) { background: var(--wash); }
 .model-pager button:disabled { color: var(--faint); opacity: 0.5; cursor: default; }
-.usage-foot { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--stroke); }
-.usage-foot > .hint { margin-left: auto; }
+.price-note { margin: var(--sp-3) 0 0; text-align: right; }
 .delta { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-caption); }
 .delta.up { color: var(--warn); }
 .delta.down { color: var(--ok); }

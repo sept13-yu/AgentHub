@@ -15,11 +15,17 @@ public static class QuotaPresenter
         AddBalance(bag, sources, "trae", "Trae");
         AddBalance(bag, sources, "workbuddy", "WorkBuddy");
         AddCursor(bag, sources);
-        AddWindows(bag, sources, "codex", new Dictionary<string, (string Id, string Name)>(StringComparer.Ordinal)
+        if (CodexHasAccountList(sources))
+            AddCodexAccounts(bag, sources);
+        else
         {
-            ["5h"] = ("codex-5h", "Codex 5 小时"),
-            ["7d"] = ("codex-7d", "Codex 每周"),
-        });
+            // 没有账号列表的旧单卡才展开 5h/7d
+            AddWindows(bag, sources, "codex", new Dictionary<string, (string Id, string Name)>(StringComparer.Ordinal)
+            {
+                ["5h"] = ("codex-5h", "Codex 5 小时"),
+                ["7d"] = ("codex-7d", "Codex 每周"),
+            });
+        }
         AddWindows(bag, sources, "zcode", new Dictionary<string, (string Id, string Name)>(StringComparer.Ordinal)
         {
             ["5h"] = ("zcode-5h", "ZCode 5 小时"),
@@ -37,11 +43,17 @@ public static class QuotaPresenter
         });
 
         var items = new List<Dictionary<string, object?>>();
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
         foreach (var group in DashboardSettings.NormalizeQuotaOrder(groupOrder))
         {
-            foreach (var id in Expand(group))
+            // 旧组名 "codex" 吐出全部账号窗；账号级 "codex:key" 只吐自己
+            IEnumerable<string> ids = group == "codex"
+                ? bag.Keys.Where(k => k.StartsWith("codex-", StringComparison.Ordinal)
+                                   || k.StartsWith("codex:", StringComparison.Ordinal)).ToList()
+                : Expand(group);
+            foreach (var id in ids)
             {
-                if (bag.TryGetValue(id, out var item))
+                if (emitted.Add(id) && bag.TryGetValue(id, out var item))
                     items.Add(item);
             }
         }
@@ -55,8 +67,52 @@ public static class QuotaPresenter
         "codex" => ["codex-5h", "codex-7d"],
         "qoder" => ["qoder-credits", "qoder-calls"],
         "qoder-cn" => ["qoder-cn-credits", "qoder-cn-calls"],
+        _ when group.StartsWith("codex:", StringComparison.Ordinal) =>
+            [$"{group}:5h", $"{group}:7d"],
         _ => [group],
     };
+
+    /// <summary>多 ChatGPT 账号：只写入 status=ok 且有窗口的 5h/7d。失败账号不进首页。</summary>
+    private static void AddCodexAccounts(
+        Dictionary<string, Dictionary<string, object?>> bag,
+        IReadOnlyDictionary<string, Dictionary<string, object?>> sources)
+    {
+        if (!sources.TryGetValue("codex", out var card)) return;
+        if (!card.TryGetValue("accounts", out var raw) || raw is not System.Collections.IEnumerable seq)
+            return;
+        foreach (var entry in seq)
+        {
+            if (entry is not Dictionary<string, object?> acc) continue;
+            var key = Str(acc, "key");
+            if (key is null || key.Length == 0) continue;
+            if (!acc.TryGetValue("status", out var st) || st is not string status || status != "ok") continue;
+            if (!acc.TryGetValue("windows", out var wraw) || wraw is not System.Collections.IEnumerable windows)
+                continue;
+            var label = Str(acc, "label") ?? key;
+            var plan = Str(acc, "plan");
+            var tile = "codex:" + key;
+            foreach (var wObj in windows)
+            {
+                if (wObj is not Dictionary<string, object?> w) continue;
+                var wid = Str(w, "id");
+                if (wid is not ("5h" or "7d")) continue;
+                if (!TryNum(w, "remainPercent", out var remain)) continue;
+                var id = tile + ":" + wid;
+                var item = Remain(id, wid == "5h" ? "5 小时" : "每周", remain, Str(w, "resetAt"), plan);
+                item["tile"] = tile;
+                item["label"] = label;
+                bag[id] = item;
+            }
+        }
+    }
+
+    /// <summary>新合同带 accounts。有这个键就不再展开旧的单卡窗口，查不到也不造砖。</summary>
+    private static bool CodexHasAccountList(
+        IReadOnlyDictionary<string, Dictionary<string, object?>> sources)
+    {
+        if (!sources.TryGetValue("codex", out var card)) return false;
+        return card.TryGetValue("accounts", out var raw) && raw is System.Collections.IEnumerable;
+    }
 
     private static void AddBalance(
         Dictionary<string, Dictionary<string, object?>> bag,

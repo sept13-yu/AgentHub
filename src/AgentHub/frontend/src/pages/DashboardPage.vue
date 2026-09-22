@@ -56,11 +56,10 @@ const ghostStyle = computed(() => {
   }
 })
 const historyOpen = ref(dashCache.historyOpen)
-const displayTiles = computed(() => [
-  ...tiles.value.filter((t) => t.kind === 'windows'),
-  ...tiles.value.filter((t) => t.kind === 'balance'),
-])
-const firstBalanceId = computed(() => tiles.value.find((t) => t.kind === 'balance')?.id)
+const quotaGroups = computed(() => [
+  { kind: 'windows', tiles: tiles.value.filter((t) => t.kind === 'windows') },
+  { kind: 'balance', tiles: tiles.value.filter((t) => t.kind === 'balance') },
+].filter((group) => group.tiles.length))
 const exhaustedCount = computed(() => tiles.value.reduce((sum, t) =>
   sum + (t.kind === 'windows' ? t.windows.filter((w) => w.remain === 0).length : 0), 0))
 // 历史统计由 usage.days 现算，口径与热力图一致（不含未来日）。
@@ -512,9 +511,11 @@ onUnmounted(() => {
       <span v-if="exhaustedCount" class="quota-alert">{{ exhaustedCount }} 项已用尽</span>
     </div>
     <div v-if="tiles.length" class="card-body">
-      <div ref="gridEl" class="qtiles" :class="{ 'is-sorting': !!drag }">
-        <template v-for="q in displayTiles" :key="q.id">
-        <div v-if="q.id === firstBalanceId" class="balance-divider">余额与积分</div>
+      <div ref="gridEl" class="qtiles" :class="{ 'is-sorting': !!drag, 'has-groups': quotaGroups.length > 1 }">
+        <div v-for="group in quotaGroups" :key="group.kind" class="quota-section" :class="{ 'balance-group': group.kind === 'balance' }">
+        <div v-if="group.kind === 'balance'" class="balance-heading">余额与积分</div>
+        <div class="quota-group" :class="{ 'balance-tiles': group.kind === 'balance' }">
+        <template v-for="q in group.tiles" :key="q.id">
         <div
           class="qtile"
           :data-qid="q.id"
@@ -528,6 +529,16 @@ onUnmounted(() => {
           @pointerup="onTilePointerUp"
           @pointercancel="onTilePointerUp"
         >
+          <div class="q-header">
+          <div class="q-house">
+            <AgentMark :id="q.id" />
+            <n-popover trigger="click" placement="top-start">
+              <template #trigger>
+                <button type="button" class="q-name" :title="q.name" :aria-label="`${q.name}，查看完整名称`">{{ q.name }}</button>
+              </template>
+              <span class="q-full-name">{{ q.name }}</span>
+            </n-popover>
+          </div>
           <div class="q-corner">
             <span v-if="q.plan" class="q-plan">{{ q.plan }}</span>
             <n-popover
@@ -544,9 +555,6 @@ onUnmounted(() => {
               <span class="q-due-tip">{{ dueText(q.id) || '读取中' }}</span>
             </n-popover>
           </div>
-          <div class="q-house">
-            <AgentMark :id="q.id" />
-            <span class="q-name">{{ q.name }}</span>
           </div>
           <template v-if="q.kind === 'balance'">
             <b class="q-metric num">{{ q.text }}</b>
@@ -563,6 +571,8 @@ onUnmounted(() => {
           </template>
         </div>
         </template>
+        </div>
+        </div>
       </div>
     </div>
     <p v-else class="quota-empty">暂无可用额度，可在设置中检查已启用来源。</p>
@@ -617,9 +627,18 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
 .qtiles {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-6) var(--sp-7);
   align-items: start;
+}
+.quota-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--sp-6) var(--sp-7); align-items: start; min-width: 0; }
+.quota-section { min-width: 0; }
+.balance-tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: var(--sp-4); }
+.balance-heading { border-top: 1px solid var(--stroke); padding-top: var(--sp-4); margin-bottom: var(--sp-4); color: var(--dim); font-size: var(--fs-caption); }
+@container quota (min-width: 1120px) {
+  .qtiles.has-groups { grid-template-columns: minmax(0, 3fr) minmax(220px, 1fr); }
+  .has-groups .balance-group { border-left: 1px solid var(--stroke); padding-left: var(--sp-6); }
+  .has-groups .balance-heading { border-top: 0; padding-top: var(--sp-4); }
 }
 .qtile {
   position: relative;
@@ -632,7 +651,6 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   background: var(--surface);
 }
 .qtile.is-balance { border-top: 0; padding-top: 0; }
-.balance-divider { grid-column: 1 / -1; border-top: 1px solid var(--stroke); padding-top: var(--sp-4); color: var(--dim); font-size: var(--fs-caption); }
 .qtile.can-sort {
   cursor: grab;
   touch-action: none;
@@ -680,11 +698,10 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
     transition: none;
   }
 }
+.q-header { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .q-corner {
-  position: absolute;
-  top: var(--sp-4);
-  right: 0;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 4px;
   max-width: 48%;
@@ -711,7 +728,6 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   font-size: var(--fs-caption);
   color: var(--text);
 }
-.qtile.is-balance .q-corner { top: 0; }
 .q-plan {
   display: inline-flex;
   align-items: center;
@@ -729,19 +745,29 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   text-overflow: ellipsis;
 }
 .q-house {
-  padding-right: 48%;
+  flex: 1;
+  min-width: 0;
   min-height: 20px;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
 }
 .q-name {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   font-size: var(--fs-small);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.q-name:hover { color: var(--accent-solid); }
+.q-full-name { display: block; max-width: min(320px, 75vw); overflow-wrap: anywhere; }
 .q-metric {
   font-size: var(--fs-card);
   font-weight: 600;

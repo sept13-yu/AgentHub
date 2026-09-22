@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using AgentHub.Core.CodexConfigCore;
 using AgentHub.Core.ProxyCore;
 
 using AgentHub.Core.Platform;
@@ -12,7 +13,7 @@ namespace AgentHub.Core.TokenCore;
 
 /// <summary>额度台账（方案 §5.2）：只画官方接口实际返回的字段。
 /// DeepSeek 走 API Key（DPAPI 保护）；Cursor 走 usage-summary（登录态从 vscdb 只读提取，
-/// 凭证不落盘不打日志）；Codex 走 ChatGPT backend wham/usage（auth.json OAuth）；
+/// 凭证不落盘不打日志）；Codex 走 ChatGPT backend wham/usage（live + 归档账号并行，OAuth 可 refresh）；
 /// Sub2API 走 API Key 的 GET /v1/usage；WorkBuddy / Trae 先本机登录态，设置 Cookie 兜底；
 /// Qoder 国际版优先本机 IPC（named pipe JSON-RPC）；国内版先探 ~/.qoder-cn 与
 /// com.qodercn.app.stable（不是 QoderCN 文件夹），再 cookie/env、日志刮取、上次成功缓存。拿不到写原因，不写 0。</summary>
@@ -285,16 +286,23 @@ public sealed class QuotaService
             if (!string.IsNullOrEmpty(membership))
                 card["plan"] = membership;
 
-            // Grok Bot Sand 窗口：失败/未开通不改动 usage-summary 成功卡
+            // Grok Bot 是另一次 Sand 请求。瞬时失败或解析不出用量时沿用上一笔，避免砖忽隐忽现。
+            // 明确未开通（无错误且 Granted=false）则不保留。
             var accessToken = CursorAuth.ReadAccessToken();
             if (!string.IsNullOrEmpty(accessToken))
             {
-                var sand = await CursorSand.TryFetchAsync(_http, accessToken, CancellationToken.None);
+                var sand = await FetchCursorSandAsync(accessToken);
                 if (sand.Granted && sand.UsagePercent is double grokPct)
                 {
                     card["grokPercent"] = grokPct;
                     if (!string.IsNullOrEmpty(sand.NextResetAt))
                         card["grokResetAt"] = sand.NextResetAt;
+                }
+                else if (KeepPreviousGrok(sand) && TryCachedGrok(out var prev, out var prevReset))
+                {
+                    card["grokPercent"] = prev;
+                    if (!string.IsNullOrEmpty(prevReset))
+                        card["grokResetAt"] = prevReset;
                 }
             }
 
@@ -306,105 +314,183 @@ public sealed class QuotaService
         }
     }
 
+    /// <summary>Sand 瞬时失败再试一次。401/403 是登录态问题，重试没用。</summary>
+    private async Task<CursorSand.Result> FetchCursorSandAsync(string accessToken)
+    {
+        var sand = await CursorSand.TryFetchAsync(_http, accessToken, CancellationToken.None);
+        if (sand.Error is null || !SandWorthRetry(sand.Error)) return sand;
+        return await CursorSand.TryFetchAsync(_http, accessToken, CancellationToken.None);
+    }
+
+    private static bool SandWorthRetry(string error) =>
+        !error.Contains("401", StringComparison.Ordinal)
+        && !error.Contains("403", StringComparison.Ordinal);
+
+    /// <summary>没拿到新用量，但不是「明确未开通」。</summary>
+    private static bool KeepPreviousGrok(CursorSand.Result sand) =>
+        sand.Error is not null || (sand.Granted && sand.UsagePercent is null);
+
+    /// <summary>上一笔首页 items 里的 cursor-grok。内存是字典，磁盘反序列化后是 JsonElement。</summary>
+    private bool TryCachedGrok(out double usedPercent, out string? resetAt)
+    {
+        usedPercent = 0;
+        resetAt = null;
+        if (_cache is null || !_cache.TryGetValue("items", out var raw) || raw is null)
+            return false;
+        if (raw is JsonElement el && el.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in el.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object) continue;
+                if (!item.TryGetProperty("id", out var id) || id.GetString() != "cursor-grok") continue;
+                if (!item.TryGetProperty("remainPercent", out var rem) || rem.ValueKind != JsonValueKind.Number)
+                    return false;
+                usedPercent = 100 - rem.GetDouble();
+                if (item.TryGetProperty("period", out var period) && period.ValueKind == JsonValueKind.String)
+                    resetAt = period.GetString();
+                return true;
+            }
+            return false;
+        }
+        if (raw is System.Collections.IEnumerable list)
+        {
+            foreach (var entry in list)
+            {
+                if (entry is not Dictionary<string, object?> item) continue;
+                if (item.TryGetValue("id", out var id) && id is string s && s == "cursor-grok"
+                    && item.TryGetValue("remainPercent", out var rem) && rem is not null
+                    && double.TryParse(Convert.ToString(rem, System.Globalization.CultureInfo.InvariantCulture),
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture, out var remain))
+                {
+                    usedPercent = 100 - remain;
+                    resetAt = item.TryGetValue("period", out var period) ? period as string : null;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // ------------------------------------------------------------------
-    // Codex：auth.json OAuth → chatgpt.com/backend-api/wham/usage（TokenTracker usage-limits.js 移植）
+    // Codex：live + 归档 ChatGPT 账号 → chatgpt.com/backend-api/wham/usage
+    // （TokenTracker usage-limits.js 移植；多账号并行，每账号一张卡）
     // ------------------------------------------------------------------
 
     private async Task<Dictionary<string, object?>> CodexAsync()
     {
         try
         {
-            var token = ReadCodexToken();
-            if (token is null)
-                return Status("empty", "未找到 ~/.codex/auth.json 登录态");
+            var store = new CodexAuthProfileStore();
+            var accounts = CodexAccountQuota.ListAccounts(store);
+            if (accounts.Count == 0)
+                return Status("empty", "未找到 ChatGPT 登录态");
 
-            using var resp = await SendQuotaAsync(() =>
-            {
-                var req = new HttpRequestMessage(HttpMethod.Get, "https://chatgpt.com/backend-api/wham/usage");
-                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-                return req;
-            });
-            if ((int)resp.StatusCode == 401)
-                return Status("error", "登录态过期（401）：codex login 后重试");
-            if (!resp.IsSuccessStatusCode)
-                return Status("error", $"接口返回 HTTP {(int)resp.StatusCode}");
-            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStreamAsync());
-            var root = doc.RootElement;
-            // 新版 wham/usage：窗口在 rate_limit 下；字段 limit_window_seconds / reset_at(unix)
-            var scope = root;
-            if (root.TryGetProperty("rate_limit", out var rateLimit) && rateLimit.ValueKind == JsonValueKind.Object)
-                scope = rateLimit;
-
-            long WindowSecs(JsonElement w)
-            {
-                var secs = (long)GetNum(w, "window_length_seconds");
-                if (secs <= 0) secs = (long)GetNum(w, "limit_window_seconds");
-                return secs;
-            }
-            string? ResetAt(JsonElement w)
-            {
-                var s = GetStr(w, "resets_at") ?? GetStr(w, "reset_at");
-                if (!string.IsNullOrEmpty(s)) return s;
-                if (w.ValueKind == JsonValueKind.Object && w.TryGetProperty("reset_at", out var ra)
-                    && ra.ValueKind == JsonValueKind.Number)
-                {
-                    long unix = ra.TryGetInt64(out var i) ? i : (long)ra.GetDouble();
-                    if (unix > 10_000_000_000L) unix /= 1000;
-                    return DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime.ToString("o");
-                }
-                return null;
-            }
-
-            // 窗口按长度识别：Free 账号可能只有长窗；不要硬按字段名当长短窗（§5.2）
-            string Classify(JsonElement w, string fallback)
-            {
-                long secs = WindowSecs(w);
-                if (secs >= 86_400 * 2) return "7d";
-                if (secs > 0) return "5h";
-                return fallback;
-            }
-            var windows = new List<Dictionary<string, object?>>();
-            void AddWindow(JsonElement w, string id)
-            {
-                decimal used = GetNum(w, "used_percent");
-                windows.Add(new Dictionary<string, object?>
-                {
-                    ["id"] = id,
-                    ["usedPercent"] = used,
-                    ["remainPercent"] = 100 - used,
-                    ["resetAt"] = ResetAt(w),
-                    ["windowSeconds"] = WindowSecs(w),
-                });
-            }
-            if (scope.TryGetProperty("primary_window", out var pw)) AddWindow(pw, Classify(pw, "5h"));
-            if (scope.TryGetProperty("secondary_window", out var sw)) AddWindow(sw, Classify(sw, "7d"));
-            if (windows.Count == 0 && !ReferenceEquals(scope, root))
-            {
-                if (root.TryGetProperty("primary_window", out pw)) AddWindow(pw, Classify(pw, "5h"));
-                if (root.TryGetProperty("secondary_window", out sw)) AddWindow(sw, Classify(sw, "7d"));
-            }
-            if (windows.Count == 0 && root.TryGetProperty("windows", out var ws) && ws.ValueKind == JsonValueKind.Array)
-                foreach (var w in ws.EnumerateArray())
-                    AddWindow(w, Classify(w, "5h"));
-            if (windows.Count == 0)
-                return Status("error", "接口响应没有可识别的窗口字段");
-            var codexPlan = GetStr(root, "plan_type")
-                ?? GetStr(root, "planType")
-                ?? GetStr(root, "plan_name");
-            var codexCard = new Dictionary<string, object?>
+            var cards = await Task.WhenAll(accounts.Select(a => CodexAccountCardAsync(a, store)));
+            return new Dictionary<string, object?>
             {
                 ["status"] = "ok",
-                ["windows"] = windows,
+                ["accounts"] = cards.ToList(),
             };
-            if (!string.IsNullOrEmpty(codexPlan))
-                codexCard["plan"] = codexPlan;
-            return codexCard;
         }
         catch (Exception ex)
         {
             return Status("error", "请求失败：" + ex.Message);
         }
+    }
+
+    private async Task<Dictionary<string, object?>> CodexAccountCardAsync(
+        CodexQuotaAccount account, CodexAuthProfileStore store)
+    {
+        var card = new Dictionary<string, object?>
+        {
+            ["key"] = account.Key,
+            ["label"] = account.Label,
+            ["email"] = account.Email,
+            ["plan"] = account.Plan,
+            ["current"] = account.IsLive,
+        };
+        try
+        {
+            var token = CodexAccountQuota.GetAccessToken(account);
+            if (token is null)
+            {
+                card["status"] = "empty";
+                card["reason"] = "登录态缺少 access_token";
+                return card;
+            }
+
+            if (account.ApiKey is null && CodexTokenRefresh.IsAccessExpired(account.AuthJson)
+                && account.CanRefresh)
+            {
+                await CodexAccountQuota.TryRefreshAsync(account, f => SendQuotaAsync(f), store);
+                token = CodexAccountQuota.GetAccessToken(account) ?? token;
+            }
+
+            HttpResponseMessage? resp = await SendQuotaAsync(() => CodexUsageRequest(token));
+            if ((int)resp.StatusCode == 401 && account.CanRefresh)
+            {
+                resp.Dispose();
+                resp = null;
+                if (await CodexAccountQuota.TryRefreshAsync(account, f => SendQuotaAsync(f), store))
+                {
+                    token = CodexAccountQuota.GetAccessToken(account) ?? token;
+                    resp = await SendQuotaAsync(() => CodexUsageRequest(token));
+                }
+            }
+
+            if (resp is null)
+            {
+                card["status"] = "error";
+                card["reason"] = "登录态过期（401），刷新失败：请重新登录该账号";
+                return card;
+            }
+
+            using (resp)
+            {
+                if ((int)resp.StatusCode == 401)
+                {
+                    card["status"] = "error";
+                    card["reason"] = account.CanRefresh
+                        ? "登录态过期（401），刷新失败：请重新登录该账号"
+                        : "登录态过期（401）：重新登录该账号";
+                    return card;
+                }
+                if (!resp.IsSuccessStatusCode)
+                {
+                    card["status"] = "error";
+                    card["reason"] = $"接口返回 HTTP {(int)resp.StatusCode}";
+                    return card;
+                }
+                using var doc = JsonDocument.Parse(await resp.Content.ReadAsStreamAsync());
+                var windows = CodexAccountQuota.ParseWindows(doc.RootElement);
+                if (windows.Count == 0)
+                {
+                    card["status"] = "error";
+                    card["reason"] = "接口响应没有可识别的窗口字段";
+                    return card;
+                }
+                var plan = CodexAccountQuota.ReadPlan(doc.RootElement);
+                if (!string.IsNullOrEmpty(plan)) card["plan"] = plan;
+                card["status"] = "ok";
+                card["windows"] = windows;
+                return card;
+            }
+        }
+        catch (Exception ex)
+        {
+            card["status"] = "error";
+            card["reason"] = "请求失败：" + ex.Message;
+            return card;
+        }
+    }
+
+    private static HttpRequestMessage CodexUsageRequest(string token)
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, "https://chatgpt.com/backend-api/wham/usage");
+        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        req.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+        return req;
     }
 
     // ------------------------------------------------------------------
@@ -1137,25 +1223,7 @@ public sealed class QuotaService
         return false;
     }
 
-    private static string? ReadCodexToken()
-    {
-        try
-        {
-            var authFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "auth.json");
-            if (!File.Exists(authFile)) return null;
-            using var doc = JsonDocument.Parse(File.ReadAllText(authFile));
-            if (doc.RootElement.TryGetProperty("OPENAI_API_KEY", out var k) && k.ValueKind == JsonValueKind.String)
-            {
-                var key = k.GetString();
-                if (!string.IsNullOrEmpty(key) && key != "null") return key;
-            }
-            if (doc.RootElement.TryGetProperty("tokens", out var t) && t.ValueKind == JsonValueKind.Object
-                && t.TryGetProperty("access_token", out var at) && at.ValueKind == JsonValueKind.String)
-                return at.GetString();
-            return null;
-        }
-        catch (Exception) { return null; }
-    }
+
 
     // ------------------------------------------------------------------
     // 助手

@@ -52,6 +52,12 @@ const AGENT_ALIAS: Record<string, AgentId> = {
   'codex-7d': 'codex',
 }
 
+/** 多账号额度砖 codex:live / codex:auth-* 归到 Codex Agent 组。 */
+export function agentGroupOf(id: string): AgentId | null {
+  if (id.startsWith('codex:') || id.startsWith('codex-')) return 'codex'
+  return AGENT_ALIAS[id] ?? null
+}
+
 const DEFAULT_ORDER = SET_AGENTS.map((a) => a.id)
 
 export function normalizeAgentOrder(raw: unknown): AgentId[] {
@@ -60,7 +66,7 @@ export function normalizeAgentOrder(raw: unknown): AgentId[] {
   if (Array.isArray(raw)) {
     for (const id of raw) {
       if (typeof id !== 'string') continue
-      const group = AGENT_ALIAS[id]
+      const group = agentGroupOf(id)
       if (!group || seen.has(group)) continue
       seen.add(group)
       result.push(group)
