@@ -25,5 +25,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="AgentHub" />
     <InternalsVisibleTo Include="AgentHub.Backend" />
+    <InternalsVisibleTo Include="AgentHub.Tests" />
   </ItemGroup>
 </Project>

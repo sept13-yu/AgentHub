@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-09-14",
-  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced: auto/unknown/agent_review; mimo-x-*-preview (closed beta, no public list price). codex-auto-review aliases to gpt-5.6-luna (OpenAI auto-review backend since ~2026-07); stealth/ox-alpha aliases to GLM-5.3-Flash. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
+  "updatedAt": "2026-09-22",
+  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced: auto/unknown/agent_review. mimo-x-*-preview (closed beta) aliases to official mimo-v2.6-flash / mimo-v2.6-pro. Xiaomi MiMo V2.6 list prices match V2.5: Flash CNY 1/2, Pro CNY 3/6 per 1M (cacheRead 0.02 / 0.025); mimo-v2.6-pro-ultraspeed is Pro speed mode with a published 10× Pro token rate (CNY 30/60, cacheRead 0.25). cacheWrite seed 0 (official cache write limited-time free). codex-auto-review aliases to gpt-5.6-luna (OpenAI auto-review backend since ~2026-07); stealth/ox-alpha aliases to GLM-5.3-Flash. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
   "prices": [
     {
       "model": "cursor-grok-4.6-xhigh-fast",
@@ -288,6 +288,30 @@
       "outputPer1m": 2.7,
       "currency": "CNY",
       "cacheReadPer1m": 0.08
+    },
+    {
+      "model": "mimo-v2.6-flash",
+      "inputPer1m": 1.0,
+      "outputPer1m": 2.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.02,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "mimo-v2.6-pro",
+      "inputPer1m": 3.0,
+      "outputPer1m": 6.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.025,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "mimo-v2.6-pro-ultraspeed",
+      "inputPer1m": 30.0,
+      "outputPer1m": 60.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.25,
+      "cacheWritePer1m": 0.0
     }
   ]
 }
