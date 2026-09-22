@@ -94,7 +94,7 @@ public static class PriceAliases
 
 
 
-    /// unknown / agent_review / mimo-x-*-preview 仍无公开价不映射；auto 按 Cursor Grok（grok-bot-default）估价；
+    /// unknown / agent_review 仍无公开价不映射；mimo-x-*-preview 走官方 mimo-v2.6-*；auto 按 Cursor Grok（grok-bot-default）估价；
 
 
 
@@ -473,7 +473,35 @@ public static class PriceAliases
 
             ["openai/gpt-6-astra"] = "gpt-6-astra",
 
-
+            // Xiaomi MiMo 邀测 / 桌面展示名 → 官方 API id（价表 canonical 为 mimo-v2.6-*）
+            ["mimo-x-flash-preview"] = "mimo-v2.6-flash",
+            ["mimo-x-flash"] = "mimo-v2.6-flash",
+            ["mimo-x-flash preview"] = "mimo-v2.6-flash",
+            ["mimo x flash preview"] = "mimo-v2.6-flash",
+            ["X-Flash Preview"] = "mimo-v2.6-flash",
+            ["X Flash Preview"] = "mimo-v2.6-flash",
+            ["mimo-v2.6-flash-preview"] = "mimo-v2.6-flash",
+            ["MiMo V2.6 Flash"] = "mimo-v2.6-flash",
+            ["MiMo-V2.6-Flash"] = "mimo-v2.6-flash",
+            ["mimo-x-pro-preview"] = "mimo-v2.6-pro",
+            ["mimo-x-pro"] = "mimo-v2.6-pro",
+            ["mimo-x-pro preview"] = "mimo-v2.6-pro",
+            ["mimo x pro preview"] = "mimo-v2.6-pro",
+            ["X-Pro Preview"] = "mimo-v2.6-pro",
+            ["X Pro Preview"] = "mimo-v2.6-pro",
+            ["mimo-v2.6-pro-preview"] = "mimo-v2.6-pro",
+            ["MiMo V2.6 Pro"] = "mimo-v2.6-pro",
+            ["MiMo-V2.6-Pro"] = "mimo-v2.6-pro",
+            ["mimo-x-pro-ultraspeed-preview"] = "mimo-v2.6-pro-ultraspeed",
+            ["mimo-x-pro-ultraspeed"] = "mimo-v2.6-pro-ultraspeed",
+            ["mimo-x-pro-ultra-speed-preview"] = "mimo-v2.6-pro-ultraspeed",
+            ["mimo-v2.6-pro-ultra-speed"] = "mimo-v2.6-pro-ultraspeed",
+            ["mimo-v2.6-ultraspeed"] = "mimo-v2.6-pro-ultraspeed",
+            ["X-Pro Ultraspeed Preview"] = "mimo-v2.6-pro-ultraspeed",
+            ["X-Pro UltraSpeed Preview"] = "mimo-v2.6-pro-ultraspeed",
+            ["MiMo V2.6 Pro Ultraspeed"] = "mimo-v2.6-pro-ultraspeed",
+            ["MiMo-V2.6-Pro-UltraSpeed"] = "mimo-v2.6-pro-ultraspeed",
+            ["MiMo-V2.6-Pro-Ultraspeed"] = "mimo-v2.6-pro-ultraspeed",
 
             ["grok-bot-automation"] = "grok-bot-default",
             ["grok-bot-cua"] = "grok-bot-default",

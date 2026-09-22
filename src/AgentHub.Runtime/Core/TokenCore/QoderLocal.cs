@@ -207,7 +207,8 @@ internal static class QoderLocal
 
     /// <summary>
     /// Qoder CN stores internal route ids (qfmodel); UI labels them Qwen3.8-Flash in dynamic-text.
-    /// Map at ingest so dashboard model chips and price table match the UI names.
+    /// Token dashboard uses this for every tool. Xiaomi MiMo API ids / closed-beta preview ids
+    /// map to the official Desktop picker labels (MiMo V2.6 Flash / Pro / Pro Ultraspeed).
     /// </summary>
     internal static string ResolveChinaModelDisplay(string? raw)
     {
@@ -215,7 +216,12 @@ internal static class QoderLocal
         // qoder/...、qoder-custom-uuid/workbuddy/deepseek-v4.1-flash → 只留最后一段
         var key = ModelNameNormalizer.Leaf(raw);
         if (key.Length == 0) return "unknown";
-        return ChinaModelDisplay.TryGetValue(key, out var label) ? label : key;
+        if (ChinaModelDisplay.TryGetValue(key, out var label)) return label;
+        // 邀测 id 等：先走价表别名再套官方展示名（mimo-x-flash-preview → mimo-v2.6-flash → MiMo V2.6 Flash）
+        if (PriceAliases.TryMap(key, out var canonical)
+            && ChinaModelDisplay.TryGetValue(canonical, out label))
+            return label;
+        return key;
     }
 
     private static readonly Dictionary<string, string> ChinaModelDisplay =
@@ -233,6 +239,9 @@ internal static class QoderLocal
             ["kmodel_latest"] = "Kimi-K3",
             ["mmodel"] = "MiniMax-M3",
             ["cmodel"] = "Cantus",
+            ["mimo-v2.6-flash"] = "MiMo V2.6 Flash",
+            ["mimo-v2.6-pro"] = "MiMo V2.6 Pro",
+            ["mimo-v2.6-pro-ultraspeed"] = "MiMo V2.6 Pro Ultraspeed",
         };
 
     internal static long EstimateOutputTokens(JsonElement? message)
