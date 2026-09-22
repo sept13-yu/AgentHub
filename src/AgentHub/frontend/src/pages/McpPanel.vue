@@ -110,6 +110,17 @@ const deletePresentAgents = computed(() =>
 
 const allAdapters = computed(() => data.value?.adapters ?? [])
 
+const showUndetectedAdapters = ref(false)
+// 检测到的排前面；sort 稳定，同组保持后端 DefaultAdapters() 的顺序
+const orderedAdapters = computed(() =>
+  [...allAdapters.value].sort((a, b) => Number(b.detected) - Number(a.detected)))
+const visibleAdapters = computed(() =>
+  showUndetectedAdapters.value
+    ? orderedAdapters.value
+    : orderedAdapters.value.filter((a) => a.detected))
+const undetectedAdapterCount = computed(
+  () => orderedAdapters.value.filter((a) => !a.detected).length)
+
 function presentAgentIds(item: McpItem) {
   return item.agents.filter((a) => a.presence === 'present' && a.detected).map((a) => a.agentId)
 }
@@ -506,7 +517,7 @@ onMounted(() => { void load() })
       <template #icon><n-icon><Plus :size="16" :stroke-width="1.8" /></n-icon></template>
       新建
     </n-button>
-    <n-button type="primary" @click="refresh">
+    <n-button @click="refresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
       刷新
     </n-button>
@@ -514,9 +525,9 @@ onMounted(() => { void load() })
 
   <div class="card mcp">
 
-    <div class="mcp-adapters" v-if="data?.adapters?.length">
+    <div class="mcp-adapters" v-if="visibleAdapters.length">
       <button
-        v-for="a in data.adapters"
+        v-for="a in visibleAdapters"
         :key="a.agentId"
         type="button"
         class="mcp-adapter"
@@ -529,6 +540,12 @@ onMounted(() => { void load() })
         <span class="mcp-adapter-file">{{ a.detected ? configFileName(a.configPath) : '未检测到' }}</span>
       </button>
     </div>
+
+    <p v-if="undetectedAdapterCount" class="mcp-hidden">
+      <button type="button" class="link-quiet" @click="showUndetectedAdapters = !showUndetectedAdapters">
+        {{ showUndetectedAdapters ? '收起未检测到的家' : `已隐藏 ${undetectedAdapterCount} 家未检测到，点开看` }}
+      </button>
+    </p>
 
     <div v-if="!filtered.length" class="docs-empty">暂无 MCP 项</div>
 
@@ -661,6 +678,13 @@ onMounted(() => { void load() })
 .mcp-adapter:hover { color: var(--text); border-color: var(--stroke-strong); }
 .mcp-adapter b { font-weight: 500; color: var(--text); }
 .mcp-adapter-file { color: var(--faint); font-family: var(--mono); font-size: var(--fs-caption); }
+.mcp-hidden { margin: var(--sp-2) 0 0; font-size: var(--fs-caption); color: var(--faint); }
+.link-quiet {
+  padding: 0; border: 0; background: transparent;
+  color: var(--dim); font: inherit; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.link-quiet:hover { color: var(--text); }
 .mcp-card {
   border: 1px solid var(--stroke); border-radius: var(--r-card);
   padding: var(--sp-2) var(--sp-3); background: var(--surface);

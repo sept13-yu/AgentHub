@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AgentHub.Core.Platform;
 using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.McpCore.Adapters;
@@ -25,7 +26,7 @@ public sealed class MimocodeMcpAdapter : IMcpAdapter
 
     public bool Detected =>
         File.Exists(ConfigPath)
-        || Directory.Exists(Path.Combine(
+        || AgentPresence.HasOwnFootprint(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config", "mimocode"));
 
     public IReadOnlyList<McpServerSpec> List()

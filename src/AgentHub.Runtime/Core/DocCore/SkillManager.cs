@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using AgentHub.Core.Platform;
 using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.DocCore;
@@ -50,8 +51,10 @@ public sealed class SkillManager
     }
 
     public string ActiveRoot => Path.Combine(_userProfile, ".agents", "skills");
+    /// <summary>Workbuddy 数据根。App 自己往里写 app/、projects/、workbuddy.db。</summary>
+    public string WorkbuddyHomeRoot => Path.Combine(_userProfile, ".workbuddy");
     /// <summary>Workbuddy 全局 skills；启用时自动 junction 到此，与其它 agent 共用同一套开关。</summary>
-    public string WorkbuddySkillsRoot => Path.Combine(_userProfile, ".workbuddy", "skills");
+    public string WorkbuddySkillsRoot => Path.Combine(WorkbuddyHomeRoot, "skills");
     public string StoreRoot => Path.Combine(_localDataRoot, "SkillStore");
     public string StatePath => Path.Combine(_localDataRoot, "skills-state.json");
     public string StagingRoot => Path.Combine(_localDataRoot, "SkillStaging");
@@ -1040,6 +1043,8 @@ public sealed class SkillManager
         try
         {
             GuardName(name);
+            // 没装就别建 ~/.workbuddy/skills：那会让卸载过的家重新长出「像装着」的痕迹
+            if (!AgentPresence.HasOwnFootprint(WorkbuddyHomeRoot)) return;
             var active = Path.Combine(ActiveRoot, name);
             if (!IsRealSkill(active))
             {

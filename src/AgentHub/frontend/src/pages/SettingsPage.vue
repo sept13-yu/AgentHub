@@ -60,6 +60,7 @@ interface SettingsPayload {
     showAgentQoder?: boolean
     showAgentQoderCn?: boolean
     agentOrder?: string[]
+    agentPresence?: Record<string, boolean>
   }
   credentials: {
     relayPanelBaseUrl: string
@@ -189,6 +190,12 @@ const dirty = computed(() => {
   return snapOf() !== snapshot.value
 })
 
+// 本机装没装，由后端 AgentPresence 探。只用来排序和画灰态：
+// 没装的家在这页照样留着，否则用户装好后没地方把它捞回别的页。
+const presence = ref<Record<string, boolean>>({})
+const orderedAgents = computed(() =>
+  [...SET_AGENTS].sort((a, b) => Number(!!presence.value[b.id]) - Number(!!presence.value[a.id])))
+
 function applyLoaded(s: SettingsPayload) {
   f.relayPanelBaseUrl = s.credentials.relayPanelBaseUrl
   f.autostart = s.autostartActual
@@ -224,6 +231,7 @@ function applyLoaded(s: SettingsPayload) {
   f.showAgentQoder = d.showAgentQoder !== false
   f.showAgentQoderCn = d.showAgentQoderCn !== false
   f.agentOrder = normalizeAgentOrder(d.agentOrder)
+  presence.value = d.agentPresence ?? {}
   f.deepseekKey = ''
   f.relayKey = ''
   f.workbuddySession = ''
@@ -628,7 +636,7 @@ onUnmounted(() => {
             <span class="hint">用于查询余额，自动拼接 /v1/usage</span>
           </div>
           <div class="ctrl ctrl--field">
-            <n-input id="s-relay-base" class="num" :disabled="readonly" :spellcheck="false" v-model:value="f.relayPanelBaseUrl" placeholder=" " />
+            <n-input id="s-relay-base" class="num url-input" :disabled="readonly" :spellcheck="false" v-model:value="f.relayPanelBaseUrl" placeholder=" " />
           </div>
         </div>
         <div class="row row--fill">
@@ -772,11 +780,11 @@ onUnmounted(() => {
         <div class="block">
           <div class="meta">
             <span class="lbl">Agent</span>
-            <span class="hint">只控制用量和会话，不管首页砖。顺序在首页拖砖</span>
+            <span class="hint">只控制用量和会话，不管首页砖。本机检测到的排在前面，顺序在首页拖砖</span>
           </div>
           <ol class="order">
             <li
-              v-for="a in SET_AGENTS"
+              v-for="a in orderedAgents"
               :key="a.id"
               class="order-row"
               :class="{ 'is-off': !agentOn(a.id) }"
@@ -785,6 +793,7 @@ onUnmounted(() => {
                 <AgentMark :id="a.id" />
                 <span class="order-name">{{ a.name }}</span>
                 <span v-if="'tag' in a && a.tag" class="order-tag">{{ a.tag }}</span>
+                <span v-if="presence[a.id] === false" class="order-miss">未检测到</span>
               </span>
               <n-switch
                 :disabled="readonly"
@@ -977,6 +986,8 @@ onUnmounted(() => {
 }
 .field-num { width: 120px; }
 :deep(.field-num.n-input-number) { width: 120px; }
+/* .num 现在只管数字对齐；地址是路径类文本，等宽单独留在这里 */
+.url-input { font-family: var(--mono); }
 .lock {
   display: inline-flex;
   align-items: center;
@@ -1083,6 +1094,15 @@ onUnmounted(() => {
   flex: none;
   font-size: var(--fs-caption);
   color: var(--faint);
+  font-weight: 400;
+}
+.order-miss {
+  flex: none;
+  padding: 0 5px;
+  border-radius: var(--r-in);
+  background: var(--wash);
+  color: var(--faint);
+  font-size: var(--fs-caption);
   font-weight: 400;
 }
 .order-row.is-off .order-name,

@@ -54,18 +54,20 @@ const nav = [
           :key="item.to"
           :to="item.to"
           class="nav-item"
+          :title="item.label"
           @click="drawerOpen = false"
         >
-          <component :is="item.icon" :size="16" :stroke-width="1.8" />{{ item.label }}
+          <component :is="item.icon" :size="16" :stroke-width="1.8" /><span class="nav-label">{{ item.label }}</span>
         </router-link>
       </nav>
       <div class="rail-foot">
         <router-link
           to="/settings"
           class="nav-item settings-foot"
+          title="设置"
           @click="drawerOpen = false"
         >
-          <Settings :size="16" :stroke-width="1.8" />设置
+          <Settings :size="16" :stroke-width="1.8" /><span class="nav-label">设置</span>
         </router-link>
       </div>
     </aside>
@@ -191,8 +193,9 @@ const nav = [
 }
 .nav-item[aria-current='page'] {
   background: var(--accent-soft);
-  color: var(--accent-solid);
-  font-weight: 500;
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent-solid);
 }
 .rail-foot {
   margin-top: auto;
@@ -246,10 +249,12 @@ const nav = [
   flex: 1;
   min-height: 0;
   overflow: auto;
+  scrollbar-width: none;
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
 }
+.stage::-webkit-scrollbar { width: 0; height: 0; }
 .stage > :deep(*) {
   flex-shrink: 0;
 }
@@ -289,9 +294,9 @@ const nav = [
   padding: 0;
 }
 .chrome h1 {
-  font-size: var(--fs-title);
-  font-weight: 600;
-  letter-spacing: -0.005em;
+  font-size: var(--fs-page);
+  font-weight: 650;
+  letter-spacing: -0.01em;
   margin: 0;
 }
 .chrome-end {
@@ -337,7 +342,27 @@ const nav = [
   border-left: 1px solid var(--stroke);
 }
 
+/* 中宽：侧栏收成 56px 图标栏，文字隐藏，链接靠 title 提示 */
 @media (max-width: 1279px) {
+  .app {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+  .brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .nav-item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .nav-label,
+  .brand-name {
+    display: none;
+  }
+}
+
+/* 窄窗：图标栏也放不下，改抽屉 + 菜单按钮 */
+@media (max-width: 899px) {
   .app {
     grid-template-columns: 1fr;
   }
@@ -357,6 +382,18 @@ const nav = [
   }
   .menu-btn {
     display: inline-flex;
+  }
+  .brand {
+    justify-content: flex-start;
+    padding: var(--sp-2) var(--sp-3);
+  }
+  .nav-item {
+    justify-content: flex-start;
+    padding-inline: var(--sp-3);
+  }
+  .nav-label,
+  .brand-name {
+    display: inline;
   }
   .main {
     padding: var(--sp-4);

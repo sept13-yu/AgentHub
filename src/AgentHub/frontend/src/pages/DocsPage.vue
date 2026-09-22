@@ -855,7 +855,7 @@ onUnmounted(() => { stopPoll() })
       <template v-else-if="selectedUpdateable.length">检查更新 {{ selectedUpdateable.length }}</template>
       <template v-else>检查更新</template>
     </n-button>
-    <n-button type="primary" @click="refresh">
+    <n-button @click="refresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
       刷新
     </n-button>
@@ -917,26 +917,32 @@ onUnmounted(() => { stopPoll() })
                   </button>
                 </span>
               </h3>
-              <div class="docs-grid">
-                <div
-                  v-for="s in sortedSkills"
-                  :key="s.path"
-                  class="doc-cell"
-                  :class="{ 'has-check': selecting && !readonly }"
-                  @contextmenu="onSkillMenu($event, s)"
-                >
-                  <n-checkbox
-                    v-if="selecting && !readonly"
-                    class="doc-check"
-                    :checked="selected.has(s.relPath)"
-                    :disabled="!s.canDelete || updateRunning"
-                    :aria-label="'选择 ' + s.name"
-                    @click.stop
-                    @update:checked="(on: boolean) => toggleSelect(s.relPath, on)"
-                  />
-                  <button
-                    type="button"
-                    class="doc-card"
+              <table class="docs-table docs-table--skills">
+                <colgroup>
+                  <col v-if="selecting && !readonly" class="docs-col-check" /><col class="docs-col-name" /><col class="docs-col-note" /><col class="docs-col-state" /><col class="docs-col-when" /><col class="docs-col-switch" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th v-if="selecting && !readonly">
+                      <n-checkbox
+                        :checked="allDeletableOn"
+                        :indeterminate="someDeletableOn && !allDeletableOn"
+                        :disabled="updateRunning"
+                        @update:checked="toggleAllDeletable"
+                      />
+                    </th>
+                    <th>名称</th>
+                    <th>说明</th>
+                    <th>状态</th>
+                    <th>最近修改</th>
+                    <th>启用</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="s in sortedSkills"
+                    :key="s.path"
+                    data-skill
                     :class="{
                       'is-off': !s.enabled,
                       'is-on': picked && picked.path === s.path,
@@ -944,25 +950,38 @@ onUnmounted(() => { stopPoll() })
                       'is-updating': updateRunning && progress?.currentName === s.name,
                     }"
                     @click="openPreview(s)"
+                    @contextmenu="onSkillMenu($event, s)"
                   >
-                      <span class="doc-card-top">
+                    <td v-if="selecting && !readonly" @click.stop>
+                      <n-checkbox
+                        :checked="selected.has(s.relPath)"
+                        :disabled="!s.canDelete || updateRunning"
+                        :aria-label="'选择 ' + s.name"
+                        @update:checked="(on: boolean) => toggleSelect(s.relPath, on)"
+                      />
+                    </td>
+                    <td>
+                      <span class="docs-name">
                         <i class="doc-pip" />
                         <b>{{ skillTitle(s) }}</b>
                         <span v-if="skillCardTag(s.state)" class="doc-tag">{{ skillCardTag(s.state) }}</span>
                       </span>
-                    <p :class="{ 'is-empty': !s.note }">{{ s.note || '暂无备注' }}</p>
-                    <time>{{ formatMonthDay(s.modifiedUtc) }}</time>
-                  </button>
-                  <n-switch
-                    class="doc-switch"
-                    size="small"
-                    :value="['enabled', 'modified', 'legacyLink'].includes(s.state)"
-                    :disabled="readonly || toggling.has(s.relPath) || (!s.canEnable && !s.canDisable)"
-                    :aria-label="(s.canDisable ? '停用 ' : '启用 ') + s.name"
-                    @update:value="(on: boolean) => toggleSkill(s, on)"
-                  />
-                </div>
-              </div>
+                    </td>
+                    <td class="docs-note">{{ s.note }}</td>
+                    <td class="docs-state">{{ skillStateText(s.state) }}</td>
+                    <td class="docs-when">{{ formatMonthDay(s.modifiedUtc) }}</td>
+                    <td @click.stop>
+                      <n-switch
+                        size="small"
+                        :value="['enabled', 'modified', 'legacyLink'].includes(s.state)"
+                        :disabled="readonly || toggling.has(s.relPath) || (!s.canEnable && !s.canDisable)"
+                        :aria-label="(s.canDisable ? '停用 ' : '启用 ') + s.name"
+                        @update:value="(on: boolean) => toggleSkill(s, on)"
+                      />
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </section>
           </template>
           <p v-else class="docs-empty">{{ q.trim() ? '没有匹配的技能' : '还没有技能，可以从 GitHub 安装' }}</p>
@@ -1007,7 +1026,7 @@ onUnmounted(() => { stopPoll() })
                       />
                     </th>
                     <th>名称</th>
-                    <th>改过</th>
+                    <th>最近修改</th>
                   </tr>
                 </thead>
                 <tbody v-for="g in groups" :key="g.name" :class="{ 'is-fold': folded.has(g.name) }">
@@ -1208,12 +1227,9 @@ onUnmounted(() => { stopPoll() })
   min-height: 0;
   overflow: auto;
   padding: var(--sp-4);
-  background: var(--bg-sunken);
-  border-radius: var(--r-card) var(--r-card) 0 0;
 }
 .docs-split.has-preview .docs-list {
   border-right: 1px solid var(--stroke);
-  border-radius: var(--r-card) 0 0 0;
 }
 .docs-preview {
   display: none;
@@ -1227,49 +1243,7 @@ onUnmounted(() => { stopPoll() })
 .docs-split.has-preview .docs-preview {
   display: flex;
 }
-.docs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: var(--sp-3);
-  align-items: stretch;
-}
-.doc-card {
-  width: 100%;
-  flex: 1;
-  text-align: left;
-  border: 1px solid var(--stroke);
-  border-radius: var(--r-card);
-  background: var(--surface);
-  padding: var(--sp-3) var(--sp-4);
-  cursor: pointer;
-  min-height: 96px;
-  display: flex; flex-direction: column; gap: 6px;
-  color: inherit; font: inherit;
-}
-.doc-card:hover { border-color: var(--stroke-strong); }
-.doc-card.is-off { background: var(--surface-hi); }
-.doc-card.is-on {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-.doc-card.is-updating { border-color: var(--accent-line); }
-.doc-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; padding-right: 44px; line-height: var(--h-control); }
-.has-check .doc-card-top { padding-left: 28px; }
 .doc-tag { font-size: var(--fs-caption); color: var(--warn); flex: none; line-height: 1; }
-.doc-cell { position: relative; min-width: 0; display: flex; flex-direction: column; }
-.doc-check {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 1;
-}
-.doc-switch {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 1;
-}
-.doc-card.is-picked { border-color: var(--stroke-strong); }
 .doc-on-note { margin-left: 8px; font-weight: 400; color: var(--faint); }
 .doc-pick {
   margin-left: auto;
@@ -1297,7 +1271,6 @@ onUnmounted(() => { stopPoll() })
 .skill-meta { display: grid; gap: var(--sp-2); margin: 0 0 var(--sp-3); }
 .skill-meta-row { display: grid; gap: 4px; font-size: 12px; color: var(--faint); }
 .skill-meta-row > span { font-weight: 500; }
-.doc-card p.is-empty { color: var(--faint); font-style: italic; }
 .docs-roots {
   display: flex;
   align-items: center;
@@ -1330,18 +1303,12 @@ onUnmounted(() => { stopPoll() })
   background: var(--accent-solid);
   box-shadow: 0 0 0 1px var(--dot-ring);
 }
-.doc-card.is-off .doc-pip { background: var(--idle); }
-.doc-card b {
-  flex: 1; min-width: 0;
-  font-size: var(--fs-body); font-weight: 500;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.doc-card p {
-  margin: 0; font-size: var(--fs-caption); line-height: 1.5; color: var(--dim);
-  height: calc(var(--fs-caption) * 1.5 * 2);
-  display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
-.doc-card time { font-size: var(--fs-caption); color: var(--faint); margin-top: auto; }
+/* 停用态只降名称色与 pip 灰，不换整行底色 */
+.docs-table tr.is-off .doc-pip { background: var(--idle); }
+.docs-table tr.is-off .docs-name b { color: var(--faint); font-weight: 400; }
+.docs-table tr.is-updating .docs-name b { color: var(--accent-solid); }
+.docs-note { color: var(--dim); }
+.docs-state { color: var(--faint); }
 .doc-sec { margin: 0 0 var(--sp-5); }
 .doc-sec h3 {
   display: flex;
@@ -1356,7 +1323,10 @@ onUnmounted(() => { stopPoll() })
 .doc-sec h3 .n { font-variant-numeric: tabular-nums; }
 .docs-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
 .docs-table col.docs-col-check { width: 36px; }
-.docs-table col.docs-col-when { width: 56px; }
+.docs-table col.docs-col-when { width: 72px; }
+.docs-table--skills col.docs-col-name { width: 30%; }
+.docs-table--skills col.docs-col-state { width: 84px; }
+.docs-table--skills col.docs-col-switch { width: 52px; }
 .docs-table th {
   text-align: left; font-weight: 400; color: var(--faint); font-size: var(--fs-caption);
   padding: 0 var(--sp-2); height: var(--h-row); border-bottom: 1px solid var(--stroke);
@@ -1366,8 +1336,10 @@ onUnmounted(() => { stopPoll() })
   border-bottom: 1px solid var(--stroke);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.docs-table tr[data-plan] { cursor: pointer; }
-.docs-table tr[data-plan]:hover td { background: var(--wash); }
+.docs-table tr[data-plan],
+.docs-table tr[data-skill] { cursor: pointer; }
+.docs-table tr[data-plan]:hover td,
+.docs-table tr[data-skill]:hover td { background: var(--wash); }
 .docs-table tr.is-on td { background: var(--surface-hi); }
 .docs-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .docs-name b { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
@@ -1412,11 +1384,11 @@ onUnmounted(() => { stopPoll() })
 }
 .docs-empty { color: var(--empty-fg); font-size: var(--fs-small); padding: var(--sp-6) 0; }
 .hint { font-size: var(--fs-caption); color: var(--faint); margin: 0 0 var(--sp-3); }
-@media (max-width: 1279px) {
+/* 抽屉档：预览改上下堆叠 */
+@media (max-width: 899px) {
   .docs-split.has-preview { grid-template-columns: 1fr; }
   .docs-split.has-preview .docs-list {
     border-right: 0;
-    border-radius: var(--r-card) var(--r-card) 0 0;
     border-bottom: 1px solid var(--stroke);
   }
   .docs-split.has-preview .docs-preview { padding-top: 0; }

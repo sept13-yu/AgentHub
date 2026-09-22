@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref, type Ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { NButton, NIcon, NInput, NSwitch, useMessage } from 'naive-ui'
 import { ExternalLink, FolderOpen, RefreshCw, Save, X } from 'lucide-vue-next'
@@ -103,8 +103,28 @@ const sourceBad = computed(() => {
 })
 const sourceWarnings = computed(() => status.value?.source?.warnings ?? [])
 const orphanKeys = computed(() => Object.keys(orphansDraft.value))
+const showUndetected = ref(false)
+// 检测到的排前面；sort 稳定，同组保持后端 Descriptors() 的顺序
+const orderedAgents = computed(() =>
+  [...(status.value?.agents ?? [])].sort((a, b) => Number(b.detected) - Number(a.detected)))
+const visibleAgents = computed(() =>
+  showUndetected.value ? orderedAgents.value : orderedAgents.value.filter((a) => a.detected))
+const undetectedCount = computed(() => orderedAgents.value.filter((a) => !a.detected).length)
+// 差异 chips 跟列表同序同过滤。有差异正文的家不藏，否则用户没地方删它
+const visibleChips = computed(() => {
+  const rank = new Map(orderedAgents.value.map((a, i) => [a.agentId, i]))
+  const detected = new Map(orderedAgents.value.map((a) => [a.agentId, a.detected]))
+  const list = [...chips.value].sort(
+    (a, b) => (rank.get(a.agentId) ?? 0) - (rank.get(b.agentId) ?? 0))
+  if (showUndetected.value) return list
+  return list.filter((c) => detected.get(c.agentId) !== false || hasExtraContent(c.agentId))
+})
 const selectedChip = computed(() =>
-  chips.value.find((c) => c.agentId === selectedAgent.value) || chips.value[0] || null)
+  visibleChips.value.find((c) => c.agentId === selectedAgent.value) || visibleChips.value[0] || null)
+
+watch(visibleChips, (list) => {
+  if (!list.some((c) => c.agentId === selectedAgent.value)) selectedAgent.value = list[0]?.agentId || ''
+})
 const extraDraft = computed({
   get() {
     const id = selectedAgent.value
@@ -514,7 +534,6 @@ onUnmounted(() => {
   </teleport>
   <teleport defer to="#chrome-actions">
     <n-button
-      type="primary"
       :disabled="updateDisabled"
       :loading="busy"
       :title="dirty ? '母本未保存，请先保存再更新' : undefined"
@@ -580,7 +599,7 @@ onUnmounted(() => {
             <div class="editor-label">各家差异</div>
             <div class="chip-row">
               <button
-                v-for="c in chips"
+                v-for="c in visibleChips"
                 :key="c.agentId"
                 type="button"
                 class="agent-chip agent-chip--icon"
@@ -636,7 +655,7 @@ onUnmounted(() => {
         <div class="card-head">各家规则 <span class="hint">先保存母本，再点更新才写入</span></div>
         <div class="card-body">
           <div
-            v-for="a in status?.agents"
+            v-for="a in visibleAgents"
             :key="a.agentId"
             class="rule-line"
             :class="{ 'is-muted': !a.detected }"
@@ -659,6 +678,11 @@ onUnmounted(() => {
           </div>
           <p v-if="!enabled" class="off-note">关掉后不能改各家</p>
           <p v-else-if="dirty" class="off-note">母本未保存，更新已禁用</p>
+          <p v-if="undetectedCount" class="off-note">
+            <button type="button" class="link-quiet" @click="showUndetected = !showUndetected">
+              {{ showUndetected ? '收起未检测到的家' : `已隐藏 ${undetectedCount} 家未检测到，点开看` }}
+            </button>
+          </p>
         </div>
       </section>
     </div>
@@ -756,6 +780,7 @@ onUnmounted(() => {
   gap: var(--sp-3);
   flex: 1;
   min-height: 0;
+  overflow: auto;
 }
 .file-path {
   margin: 0;
@@ -775,7 +800,7 @@ onUnmounted(() => {
   gap: var(--sp-2);
   min-height: 0;
 }
-.editor-block:first-of-type { flex: 1 1 auto; }
+.editor-block:first-of-type { flex: 1 0 auto; min-height: 180px; overflow: hidden; }
 .editor-block.extras-block { flex: 0 0 auto; }
 .editor-label {
   font-size: var(--fs-small);
@@ -788,6 +813,7 @@ onUnmounted(() => {
 }
 .editor {
   width: 100%;
+  box-sizing: border-box;
   resize: vertical;
   padding: 10px 12px;
   border: 1px solid var(--stroke);
@@ -799,11 +825,13 @@ onUnmounted(() => {
   line-height: 1.55;
 }
 .shared-editor {
-  flex: 1;
-  min-height: 200px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  resize: none;
 }
 .extra-editor {
-  min-height: 120px;
+  min-height: 96px;
 }
 .editor:disabled { color: var(--disabled-fg); }
 .editor.is-error {
@@ -903,6 +931,17 @@ onUnmounted(() => {
   font-size: var(--fs-caption);
   color: var(--faint);
 }
+.link-quiet {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.link-quiet:hover { color: var(--text); }
 @media (max-width: 1279px) {
   .stage { grid-template-columns: 1fr; }
   .libbar { grid-template-columns: 1fr; }

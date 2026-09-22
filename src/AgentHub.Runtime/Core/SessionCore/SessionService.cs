@@ -143,7 +143,7 @@ public sealed class SessionService
         return _index.ListProjects(agent);
     }
 
-    public IReadOnlyList<(string Id, string Name)> Sources()
+    public IReadOnlyList<(string Id, string Name, bool HasContent)> Sources()
     {
         var ok = new HashSet<string>(_index.OkAgents, StringComparer.OrdinalIgnoreCase);
         if (ok.Count == 0)
@@ -151,7 +151,9 @@ public sealed class SessionService
             foreach (var s in AllowedAgents()) ok.Add(s);
             if (Cursor.MissingReason is not null) ok.Remove("cursor");
         }
-        var list = new List<(string Id, string Name)>();
+        // 索引还没建时不能拿条数当依据，否则首屏筛选项会全空
+        var counts = _index.Count > 0 ? _index.CountsByAgent() : null;
+        var scored = new List<(string Id, string Name, int Count)>();
         foreach (var id in _config.Dashboard.ResolvedAgentOrder())
         {
             // 云端并进「Cursor」筛选项，不单独占一个 chip
@@ -166,14 +168,22 @@ public sealed class SessionService
                     && CursorCloud.MissingReason is null
                     && _config.Dashboard.SessionReadable("cursor-cloud");
                 if (!localOk && !cloudOk) continue;
-                list.Add(("cursor", DashboardSettings.AgentDisplayName("cursor")));
+                scored.Add(("cursor", DashboardSettings.AgentDisplayName("cursor"),
+                    CountOf(counts, "cursor") + CountOf(counts, "cursor-cloud")));
                 continue;
             }
             if (!ok.Contains(id) || !_config.Dashboard.SessionReadable(id)) continue;
-            list.Add((id, DashboardSettings.AgentDisplayName(id)));
+            scored.Add((id, DashboardSettings.AgentDisplayName(id), CountOf(counts, id)));
         }
-        return list;
+        // 有内容的排前面；同条数保持 ResolvedAgentOrder 的相对顺序（OrderByDescending 稳定）。
+        // 0 条的照旧返回：残留清理那块要看「这家能不能读」，不是「有没有会话」。
+        var ordered = scored.OrderByDescending(x => x.Count)
+            .Select(x => (x.Id, x.Name, x.Count > 0)).ToList();
+        return ordered;
     }
+
+    private static int CountOf(Dictionary<string, int>? counts, string agentId) =>
+        counts is null ? 1 : counts.GetValueOrDefault(agentId);
 
     public async Task EnsureIndexAsync(bool force = false)
     {

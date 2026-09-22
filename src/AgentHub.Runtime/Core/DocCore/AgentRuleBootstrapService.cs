@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AgentHub.Core.Platform;
 using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.DocCore;
@@ -420,7 +421,10 @@ public sealed class AgentRuleBootstrapService
 
     private AgentRuleItem InspectAgent(Descriptor descriptor, string libraryRoot, string master)
     {
-        if (!Directory.Exists(descriptor.Root))
+        // 判「装没装」只认 App 自己写的条目：skills 镜像和指针文件都是我们落的，卸载后根目录还在。
+        // WorkBuddy 的进程是唯一旁证——首次启动时 app-config.json 还没生成，根里只剩托管 skills。
+        if (!AgentPresence.HasOwnFootprint(descriptor.Root)
+            && !(descriptor.Kind == RuleKind.WorkBuddy && IsWorkBuddyRunning()))
             return Item(descriptor, false, AgentRuleStatus.NotDetected, null, "未发现", false);
         return descriptor.Kind switch
         {

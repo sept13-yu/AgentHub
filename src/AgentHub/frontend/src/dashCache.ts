@@ -10,6 +10,7 @@ export const dashCache = {
   primed: false,
   range: 'today' as RangeKey,
   expanded: null as string | null,
+  historyOpen: false,
   usage: emptyUsageView() as UsageView,
   quotasReady: false,
   tiles: [] as QuotaTile[],

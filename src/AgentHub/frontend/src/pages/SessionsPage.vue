@@ -18,7 +18,7 @@ const readonly = !WRITABLE
 const titleInput = ref<{ focus: () => void } | null>(null)
 
 type RangeKey = 'week' | 'before' | 'all'
-interface Source { id: string; name: string }
+interface Source { id: string; name: string; hasContent?: boolean }
 interface SessionRow {
   id: string
   agent: string
@@ -97,6 +97,9 @@ const pendingRows = ref<SessionRow[]>([])
 
 const items = computed(() => page.value?.items ?? [])
 const sources = computed(() => page.value?.sources ?? [])
+// 0 条会话的家不占筛选项。后端仍把它返回在 sources 里：残留清理那块要看「这家能不能读」，
+// 不是「有没有会话」——解析不出会话的家恰恰最需要清。
+const chipSources = computed(() => sources.value.filter((s) => s.hasContent !== false))
 const groups = computed(() => {
   const map = new Map<string, { key: string; name: string; path: string; items: SessionRow[] }>()
   for (const row of items.value) {
@@ -289,6 +292,9 @@ async function loadList() {
     if (off >= data.total || data.items.length === 0 || data.items.length < lim) break
   }
   page.value = last ? { ...last, items: acc, offset: 0, limit: acc.length } : null
+  // 选中的这家这轮没内容了（筛选项已收起），别停在一个不存在的 chip 上
+  if (agent.value !== 'all' && !chipSources.value.some((s) => s.id === agent.value))
+    agent.value = 'all'
   const keys = new Set(acc.map(keyOf))
   if (current.value && !keys.has(keyOf(current.value))) closePreview()
 }
@@ -737,7 +743,7 @@ onMounted(() => { void load() })
       <template #icon><n-icon><Trash2 :size="16" :stroke-width="1.8" /></n-icon></template>
       删除
     </n-button>
-    <n-button type="primary" :disabled="readonly" @click="refresh">
+    <n-button :disabled="readonly" @click="refresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
       刷新
     </n-button>
@@ -751,7 +757,7 @@ onMounted(() => { void load() })
             <div class="sess-src" role="group" aria-label="来源">
               <button type="button" :aria-pressed="agent === 'all' ? 'true' : 'false'" @click="pickAgent('all')">全部</button>
               <button
-                v-for="s in sources"
+                v-for="s in chipSources"
                 :key="s.id"
                 type="button"
                 :aria-pressed="agent === s.id ? 'true' : 'false'"

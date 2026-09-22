@@ -108,6 +108,7 @@ public static class UsageEndpoints
                     config.Dashboard.ShowAgentQoderCn,
                     agentOrder = config.Dashboard.ResolvedAgentOrder(),
                     quotaOrder = config.Dashboard.ResolvedQuotaOrder(),
+                    agentPresence = AgentPresence.Snapshot(),
                     costCurrency = DashboardSettings.NormalizeCurrency(config.Dashboard.CostCurrency),
                     prices = PriceSyncService.Resolve(config.Dashboard.PriceOverrides),
                     priceSync = PriceSyncService.Status(),

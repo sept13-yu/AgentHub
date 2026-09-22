@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.RegularExpressions;
 using System.IO;
 using AgentHub.Core.CodexConfigCore;
+using AgentHub.Core.Platform;
 using System.IO;
 using AgentHub.Core.ProxyCore;
 using System.IO;
@@ -25,7 +26,7 @@ public sealed partial class CodexMcpAdapter : IMcpAdapter
     public string DisplayName => "Codex";
     public string ConfigPath { get; }
     public bool Detected => File.Exists(ConfigPath)
-        || Directory.Exists(Path.GetDirectoryName(ConfigPath) ?? "");
+        || AgentPresence.HasOwnFootprint(Path.GetDirectoryName(ConfigPath) ?? "");
 
     public CodexMcpAdapter(string? configPath = null)
     {

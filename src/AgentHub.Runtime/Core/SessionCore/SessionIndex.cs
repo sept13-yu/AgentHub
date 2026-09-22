@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Text.Json;
 using AgentHub.Core.ProxyCore;
 
@@ -34,6 +34,17 @@ internal sealed class SessionIndex
     public int Count
     {
         get { lock (_gate) return _items.Count; }
+    }
+
+    /// <summary>各家在列表里看得见的条数：子代理并进父会话，与 Query 同口径。用来决定筛选项出不出、谁在前。</summary>
+    public Dictionary<string, int> CountsByAgent()
+    {
+        List<ConversationSummary> snapshot;
+        lock (_gate) snapshot = _items.ToList();
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in MergeSubs(snapshot))
+            counts[s.AgentId] = counts.GetValueOrDefault(s.AgentId) + 1;
+        return counts;
     }
 
     public void LoadFromDisk()

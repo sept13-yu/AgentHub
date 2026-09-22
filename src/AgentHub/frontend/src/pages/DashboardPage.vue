@@ -1,23 +1,20 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { NButton, NIcon, NPopover, useMessage } from 'naive-ui'
-import { ArrowDownRight, ArrowUpRight, CircleAlert, RefreshCw } from 'lucide-vue-next'
+import { ChevronDown, CircleAlert, RefreshCw } from 'lucide-vue-next'
 import AgentMark from '../components/AgentMark.vue'
 import UsageHeatmap from '../components/UsageHeatmap.vue'
+import DashboardUsage from '../components/DashboardUsage.vue'
 import { get, post, put, WRITABLE } from '../api'
 import { moveItem } from '../settingsModel'
 import { toQuotaTiles, type QuotaTile } from '../quotaView'
 import { dashCache } from '../dashCache'
 import { usePageHotkeys } from '../hotkeys'
-import { costCurrency, toggleCostCurrency } from '../costCurrency'
 import {
-  displayCostText,
   formatTokens,
   RANGES,
-  splitTokens,
   toUsageView,
   usageErrorView,
-  visibleModels,
   type RangeKey,
 } from '../usageView'
 
@@ -25,7 +22,6 @@ const message = useMessage()
 const pageLoading = inject<Ref<boolean>>('page-loading')
 
 const range = ref<RangeKey>(dashCache.range)
-const expanded = ref<string | null>(dashCache.expanded)
 const refreshing = ref(false)
 const usage = ref(dashCache.usage)
 const quotasReady = ref(dashCache.quotasReady)
@@ -44,7 +40,7 @@ const drag = ref<{
   w: number
   h: number
   html: string
-  span2: boolean
+  isBalance: boolean
   settling: boolean
 } | null>(null)
 const savedOrder = ref(dashCache.tiles.map((t) => t.id).join('\n'))
@@ -59,31 +55,15 @@ const ghostStyle = computed(() => {
     height: `${d.h}px`,
   }
 })
-const modelsEl = ref<HTMLElement | null>(null)
-const modelsOverflow = ref(false)
-
-const rangeLabel = computed(() => RANGES.find((r) => r.key === range.value)?.label ?? '')
-const heroSplit = computed(() => splitTokens(usage.value.totalTokens))
-const costText = computed(() => displayCostText(usage.value.cost))
-const costToggleHint = computed(() =>
-  costCurrency.value === 'CNY' ? '点击改为美元' : '点击改为人民币',
-)
-const ringPaint = computed(() => {
-  const parts = usage.value.agents.filter((a) => a.pct > 0)
-  if (!parts.length) return { background: 'var(--wash)' }
-  let acc = 0
-  const stops: string[] = []
-  for (const a of parts) {
-    const from = acc
-    acc = Math.min(100, acc + a.pct)
-    stops.push(`${a.color} ${from}% ${acc}%`)
-  }
-  if (acc < 100) stops.push(`var(--wash) ${acc}% 100%`)
-  return { background: `conic-gradient(from -90deg, ${stops.join(', ')})` }
-})
-const openAgent = computed(() => usage.value.agents.find((a) => a.id === expanded.value) ?? null)
-
-// 热力图右侧的统计砖：全部由 usage.days 现算，口径与热力图一致（不含未来日）。
+const historyOpen = ref(dashCache.historyOpen)
+const displayTiles = computed(() => [
+  ...tiles.value.filter((t) => t.kind === 'windows'),
+  ...tiles.value.filter((t) => t.kind === 'balance'),
+])
+const firstBalanceId = computed(() => tiles.value.find((t) => t.kind === 'balance')?.id)
+const exhaustedCount = computed(() => tiles.value.reduce((sum, t) =>
+  sum + (t.kind === 'windows' ? t.windows.filter((w) => w.remain === 0).length : 0), 0))
+// 历史统计由 usage.days 现算，口径与热力图一致（不含未来日）。
 const heatStats = computed(() => {
   const days = usage.value.days ?? []
   let total = 0
@@ -123,17 +103,9 @@ const heatStats = computed(() => {
     streak: `${best} 天`,
   }
 })
-const shownModels = computed(() => {
-  const agent = openAgent.value
-  if (!agent) return []
-  return modelsOverflow.value ? visibleModels(agent) : agent.models
-})
-
-async function measureModels() {
-  modelsOverflow.value = false
-  await nextTick()
-  const el = modelsEl.value
-  modelsOverflow.value = !!el && el.scrollHeight > el.clientHeight + 1
+function toggleHistory(event: Event) {
+  historyOpen.value = (event.currentTarget as HTMLDetailsElement).open
+  dashCache.historyOpen = historyOpen.value
 }
 
 function setLoading(on: boolean) {
@@ -142,7 +114,6 @@ function setLoading(on: boolean) {
 
 function persist() {
   dashCache.range = range.value
-  dashCache.expanded = expanded.value
   dashCache.usage = usage.value
   dashCache.quotasReady = quotasReady.value
   dashCache.tiles = tiles.value
@@ -152,12 +123,6 @@ function persist() {
 function pickRange(key: RangeKey) {
   if (key === range.value) return
   range.value = key
-  expanded.value = null
-  persist()
-}
-
-function toggleAgent(id: string) {
-  expanded.value = expanded.value === id ? null : id
   persist()
 }
 
@@ -174,12 +139,9 @@ function errMessage(e: unknown): string {
 async function loadUsage() {
   try {
     usage.value = toUsageView(await get(`/api/usage?range=${range.value}`), range.value)
-    if (expanded.value && !usage.value.agents.some((a) => a.id === expanded.value))
-      expanded.value = null
     persist()
   } catch (e) {
     usage.value = usageErrorView(errMessage(e))
-    expanded.value = null
     persist()
   }
 }
@@ -280,12 +242,8 @@ watch(range, async () => {
   setLoading(false)
 })
 
-watch([() => openAgent.value?.id, () => openAgent.value?.models.length], () => {
-  void measureModels()
-})
-
 function onResize() {
-  void measureModels()
+  if (drag.value) readSlots()
 }
 
 function tileOrderKey(list: QuotaTile[] = tiles.value): string {
@@ -360,7 +318,7 @@ function onTilePointerMove(e: PointerEvent) {
       w: rect.width,
       h: rect.height,
       html: p.el.innerHTML,
-      span2: p.el.classList.contains('span-2'),
+      isBalance: p.el.classList.contains('is-balance'),
       settling: false,
     }
     press.value = null
@@ -399,6 +357,7 @@ function hitReorder(cx: number, cy: number) {
   const from = tiles.value.findIndex((t) => t.id === d.id)
   const to = tiles.value.findIndex((t) => t.id === hit)
   if (from < 0 || to < 0 || from === to) return
+  if (tiles.value[from].kind !== tiles.value[to].kind) return
   lockId = hit
   flipMove(from, to)
 }
@@ -497,7 +456,6 @@ onMounted(() => {
   window.addEventListener('resize', onResize)
   staleRetries = 0
   if (dashCache.primed) {
-    void measureModels()
     return
   }
   // 首屏遮罩只等本地 usage（毫秒级）；额度后台补齐，不卡启动
@@ -505,7 +463,6 @@ onMounted(() => {
   void loadQuotas(false)
   void loadUsage().finally(() => {
     setLoading(false)
-    void measureModels()
   })
 })
 
@@ -541,117 +498,28 @@ onUnmounted(() => {
     </div>
   </teleport>
   <teleport defer to="#chrome-actions">
-    <n-button type="primary" :loading="refreshing" @click="onRefresh">
+    <n-button :loading="refreshing" @click="onRefresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
       刷新
     </n-button>
   </teleport>
 
-  <section class="card" aria-labelledby="usage-title">
-    <div class="card-body">
-      <p v-if="usage.error" class="usage-error">{{ usage.error }}</p>
-      <div v-else class="usage-stack">
-      <div class="split">
-        <div class="ring-col">
-          <div class="donut-wrap">
-            <div class="donut-track" aria-hidden="true" />
-            <div class="donut-ring" aria-hidden="true" :style="ringPaint" />
-            <div class="donut-core">
-              <span id="usage-title" class="hero num">{{ heroSplit.val }}</span>
-              <span class="unit">{{ heroSplit.unit ? heroSplit.unit + ' · ' : '' }}{{ rangeLabel }}</span>
-            </div>
-          </div>
-          <div class="ring-meta">
-            <div v-if="usage.delta" class="delta" :class="usage.delta.kind">
-              <n-icon v-if="usage.delta.kind === 'up'" :size="14"><ArrowUpRight :stroke-width="2.4" /></n-icon>
-              <n-icon v-else-if="usage.delta.kind === 'down'" :size="14"><ArrowDownRight :stroke-width="2.4" /></n-icon>
-              <span class="vs">{{ usage.delta.vs }}</span>
-              <span class="num">{{ usage.delta.text }}</span>
-            </div>
-            <button
-              v-if="usage.cost?.kind === 'amount'"
-              type="button"
-              class="cost cost--toggle num"
-              :title="costToggleHint"
-              :aria-label="costToggleHint"
-              @click="toggleCostCurrency"
-            >{{ costText }}</button>
-            <div v-else-if="usage.cost" class="cost num">{{ costText }}</div>
-          </div>
-        </div>
-        <div v-if="usage.agents.length">
-          <div class="agents">
-            <button
-              v-for="a in usage.agents"
-              :key="a.id"
-              type="button"
-              class="agent"
-              :aria-expanded="expanded === a.id ? 'true' : 'false'"
-              @click="toggleAgent(a.id)"
-            >
-              <AgentMark :id="a.id" />
-              <span class="agent-name">{{ a.name }}</span>
-              <span class="bar" aria-hidden="true"><i :style="{ '--c': a.color, '--w': a.pct + '%' }" /></span>
-              <span class="agent-stat num">{{ formatTokens(a.tokens) }} · {{ a.pct }}%</span>
-            </button>
-          </div>
-          <template v-if="openAgent">
-            <div class="models-label">{{ openAgent.name }} 的模型</div>
-            <div ref="modelsEl" class="models">
-              <span
-                v-for="m in shownModels"
-                :key="m.name"
-                class="model"
-                :class="{ 'is-no-price': m.noPrice }"
-                :title="m.noPrice ? '暂无牌价' : undefined"
-              >
-                <i :style="{ '--c': openAgent.color }" />
-                <b v-if="m.noPrice" class="no-price-dot" aria-label="暂无牌价" />
-                {{ m.name }} {{ m.pct }}% · {{ formatTokens(m.tokens) }}
-              </span>
-            </div>
-          </template>
-        </div>
-      </div>
-      <div class="heat-row">
-        <UsageHeatmap :days="usage.days" />
-        <div class="heat-stats">
-          <div class="hstat">
-            <span class="hstat-lbl">近半年合计</span>
-            <span class="hstat-val num">{{ heatStats.total }}</span>
-          </div>
-          <div class="hstat">
-            <span class="hstat-lbl">活跃天数</span>
-            <span class="hstat-val num">{{ heatStats.active }}</span>
-          </div>
-          <div class="hstat">
-            <span class="hstat-lbl" :title="heatStats.peakDate">单日峰值</span>
-            <span class="hstat-val num">{{ heatStats.peak }}</span>
-          </div>
-          <div class="hstat">
-            <span class="hstat-lbl">最长连续</span>
-            <span class="hstat-val num">{{ heatStats.streak }}</span>
-          </div>
-        </div>
-      </div>
-      </div>
-    </div>
-  </section>
+  <DashboardUsage :usage="usage" :range="range" />
 
-  <section v-if="quotasReady" class="card" aria-labelledby="quota-title">
+  <section v-if="quotasReady" class="card quota-card" aria-labelledby="quota-title">
     <div class="card-head">
-      <span id="quota-title">额度</span>
-      <span v-if="canSort" class="hint">拖动排序</span>
+      <h2 id="quota-title">可用额度</h2>
+      <span v-if="exhaustedCount" class="quota-alert">{{ exhaustedCount }} 项已用尽</span>
     </div>
     <div v-if="tiles.length" class="card-body">
       <div ref="gridEl" class="qtiles" :class="{ 'is-sorting': !!drag }">
+        <template v-for="q in displayTiles" :key="q.id">
+        <div v-if="q.id === firstBalanceId" class="balance-divider">余额与积分</div>
         <div
-          v-for="q in tiles"
-          :key="q.id"
           class="qtile"
           :data-qid="q.id"
           :class="{
-            'span-2': q.kind !== 'balance' && q.span === 2,
+            'is-balance': q.kind === 'balance',
             'is-origin': drag?.id === q.id,
             'can-sort': canSort,
           }"
@@ -694,14 +562,28 @@ onUnmounted(() => {
             </div>
           </template>
         </div>
+        </template>
       </div>
     </div>
+    <p v-else class="quota-empty">暂无可用额度，可在设置中检查已启用来源。</p>
   </section>
+
+  <details v-if="!usage.error" class="history" :open="historyOpen" @toggle="toggleHistory">
+    <summary><span>近半年活动</span><span class="history-summary num">{{ heatStats.active }}活跃 · 合计 {{ heatStats.total }}</span><ChevronDown :size="16" aria-hidden="true" /></summary>
+    <div class="heat-body">
+      <UsageHeatmap :days="usage.days" />
+      <div class="heat-stats source-hint">
+        <span :title="heatStats.peakDate">单日峰值 <b class="num">{{ heatStats.peak }}</b></span>
+        <span>最长连续 <b class="num">{{ heatStats.streak }}</b></span>
+      </div>
+    </div>
+  </details>
+
   <Teleport to="body">
     <div
       v-if="drag"
       class="qtile qtile-float"
-      :class="{ 'is-settle': drag.settling }"
+      :class="{ 'is-settle': drag.settling, 'is-balance': drag.isBalance }"
       :style="ghostStyle"
       v-html="drag.html"
     />
@@ -709,317 +591,48 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.usage-stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-6);
-}
-.heat-row {
-  display: flex;
-  align-items: stretch;
-  flex-wrap: wrap;
-  gap: var(--sp-5);
-  padding-top: var(--sp-5);
-  box-shadow: var(--rule-hi);
-}
-.heat-row :deep(.heat) {
-  width: auto;
-  flex: none;
-}
-.heat-stats {
-  flex: 1 1 300px;
-  min-width: 280px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-3);
-}
-.hstat {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-4);
-  min-width: 0;
-  min-height: 48px;
-  padding: 0 var(--sp-4);
-  border: 1px solid var(--stroke);
-  border-radius: var(--r-card);
-  background: var(--surface);
-}
-.hstat-lbl {
-  font-size: var(--fs-caption);
-  color: var(--faint);
-  flex: none;
-}
-.hstat-val {
-  font-size: var(--fs-card);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.split {
-  display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
-  gap: var(--sp-7);
-  align-items: center;
-}
-.ring-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-3);
-}
-.donut-wrap {
-  width: 200px;
-  height: 200px;
-  position: relative;
-}
-.donut-track,
-.donut-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 16px), #000 calc(100% - 15px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 16px), #000 calc(100% - 15px));
-}
-.donut-track {
-  background: var(--wash);
-}
-.donut-core {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-.donut-core .hero {
-  font-size: var(--fs-hero);
-  font-weight: 600;
-  letter-spacing: -0.03em;
-  line-height: 1;
-}
-.donut-core .unit {
-  font-size: var(--fs-caption);
-  color: var(--faint);
-  margin-top: var(--sp-1);
-}
-.ring-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-1);
-}
-.delta {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-body);
-  font-weight: 500;
-}
-.delta .vs {
-  font-weight: 400;
-  color: var(--faint);
-}
-.delta.up {
-  color: var(--warn);
-}
-.delta.down {
-  color: var(--ok);
-}
-.delta.flat {
-  color: var(--dim);
-  font-weight: 400;
-}
-.cost {
-  font-size: var(--fs-body);
-  color: var(--dim);
-}
-button.cost {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-  transition: color var(--dur) linear;
-}
-button.cost:hover,
-button.cost:focus-visible {
-  color: var(--text);
-}
-.usage-error {
-  margin: 0;
-  padding: var(--sp-3) var(--sp-4);
-  color: var(--error-fg);
-  background: var(--error-soft);
-  border-radius: var(--r-in);
-  font-size: var(--fs-body);
-}
-
-.tabs {
-  display: inline-flex;
-  align-items: stretch;
-  gap: var(--sp-4);
-  height: var(--h-control);
-}
-.tabs button {
-  border: 0;
-  background: transparent;
-  color: var(--dim);
-  font: inherit;
-  font-size: var(--fs-small);
-  padding: 0;
-  height: var(--h-control);
-  cursor: pointer;
-  box-shadow: inset 0 -2px 0 transparent;
-  transition:
-    color var(--dur) linear,
-    box-shadow var(--dur) linear;
-}
-.tabs button:hover,
-.tabs button:active {
-  color: var(--text);
-}
-.tabs button[aria-pressed='true'] {
-  color: var(--text);
-  font-weight: 500;
-  box-shadow: inset 0 -2px 0 var(--accent-solid);
-}
-
-.agents {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-}
-.agent {
-  display: grid;
-  grid-template-columns: var(--icon) 88px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--sp-3);
-  width: 100%;
-  height: var(--h-row);
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--stroke);
-  border-radius: 999px;
-  background: var(--surface);
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition:
-    background var(--dur) linear,
-    border-color var(--dur) linear;
-}
-.agent:hover {
-  background: var(--surface-hi);
-}
-.agent:active,
-.agent[aria-expanded='true'] {
-  border-color: var(--stroke-strong);
-  background: var(--surface-hi);
-}
-.dot {
-  width: var(--sp-2);
-  height: var(--sp-2);
-  border-radius: 50%;
-  flex: none;
-  background: var(--c);
-  box-shadow: 0 0 0 1px var(--dot-ring);
-}
-.agent-name {
-  font-weight: 500;
-  font-size: var(--fs-small);
-}
-.agent .bar {
-  height: 4px;
-  border-radius: var(--r-pill);
-  background: var(--wash);
-  overflow: hidden;
-}
-.agent .bar i {
-  display: block;
-  height: 100%;
-  width: var(--w);
-  background: var(--c);
-  box-shadow: inset 0 0 0 1px var(--dot-ring);
-}
-.agent-stat {
-  font-size: var(--fs-caption);
-  color: var(--dim);
-  min-width: 96px;
-  text-align: right;
-}
-
-.models-label {
-  font-size: var(--fs-caption);
-  color: var(--faint);
-  margin: var(--sp-4) 0 var(--sp-2);
-}
-.models {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-  max-height: calc(var(--h-control) * 2 + var(--sp-2));
-  overflow: auto;
-}
-.model {
-  height: var(--h-control);
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--stroke);
-  background: var(--surface);
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-caption);
-  color: var(--dim);
-}
-.model i {
-  width: var(--sp-2);
-  height: var(--sp-2);
-  border-radius: 50%;
-  background: var(--c);
-  box-shadow: 0 0 0 1px var(--dot-ring);
-}
-.model.is-no-price {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--stroke));
-}
-.model .no-price-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--danger);
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--danger) 28%, transparent),
-    0 0 0 1px var(--danger);
-}
-
+.quota-card { container: quota / inline-size; }
+h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
+.source-hint { color: var(--dim); font-size: var(--fs-caption); }
+.tabs { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.tabs button { border: 0; border-radius: var(--r-in); background: transparent; color: var(--dim); font: inherit; font-size: var(--fs-small); padding: 0 var(--sp-3); height: var(--h-control); cursor: pointer; }
+.tabs button:hover { color: var(--text); }
+.tabs button[aria-pressed='true'] { color: var(--accent-solid); background: var(--accent-soft); }
+.quota-card > .card-head { border-bottom: 0; flex-wrap: wrap; padding-bottom: 0; }
+.quota-alert { color: var(--danger); margin-left: auto; font-size: var(--fs-caption); font-weight: 400; }
+.quota-empty { margin: 0; padding: var(--pad-card); color: var(--dim); }
+.history { border-top: 1px solid var(--stroke); flex-shrink: 0; }
+.history summary { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); padding: var(--sp-4) 0; list-style: none; cursor: pointer; }
+.history summary::-webkit-details-marker { display: none; }
+.history-summary { color: var(--dim); font-size: var(--fs-caption); margin-left: auto; }
+.history[open] summary svg { transform: rotate(180deg); }
+.heat-body { display: flex; flex-direction: column; gap: var(--sp-3); padding-bottom: var(--sp-3); }
+.heat-body :deep(.heat) { width: 100%; min-width: 0; container-type: inline-size; }
+.heat-body :deep(.heat-board) { --heat-cell: clamp(8px, calc((100cqi - 123px) / 26), 16px); }
+.heat-stats { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-6); }
+.heat-stats b { font-weight: 500; }
 :global(html.ah-tile-sorting) {
   cursor: grabbing;
 }
 .qtiles {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: var(--sp-6) var(--sp-7);
+  align-items: start;
 }
 .qtile {
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: var(--sp-2);
   min-width: 0;
-  /* 与余额砖（大号 metric）视觉齐平；单窗进度砖单独占行时不再被压矮 */
-  min-height: 92px;
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--stroke);
-  border-radius: var(--r-card);
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0 0;
+  border-top: 1px solid var(--stroke);
   background: var(--surface);
 }
+.qtile.is-balance { border-top: 0; padding-top: 0; }
+.balance-divider { grid-column: 1 / -1; border-top: 1px solid var(--stroke); padding-top: var(--sp-4); color: var(--dim); font-size: var(--fs-caption); }
 .qtile.can-sort {
   cursor: grab;
   touch-action: none;
@@ -1034,8 +647,8 @@ button.cost:focus-visible {
 }
 .qtile.is-origin {
   background: var(--wash);
-  border-style: dashed;
-  border-color: var(--stroke-strong);
+  outline: 1px dashed var(--stroke-strong);
+  outline-offset: 4px;
 }
 .qtile.is-origin > * {
   visibility: hidden;
@@ -1069,12 +682,12 @@ button.cost:focus-visible {
 }
 .q-corner {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: var(--sp-4);
+  right: 0;
   display: flex;
   align-items: center;
   gap: 4px;
-  max-width: calc(100% - 12px);
+  max-width: 48%;
 }
 .q-due {
   display: grid;
@@ -1098,9 +711,7 @@ button.cost:focus-visible {
   font-size: var(--fs-caption);
   color: var(--text);
 }
-.qtile.span-2 {
-  grid-column: span 2;
-}
+.qtile.is-balance .q-corner { top: 0; }
 .q-plan {
   display: inline-flex;
   align-items: center;
@@ -1118,6 +729,8 @@ button.cost:focus-visible {
   text-overflow: ellipsis;
 }
 .q-house {
+  padding-right: 48%;
+  min-height: 20px;
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -1130,7 +743,7 @@ button.cost:focus-visible {
   white-space: nowrap;
 }
 .q-metric {
-  font-size: var(--fs-metric);
+  font-size: var(--fs-card);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.1;
@@ -1141,7 +754,7 @@ button.cost:focus-visible {
 }
 .qwin {
   display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) 36px 72px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--sp-2);
   min-height: 28px;
@@ -1152,7 +765,9 @@ button.cost:focus-visible {
   color: var(--text);
 }
 .qbar {
-  height: 6px;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  height: 4px;
   border-radius: var(--r-pill);
   background: var(--wash);
   overflow: hidden;
@@ -1172,33 +787,9 @@ button.cost:focus-visible {
   text-align: right;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
-@media (max-width: 1279px) {
-  .split {
-    grid-template-columns: 1fr;
-  }
-  .qtiles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 
-/* 竖屏 / 很窄：配额卡单列，热力统计与用量区全部堆叠，优先可滚动而非裁切 */
-@media (max-width: 900px) {
-  .qtiles {
-    grid-template-columns: 1fr;
-  }
-  .qtile.span-2 {
-    grid-column: span 1;
-  }
-  .heat-stats {
-    grid-template-columns: 1fr;
-    min-width: 0;
-    flex-basis: 100%;
-  }
-  .split {
-    grid-template-columns: 1fr;
-  }
-}
 </style>

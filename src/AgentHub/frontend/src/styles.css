@@ -55,13 +55,13 @@ body {
   opacity: 1 !important;
 }
 
-/* 数字与路径用等宽 */
+/* 数字只对齐不换字体；等宽留给路径、代码与 .docs-body */
 .num {
-  font-family: var(--mono);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
-/* 卡片骨架：各业务页共用（顶条 2px 中性描边，无投影） */
+/* 卡片骨架：各业务页共用（1px 外框 + 头部 hairline，不再叠顶条与投影） */
 .card {
   background: var(--surface);
   border: 1px solid var(--stroke);
@@ -69,15 +69,6 @@ body {
   position: relative;
   overflow: hidden;
   flex-shrink: 0;
-  transition: border-color var(--dur) linear;
-}
-.card:hover { border-color: var(--stroke-strong); }
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 2px;
-  background: var(--stroke);
 }
 .card-head {
   display: flex;
@@ -85,10 +76,8 @@ body {
   gap: var(--sp-2);
   padding: var(--pad-head);
   border-bottom: 1px solid var(--stroke);
-  box-shadow: var(--rule-hi);
-  background: var(--surface-hi);
   font-size: var(--fs-card);
-  font-weight: 500;
+  font-weight: 600;
 }
 .card-head .hint {
   font-size: var(--fs-caption);

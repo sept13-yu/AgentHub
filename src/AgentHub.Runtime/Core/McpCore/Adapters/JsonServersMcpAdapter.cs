@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json.Nodes;
 using System.IO;
+using AgentHub.Core.Platform;
 using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.McpCore.Adapters;
@@ -26,7 +27,9 @@ public abstract class JsonServersMcpAdapter : IMcpAdapter
     public string AgentId { get; }
     public string DisplayName { get; }
     public string ConfigPath { get; }
-    public virtual bool Detected => File.Exists(ConfigPath) || Directory.Exists(Path.GetDirectoryName(ConfigPath) ?? "");
+    /// <summary>配置在，或那家里还有 App 自己写的东西。根目录存在不算证据：mcp.json 和 skills 都是我们落的。</summary>
+    public virtual bool Detected => File.Exists(ConfigPath)
+        || AgentPresence.HasOwnFootprint(Path.GetDirectoryName(ConfigPath) ?? "");
 
     public IReadOnlyList<McpServerSpec> List()
     {
@@ -170,7 +173,7 @@ public sealed class ZcodeMcpAdapter : JsonServersMcpAdapter
 
     public override bool Detected =>
         File.Exists(ConfigPath)
-        || Directory.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zcode"));
+        || AgentPresence.HasOwnFootprint(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".zcode"));
 
     protected override bool ReadEnabled(JsonObject node)
     {
