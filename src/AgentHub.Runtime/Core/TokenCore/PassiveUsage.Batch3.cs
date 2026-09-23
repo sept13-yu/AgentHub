@@ -39,6 +39,9 @@ internal static partial class PassiveUsage
     public static List<UsageRecord> ReadPi(IEnumerable<string> agentDirs) =>
         ReadPiFamily(agentDirs, PiKind.Pi);
 
+    public static List<UsageRecord> ReadPrimeAgent(IEnumerable<string> agentDirs) =>
+        ReadPiFamily(agentDirs, PiKind.Prime);
+
     private static List<UsageRecord> ReadCodexRollouts(string tool, IEnumerable<string> homes)
     {
         var list = new List<UsageRecord>();
@@ -211,7 +214,7 @@ internal static partial class PassiveUsage
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload))).ToLowerInvariant();
     }
 
-    private enum PiKind { OhMyPi, Omo, Pi }
+    private enum PiKind { OhMyPi, Omo, Pi, Prime }
 
     private static List<UsageRecord> ReadPiFamily(IEnumerable<string> agentDirs, PiKind kind)
     {
@@ -221,9 +224,10 @@ internal static partial class PassiveUsage
         {
             PiKind.OhMyPi => "omp-unknown",
             PiKind.Omo => "omo-unknown",
+            PiKind.Prime => "prime-agent-unknown",
             _ => "pi-unknown",
         };
-        foreach (var file in PiSessionFiles(agentDirs))
+        foreach (var file in PiSessionFiles(agentDirs, includeRoot: kind == PiKind.Prime))
         {
             string? project = null;
             var sub = IsPiSubagent(file);
@@ -270,6 +274,7 @@ internal static partial class PassiveUsage
                     {
                         PiKind.OhMyPi => "oh-my-pi",
                         PiKind.Omo => "omo",
+                        PiKind.Prime => "prime-agent",
                         _ => PiTool(UsageParsers.GetStr(msg, "provider")),
                     };
                     var row = Row(tool, sessionId, id, ts.Value, input, output, cacheRead, cacheWrite, reasoning,
@@ -339,7 +344,7 @@ internal static partial class PassiveUsage
         return UsageParsers.ParseIso(UsageParsers.GetStr(entry, "timestamp"));
     }
 
-    private static List<string> PiSessionFiles(IEnumerable<string> agentDirs)
+    private static List<string> PiSessionFiles(IEnumerable<string> agentDirs, bool includeRoot = false)
     {
         var files = new List<string>();
         foreach (var agent in agentDirs)
@@ -347,6 +352,12 @@ internal static partial class PassiveUsage
             if (string.IsNullOrWhiteSpace(agent)) continue;
             var sessions = Path.Combine(agent, "sessions");
             if (!Directory.Exists(sessions)) continue;
+            if (includeRoot)
+            {
+                files.AddRange(UsageIo.EnumerateFiles(sessions, 8, static (path, _) =>
+                    path.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)));
+                continue;
+            }
             IEnumerable<string> cwdDirs;
             try { cwdDirs = Directory.EnumerateDirectories(sessions).ToList(); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { continue; }

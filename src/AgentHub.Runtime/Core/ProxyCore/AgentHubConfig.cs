@@ -65,6 +65,7 @@ public sealed class DashboardSettings
         "minimax", "antigravity", "reasonix", "devin", "opencode", "claude-code",
         "gemini-cli", "kiro", "copilot", "kimi-code", "codebuddy", "hermes",
         "openclaw", "every-code", "astudio", "oh-my-pi", "omo", "pi",
+        "prime-agent", "craft-agents", "kilo-cli", "kilo-code", "roo-code", "zed-agent",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -111,6 +112,12 @@ public sealed class DashboardSettings
         ["omo"] = "omo",
         ["pi"] = "pi",
         ["dots"] = "dots",
+        ["prime-agent"] = "prime-agent",
+        ["craft-agents"] = "craft-agents",
+        ["kilo-cli"] = "kilo-cli",
+        ["kilo-code"] = "kilo-code",
+        ["roo-code"] = "roo-code",
+        ["zed-agent"] = "zed-agent",
     };
 
     private static readonly Dictionary<string, string> QuotaGroupOf = new(StringComparer.Ordinal)
@@ -303,6 +310,12 @@ public sealed class DashboardSettings
         "omo" => "OmO",
         "pi" => "pi",
         "dots" => "Dots",
+        "prime-agent" => "Prime Agent",
+        "craft-agents" => "Craft Agents",
+        "kilo-cli" => "Kilo CLI",
+        "kilo-code" => "Kilo Code",
+        "roo-code" => "Roo Code",
+        "zed-agent" => "Zed Agent",
         _ => id,
     };
 
@@ -312,7 +325,8 @@ public sealed class DashboardSettings
         "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud"
             or "minimax" or "antigravity" or "reasonix" or "devin" or "opencode" or "claude-code"
             or "gemini-cli" or "kiro" or "copilot" or "kimi-code" or "codebuddy" or "hermes"
-            or "openclaw" or "every-code" or "astudio" or "oh-my-pi" or "omo" or "pi" or "dots" => true,
+            or "openclaw" or "every-code" or "astudio" or "oh-my-pi" or "omo" or "pi" or "dots"
+            or "prime-agent" or "craft-agents" or "kilo-cli" or "kilo-code" or "roo-code" or "zed-agent" => true,
         _ => false,
     };
 }

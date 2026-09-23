@@ -99,6 +99,12 @@ export const tokens = {
     srcOmo: '#14B8A6',
     srcPi: '#A78BFA',
     srcDots: '#F472B6',
+    srcPrimeAgent: '#FDE047',
+    srcCraftAgents: '#D946EF',
+    srcKiloCli: '#06B6D4',
+    srcKiloCode: '#65A30D',
+    srcRooCode: '#D97706',
+    srcZedAgent: '#94A3B8',
   },
   light: {
     bg: '#F5F6F8',
@@ -168,6 +174,12 @@ export const tokens = {
     srcOmo: '#115E59',
     srcPi: '#4C1D95',
     srcDots: '#9D174D',
+    srcPrimeAgent: '#713F12',
+    srcCraftAgents: '#701A75',
+    srcKiloCli: '#155E75',
+    srcKiloCode: '#365314',
+    srcRooCode: '#78350F',
+    srcZedAgent: '#334155',
   },
 } as const
 

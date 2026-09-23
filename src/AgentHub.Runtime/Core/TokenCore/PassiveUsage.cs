@@ -178,7 +178,7 @@ internal static partial class PassiveUsage
             var dbPath = Path.Combine(dir, "opencode.db");
             if (!File.Exists(dbPath)) continue;
             if (!UsageIo.TrySnapshot(dbPath, "agenthub-opencode-", out var db, out var tmp)) continue;
-            try { ReadOpenCodeDb(db, byKey, fingerprintOwner); }
+            try { ReadOpenCodeDb(db, byKey, fingerprintOwner, "opencode"); }
             finally { UsageIo.DeleteSnapshot(tmp); }
         }
         return byKey.Values.ToList();
@@ -458,11 +458,11 @@ internal static partial class PassiveUsage
     }
 
     private static void ReadOpenCodeDb(
-        string db, Dictionary<string, UsageRecord> byKey, Dictionary<string, string> fingerprintOwner)
+        string db, Dictionary<string, UsageRecord> byKey, Dictionary<string, string> fingerprintOwner, string tool)
     {
         using var conn = UsageIo.OpenReadOnly(db);
         if (UsageIo.TableExists(conn, "message"))
-            ReadOpenCodeTable(conn, v2: false, null, byKey, fingerprintOwner);
+            ReadOpenCodeTable(conn, v2: false, null, byKey, fingerprintOwner, tool);
         if (!UsageIo.TableExists(conn, "session_message")) return;
         using (var probe = conn.CreateCommand())
         {
@@ -471,12 +471,12 @@ internal static partial class PassiveUsage
         }
         var sessionTable = UsageIo.TableExists(conn, "session_v2") ? "session_v2"
             : UsageIo.TableExists(conn, "session") ? "session" : null;
-        ReadOpenCodeTable(conn, v2: true, sessionTable, byKey, fingerprintOwner);
+        ReadOpenCodeTable(conn, v2: true, sessionTable, byKey, fingerprintOwner, tool);
     }
 
     private static void ReadOpenCodeTable(
         SqliteConnection conn, bool v2, string? sessionTable,
-        Dictionary<string, UsageRecord> byKey, Dictionary<string, string> fingerprintOwner)
+        Dictionary<string, UsageRecord> byKey, Dictionary<string, string> fingerprintOwner, string tool)
     {
         using var cmd = conn.CreateCommand();
         if (!v2)
@@ -518,14 +518,15 @@ internal static partial class PassiveUsage
             using (doc)
             {
                 ConsiderOpenCode(doc.RootElement, ReadText(reader, "id"), ReadText(reader, "session_id"),
-                    ReadText(reader, "directory"), byKey, fingerprintOwner, requireRole: false);
+                    ReadText(reader, "directory"), byKey, fingerprintOwner, requireRole: false, tool);
             }
         }
     }
 
     private static void ConsiderOpenCode(
         JsonElement msg, string? id, string? sessionId, string? directory,
-        Dictionary<string, UsageRecord> byKey, Dictionary<string, string> fingerprintOwner, bool requireRole)
+        Dictionary<string, UsageRecord> byKey, Dictionary<string, string> fingerprintOwner, bool requireRole,
+        string tool = "opencode")
     {
         if (requireRole && !IsRole(msg, "assistant")) return;
         if (UsageParsers.GetStr(msg, "role") is { } role && !role.Equals("assistant", StringComparison.OrdinalIgnoreCase))
@@ -539,7 +540,7 @@ internal static partial class PassiveUsage
         id = FirstText(id, UsageParsers.GetStr(msg, "id"), UsageParsers.GetStr(msg, "messageID"), UsageParsers.GetStr(msg, "messageId"));
         var key = !string.IsNullOrEmpty(sessionId) && !string.IsNullOrEmpty(id) ? sessionId + "|" + id : id ?? sessionId;
         if (string.IsNullOrEmpty(key)) return;
-        var fingerprint = $"opencode\0{created}\0{completed}\0{input}\0{output}\0{cacheRead}\0{cacheWrite}\0{reasoning}\0{model}\0{provider}";
+        var fingerprint = $"{tool}\0{created}\0{completed}\0{input}\0{output}\0{cacheRead}\0{cacheWrite}\0{reasoning}\0{model}\0{provider}";
         if (!string.IsNullOrEmpty(sessionId)
             && fingerprintOwner.TryGetValue(fingerprint, out var owner)
             && !string.Equals(owner, sessionId, StringComparison.Ordinal))
@@ -548,7 +549,7 @@ internal static partial class PassiveUsage
         var project = directory;
         if (string.IsNullOrWhiteSpace(project) && UsageParsers.GetObj(msg, "path") is { } path)
             project = UsageParsers.GetStr(path, "cwd");
-        byKey[key] = Row("opencode", string.IsNullOrEmpty(sessionId) ? key : sessionId, key, ts.Value,
+        byKey[key] = Row(tool, string.IsNullOrEmpty(sessionId) ? key : sessionId, key, ts.Value,
             input, output, cacheRead, cacheWrite, reasoning, model, string.IsNullOrWhiteSpace(project) ? null : project.Trim());
     }
 

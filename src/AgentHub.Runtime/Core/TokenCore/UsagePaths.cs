@@ -241,6 +241,125 @@ internal static class UsagePaths
     private static bool PiCodingAgentDirOwnedByPi() =>
         Directory.Exists(Path.Combine(Home, ".pi"));
 
+    public static string PrimeAgentDir(string home) => Path.Combine(home, ".prime", "agent");
+
+    public static IEnumerable<string> PrimeHomes() =>
+        OneOr(Env("TOKENTRACKER_PRIME_AGENT_HOME"), Path.Combine(Home, ".prime"));
+
+    public static IEnumerable<string> PrimeAgentDirs()
+    {
+        var over = Env("TOKENTRACKER_PRIME_AGENT_DIR");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        foreach (var home in PrimeHomes())
+            yield return Path.Combine(home, "agent");
+    }
+
+    public static string CraftConfigDir(string home) => Path.Combine(home, ".craft-agent");
+
+    public static IEnumerable<string> CraftConfigDirs() =>
+        OneOr(Env("CRAFT_CONFIG_DIR"), CraftConfigDir(Home));
+
+    /// <summary>Linux / macOS 的 XDG 数据根布局。Windows 运行时走 %APPDATA%\kilo\kilo.db。</summary>
+    public static string KiloCliDb(string dataHome) => Path.Combine(dataHome, "kilo", "kilo.db");
+
+    public static IEnumerable<string> KiloCliDbs()
+    {
+        var home = Env("KILO_HOME");
+        if (home is not null)
+        {
+            yield return Path.Combine(home, "kilo.db");
+            yield break;
+        }
+        if (OperatingSystem.IsWindows())
+            yield return Path.Combine(PlatformPaths.RoamingAppData, "kilo", "kilo.db");
+        else
+            yield return KiloCliDb(PlatformPaths.LocalAppData);
+    }
+
+    public static IEnumerable<string> KiloCliHomes()
+    {
+        foreach (var db in KiloCliDbs())
+        {
+            var dir = Path.GetDirectoryName(db);
+            if (!string.IsNullOrEmpty(dir)) yield return dir;
+        }
+    }
+
+    private static readonly string[] EditorApps =
+    [
+        "Code", "Code - Insiders", "Cursor", "CodeBuddy", "Windsurf", "VSCodium",
+    ];
+
+    /// <summary>VS Code 家族数据根。TOKENTRACKER_KILOCODE_ROOTS 按冒号拆开，和 TokenTracker 一样。</summary>
+    public static IEnumerable<string> EditorDataRoots()
+    {
+        var over = Environment.GetEnvironmentVariable("TOKENTRACKER_KILOCODE_ROOTS");
+        if (!string.IsNullOrWhiteSpace(over))
+        {
+            foreach (var part in over.Split(':', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var path = Expand(part);
+                if (path.Length > 0) yield return path;
+            }
+            yield break;
+        }
+        var baseDir = PlatformPaths.RoamingAppData;
+        foreach (var name in EditorApps)
+            yield return Path.Combine(baseDir, name);
+        if (OperatingSystem.IsMacOS())
+        {
+            yield return Path.Combine(baseDir, "Trae");
+            yield return Path.Combine(baseDir, "Trae CN");
+        }
+    }
+
+    public static string KiloCodeTasks(string editor) =>
+        Path.Combine(editor, "User", "globalStorage", "kilocode.kilo-code", "tasks");
+
+    public static string RooCodeTasks(string editor) =>
+        Path.Combine(editor, "User", "globalStorage", "rooveterinaryinc.roo-cline", "tasks");
+
+    public static IEnumerable<string> KiloCodeStorageDirs()
+    {
+        foreach (var root in EditorDataRoots())
+            yield return Path.GetDirectoryName(KiloCodeTasks(root))!;
+    }
+
+    public static IEnumerable<string> RooCodeStorageDirs()
+    {
+        foreach (var root in EditorDataRoots())
+            yield return Path.GetDirectoryName(RooCodeTasks(root))!;
+    }
+
+    /// <summary>Linux 小写 zed。macOS / Windows 运行时用 Zed。</summary>
+    public static string ZedThreadsDb(string dataHome) =>
+        Path.Combine(dataHome, "zed", "threads", "threads.db");
+
+    public static IEnumerable<string> ZedDbCandidates()
+    {
+        var over = Env("TOKENTRACKER_ZED_DB");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        var folder = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? "Zed" : "zed";
+        yield return Path.Combine(PlatformPaths.LocalAppData, folder, "threads", "threads.db");
+    }
+
+    public static IEnumerable<string> ZedProbeDirs()
+    {
+        foreach (var db in ZedDbCandidates())
+        {
+            var dir = Path.GetDirectoryName(db);
+            if (!string.IsNullOrEmpty(dir)) yield return dir;
+        }
+    }
+
     public static IEnumerable<string> ClaudeHomes()
     {
         var over = Env("CLAUDE_CONFIG_DIR");

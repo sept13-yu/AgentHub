@@ -25,6 +25,12 @@ const INK: Record<string, string> = {
   omo: 'M12 4a8 8 0 100 16 8 8 0 000-16zm0 3.2a4.8 4.8 0 110 9.6 4.8 4.8 0 010-9.6z',
   pi: 'M8 6h10v2.2H8V6zM10 6v12h2.2V6H10zM14.2 6v8h2.2V6h-2.2z',
   dots: 'M5 10.2h3.2v3.2H5v-3.2zm5.4 0h3.2v3.2h-3.2v-3.2zM15.8 10.2H19v3.2h-3.2v-3.2z',
+  'prime-agent': 'M6 4h9a5 5 0 010 10H9.2V20H6V4zm3.2 2.6v4.8H15a2.4 2.4 0 000-4.8H9.2z',
+  'craft-agents': 'M5 8h6V5h2v3h6v2h-6v9h-2V10H5V8z',
+  'kilo-cli': 'M6 4h3.2l4.8 10.2V4H17v16h-3.2L9 9.8V20H6V4z',
+  'kilo-code': 'M4 6h7v2.2H7.2V11H10v2.2H7.2V18H4V6zm9 0h7v2.2h-4.2V11H19v2.2h-3.2V18H13V6z',
+  'roo-code': 'M4 11L12 4l8 7v9H4v-9zm3 2v4h4v-4H7zm6 0v4h4v-4h-4z',
+  'zed-agent': 'M4 5h16v3H8.5l8.2 11H20v3H4v-3h10.8L6.6 8H4V5z',
 }
 
 const props = defineProps<{ id: string | null | undefined }>()

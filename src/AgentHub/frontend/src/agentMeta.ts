@@ -59,6 +59,12 @@ export const AGENT_COLOR: Record<string, string> = {
   omo: 'var(--src-omo)',
   pi: 'var(--src-pi)',
   dots: 'var(--src-dots)',
+  'prime-agent': 'var(--src-prime-agent)',
+  'craft-agents': 'var(--src-craft-agents)',
+  'kilo-cli': 'var(--src-kilo-cli)',
+  'kilo-code': 'var(--src-kilo-code)',
+  'roo-code': 'var(--src-roo-code)',
+  'zed-agent': 'var(--src-zed-agent)',
 }
 
 export const AGENT_NAME: Record<string, string> = {
@@ -94,6 +100,12 @@ export const AGENT_NAME: Record<string, string> = {
   omo: 'OmO',
   pi: 'pi',
   dots: 'Dots',
+  'prime-agent': 'Prime Agent',
+  'craft-agents': 'Craft Agents',
+  'kilo-cli': 'Kilo CLI',
+  'kilo-code': 'Kilo Code',
+  'roo-code': 'Roo Code',
+  'zed-agent': 'Zed Agent',
 }
 
 function normalizeAgentId(id: string): string {

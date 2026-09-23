@@ -87,6 +87,30 @@ internal static class UsageSourceRegistry
             ProbeRoots = static () => [],
             Units = static () => [],
         },
+        Dirs("prime-agent", UsagePaths.PrimeAgentDirs, PassiveUsage.ReadPrimeAgent),
+        Dirs("craft-agents", UsagePaths.CraftConfigDirs, PassiveUsage.ReadCraft),
+        new UsageSource
+        {
+            Id = "kilo-cli",
+            ProbeRoots = UsagePaths.KiloCliHomes,
+            Units = () =>
+            {
+                var dbs = UsagePaths.KiloCliDbs().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadKiloCli(dbs))];
+            },
+        },
+        Dirs("kilo-code", UsagePaths.EditorDataRoots, PassiveUsage.ReadKiloCode),
+        Dirs("roo-code", UsagePaths.EditorDataRoots, PassiveUsage.ReadRooCode),
+        new UsageSource
+        {
+            Id = "zed-agent",
+            ProbeRoots = UsagePaths.ZedProbeDirs,
+            Units = () =>
+            {
+                var dbs = UsagePaths.ZedDbCandidates().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadZed(dbs))];
+            },
+        },
     ];
 
     public static UsageSource? Find(string id) =>

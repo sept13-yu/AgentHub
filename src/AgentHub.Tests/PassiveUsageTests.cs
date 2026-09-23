@@ -29,6 +29,12 @@ public class PassiveUsageTests
         ["oh-my-pi"],
         ["omo"],
         ["pi"],
+        ["prime-agent"],
+        ["craft-agents"],
+        ["kilo-cli"],
+        ["kilo-code"],
+        ["roo-code"],
+        ["zed-agent"],
     ];
 
     [Theory]
@@ -64,6 +70,12 @@ public class PassiveUsageTests
             case "oh-my-pi": AssertOhMyPi(rows); break;
             case "omo": AssertOmo(rows); break;
             case "pi": AssertPi(rows); break;
+            case "prime-agent": AssertPrimeAgent(rows); break;
+            case "craft-agents": AssertCraft(rows); break;
+            case "kilo-cli": AssertKiloCli(rows); break;
+            case "kilo-code": AssertKiloCode(rows); break;
+            case "roo-code": AssertRooCode(rows); break;
+            case "zed-agent": AssertZed(rows); break;
         }
 
         if (id == "codebuddy")
@@ -116,6 +128,21 @@ public class PassiveUsageTests
         Assert.Equal(Path.Combine("home", ".omp", "agent"), UsagePaths.OmpAgentDir("home"));
         Assert.Equal(Path.Combine("home", ".omo", "agent"), UsagePaths.OmoAgentDir("home"));
         Assert.Equal(Path.Combine("home", ".pi", "agent"), UsagePaths.PiAgentDir("home"));
+    }
+
+    [Fact]
+    public void Batch4_paths_match_token_tracker_layouts()
+    {
+        Assert.Equal(Path.Combine("home", ".prime", "agent"), UsagePaths.PrimeAgentDir("home"));
+        Assert.Equal(Path.Combine("home", ".craft-agent"), UsagePaths.CraftConfigDir("home"));
+        Assert.Equal(Path.Combine("data", "kilo", "kilo.db"), UsagePaths.KiloCliDb("data"));
+        Assert.Equal(Path.Combine("data", "zed", "threads", "threads.db"), UsagePaths.ZedThreadsDb("data"));
+        Assert.Equal(
+            Path.Combine("editor", "User", "globalStorage", "kilocode.kilo-code", "tasks"),
+            UsagePaths.KiloCodeTasks("editor"));
+        Assert.Equal(
+            Path.Combine("editor", "User", "globalStorage", "rooveterinaryinc.roo-cline", "tasks"),
+            UsagePaths.RooCodeTasks("editor"));
     }
 
     [Fact]
@@ -237,6 +264,12 @@ public class PassiveUsageTests
         "oh-my-pi" => PassiveUsage.ReadOhMyPi([SeedOhMyPi(root)]),
         "omo" => PassiveUsage.ReadOmo([SeedOmo(root)]),
         "pi" => PassiveUsage.ReadPi([SeedPi(root)]),
+        "prime-agent" => PassiveUsage.ReadPrimeAgent([SeedPrimeAgent(root)]),
+        "craft-agents" => PassiveUsage.ReadCraft([SeedCraft(root)]),
+        "kilo-cli" => PassiveUsage.ReadKiloCli([SeedKiloCli(root)]),
+        "kilo-code" => PassiveUsage.ReadKiloCode([SeedKiloCode(root)]),
+        "roo-code" => PassiveUsage.ReadRooCode([SeedRooCode(root)]),
+        "zed-agent" => PassiveUsage.ReadZed([SeedZed(root)]),
         _ => throw new ArgumentOutOfRangeException(nameof(id)),
     };
 
@@ -1698,6 +1731,368 @@ public class PassiveUsageTests
                 },
             },
         });
+    }
+
+    private static void AssertPrimeAgent(List<UsageRecord> rows)
+    {
+        Assert.Equal(3, rows.Count);
+        var main = rows.Single(r => r.RequestKey == "m1");
+        Assert.Equal("sess", main.SessionId);
+        Assert.Equal(10, main.InputTokens);
+        Assert.Equal(4, main.OutputTokens);
+        Assert.Equal(2, main.CachedInputTokens);
+        Assert.Equal(1, main.CacheWriteTokens);
+        Assert.Equal(3, main.ReasoningTokens);
+        Assert.Equal("prime-model", main.Model);
+        Assert.Equal("/work/prime", main.Project);
+        Assert.False(main.IsSubagent);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), main.TsUtc);
+
+        var nested = rows.Single(r => r.RequestKey == "n1");
+        Assert.Equal("nested", nested.SessionId);
+        Assert.Equal(1, nested.InputTokens);
+        Assert.False(nested.IsSubagent);
+
+        var sub = rows.Single(r => r.RequestKey == "s1");
+        Assert.True(sub.IsSubagent);
+        Assert.Equal("sid", sub.SessionId);
+        Assert.Equal(2, sub.InputTokens);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999 || r.RequestKey == "z0");
+    }
+
+    private static void AssertCraft(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var main = rows.Single(r => r.SessionId == "s1");
+        Assert.Equal("snapshot", main.RequestKey);
+        Assert.Equal(100, main.InputTokens);
+        Assert.Equal(8, main.OutputTokens);
+        Assert.Equal(20, main.CachedInputTokens);
+        Assert.Equal(5, main.CacheWriteTokens);
+        Assert.Equal(0, main.ReasoningTokens);
+        Assert.Equal("claude-sonnet", main.Model);
+        Assert.EndsWith(Path.Combine("workspaces", "ws1"), main.Project);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), main.TsUtc);
+
+        var extra = rows.Single(r => r.SessionId == "s2");
+        Assert.Equal("snapshot", extra.RequestKey);
+        Assert.Equal(3, extra.InputTokens);
+        Assert.Equal(1, extra.OutputTokens);
+        Assert.EndsWith("relocated", extra.Project);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999 || r.SessionId == "s0");
+    }
+
+    private static void AssertKiloCli(List<UsageRecord> rows)
+    {
+        var row = Assert.Single(rows);
+        Assert.Equal("ses_kilo", row.SessionId);
+        Assert.Equal("ses_kilo|msg_k1", row.RequestKey);
+        Assert.Equal(10, row.InputTokens);
+        Assert.Equal(4, row.OutputTokens);
+        Assert.Equal(1, row.ReasoningTokens);
+        Assert.Equal(2, row.CachedInputTokens);
+        Assert.Equal(3, row.CacheWriteTokens);
+        Assert.Equal("claude-sonnet-5", row.Model);
+        Assert.Null(row.Project);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1_767_225_600_010).UtcDateTime, row.TsUtc);
+    }
+
+    private static void AssertKiloCode(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var filled = rows.Single(r => r.RequestKey == "1767225600000");
+        Assert.Equal("task-1", filled.SessionId);
+        Assert.Equal(10, filled.InputTokens);
+        Assert.Equal(4, filled.OutputTokens);
+        Assert.Equal(2, filled.CachedInputTokens);
+        Assert.Equal(1, filled.CacheWriteTokens);
+        Assert.Equal(0, filled.ReasoningTokens);
+        Assert.Equal("provider:moonshot-ai", filled.Model);
+        Assert.Null(filled.Project);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), filled.TsUtc);
+
+        var deleted = rows.Single(r => r.RequestKey == "1767225601000");
+        Assert.Equal(3, deleted.InputTokens);
+        Assert.Equal(1, deleted.OutputTokens);
+        Assert.Equal("provider:minimax", deleted.Model);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999);
+    }
+
+    private static void AssertRooCode(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var named = rows.Single(r => r.SessionId == "task-model");
+        Assert.Equal("gpt-5", named.Model);
+        Assert.Equal(12, named.InputTokens);
+        Assert.Equal(6, named.OutputTokens);
+        Assert.Equal(4, named.CachedInputTokens);
+        Assert.Equal(1, named.CacheWriteTokens);
+
+        var protocol = rows.Single(r => r.SessionId == "task-proto");
+        Assert.Equal("protocol:anthropic", protocol.Model);
+        Assert.Equal(2, protocol.InputTokens);
+    }
+
+    private static void AssertZed(List<UsageRecord> rows)
+    {
+        Assert.Equal(4, rows.Count);
+        var r1 = rows.Single(r => r.RequestKey == "r1");
+        Assert.Equal("t-req", r1.SessionId);
+        Assert.Equal(100, r1.InputTokens);
+        Assert.Equal(20, r1.OutputTokens);
+        Assert.Equal(5, r1.CachedInputTokens);
+        Assert.Equal(2, r1.CacheWriteTokens);
+        Assert.Equal("claude-sonnet", r1.Model);
+        Assert.Null(r1.Project);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), r1.TsUtc);
+
+        var r2 = rows.Single(r => r.RequestKey == "r2");
+        Assert.Equal(50, r2.InputTokens);
+        Assert.Equal(10, r2.OutputTokens);
+
+        var snap = rows.Single(r => r.SessionId == "t-cum");
+        Assert.Equal("snapshot", snap.RequestKey);
+        Assert.Equal(7, snap.InputTokens);
+        Assert.Equal(3, snap.OutputTokens);
+        Assert.Equal(6, snap.CachedInputTokens);
+
+        var zstd = rows.Single(r => r.SessionId == "t-zstd");
+        Assert.Equal("snapshot", zstd.RequestKey);
+        Assert.Equal(4, zstd.InputTokens);
+        Assert.Equal(2, zstd.OutputTokens);
+        Assert.Equal("zstd-model", zstd.Model);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 99999 || r.SessionId == "t-import");
+    }
+
+    private static string SeedPrimeAgent(string root)
+    {
+        var sessions = Path.Combine(root, "sessions");
+        var nested = Path.Combine(sessions, "cwd");
+        var sub = Path.Combine(nested, "sid");
+        Directory.CreateDirectory(sub);
+        File.WriteAllText(Path.Combine(sessions, "sess.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/prime" }),
+            PiMessage("m1", "prime-model", 10, 4, 2, 1, 3, includeProvider: true, provider: "anthropic", timestampMs: 1767225600000L),
+            PiMessage("m1", "prime-model", 10, 4, 2, 1, 3, includeProvider: true, provider: "anthropic", timestampMs: 1767225600000L),
+            PiMessage("z0", "prime-model", 0, 0, 0, 0, 0, includeProvider: false, provider: null, timestampMs: 1767225600000L),
+            PiMessage("z0", "prime-model", 999, 1, 0, 0, 0, includeProvider: false, provider: null, timestampMs: 1767225600000L),
+            Line(new
+            {
+                type = "message",
+                id = "user1",
+                timestamp = "2026-01-01T00:00:00.000Z",
+                message = new
+                {
+                    role = "user",
+                    provider = "anthropic",
+                    content = "SECRET",
+                    usage = new { input = 999, output = 1, cacheRead = 0, cacheWrite = 0, reasoningTokens = 0 },
+                },
+            })) + "\n");
+        File.WriteAllText(Path.Combine(nested, "nested.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/prime" }),
+            PiMessage("n1", "prime-model", 1, 1, 0, 0, 0, includeProvider: false, provider: null, timestampMs: 1767225600000L)) + "\n");
+        File.WriteAllText(Path.Combine(sub, "sub.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/prime" }),
+            PiMessage("s1", "prime-model", 2, 1, 0, 0, 0, includeProvider: true, provider: "openai", timestampMs: 1767225600000L)) + "\n");
+        return root;
+    }
+
+    private static string SeedCraft(string root)
+    {
+        var config = Path.Combine(root, "craft");
+        var ws = Path.Combine(config, "workspaces", "ws1", "sessions", "s1");
+        var zero = Path.Combine(config, "workspaces", "ws0", "sessions", "s0");
+        var extraRoot = Path.Combine(root, "relocated");
+        var extra = Path.Combine(extraRoot, "sessions", "s2");
+        Directory.CreateDirectory(ws);
+        Directory.CreateDirectory(zero);
+        Directory.CreateDirectory(extra);
+        File.WriteAllText(Path.Combine(config, "config.json"), Line(new
+        {
+            workspaces = new[] { new { rootPath = extraRoot, label = "SECRET" } },
+        }));
+        File.WriteAllText(Path.Combine(ws, "session.jsonl"), string.Join('\n',
+            Line(new
+            {
+                id = "s1",
+                model = "claude-sonnet",
+                lastMessageAt = 1767225600000L,
+                tokenUsage = new
+                {
+                    inputTokens = 100,
+                    outputTokens = 8,
+                    cacheReadTokens = 20,
+                    cacheCreationTokens = 5,
+                    totalTokens = 133,
+                },
+            }),
+            Line(new
+            {
+                type = "message",
+                content = "SECRET",
+                tokenUsage = new { inputTokens = 999, outputTokens = 999, cacheReadTokens = 0, cacheCreationTokens = 0 },
+            })) + "\n");
+        File.WriteAllText(Path.Combine(zero, "session.jsonl"), Line(new
+        {
+            id = "s0",
+            model = "craft-unknown",
+            lastMessageAt = 1767225600000L,
+            tokenUsage = new { inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheCreationTokens = 0 },
+        }) + "\n");
+        File.WriteAllText(Path.Combine(extra, "session.jsonl"), Line(new
+        {
+            id = "s2",
+            sdkSessionId = "ignored",
+            model = "gpt-5",
+            createdAt = 1767225600000L,
+            tokenUsage = new { inputTokens = 3, outputTokens = 1, cacheReadTokens = 0, cacheCreationTokens = 0 },
+        }) + "\n");
+        return config;
+    }
+
+    private static string SeedKiloCli(string root)
+    {
+        const long created = 1_767_225_600_000;
+        var db = Path.Combine(root, "kilo.db");
+        using var conn = OpenDb(db);
+        Exec(conn, """
+            CREATE TABLE message (
+              id TEXT, session_id TEXT, time_created INTEGER, time_updated INTEGER, data TEXT
+            );
+            """);
+        InsertOpenCode(conn, "message", "msg_k1", "ses_kilo", "assistant", created,
+            OpenCodeMessage("msg_k1", "ses_kilo", created, 10, 4, 1, 2, 3, "claude-sonnet-5", "anthropic"));
+        InsertOpenCode(conn, "message", "msg_user", "ses_kilo", "user", created,
+            """{"id":"msg_user","sessionID":"ses_kilo","role":"user","content":"SECRET","time":{"created":1},"tokens":{"input":50,"output":1}}""");
+        InsertOpenCode(conn, "message", "msg_zero", "ses_kilo", "assistant", created,
+            OpenCodeMessage("msg_zero", "ses_kilo", created, 0, 0, 0, 0, 0, "claude-sonnet-5", "anthropic"));
+        return db;
+    }
+
+    private static string SeedKiloCode(string root)
+    {
+        var task = Path.Combine(root, "User", "globalStorage", "kilocode.kilo-code", "tasks", "task-1");
+        Directory.CreateDirectory(task);
+        File.WriteAllText(Path.Combine(task, "ui_messages.json"), Line(new object[]
+        {
+            new { say = "text", text = "SECRET", ts = 1 },
+            new
+            {
+                say = "api_req_started",
+                ts = 1767225600000L,
+                text = Line(new { tokensIn = 0, tokensOut = 0, cacheReads = 0, cacheWrites = 0, inferenceProvider = "Moonshot AI" }),
+            },
+            new
+            {
+                say = "api_req_started",
+                ts = 1767225600000L,
+                text = Line(new { tokensIn = 10, tokensOut = 4, cacheReads = 2, cacheWrites = 1, inferenceProvider = "Moonshot AI", prompt = "SECRET" }),
+            },
+            new
+            {
+                say = "api_req_started",
+                ts = 1767225600000L,
+                text = Line(new { tokensIn = 999, tokensOut = 1, cacheReads = 0, cacheWrites = 0, inferenceProvider = "other" }),
+            },
+            new
+            {
+                say = "api_req_deleted",
+                ts = 1767225601000L,
+                text = Line(new { tokensIn = 3, tokensOut = 1, cacheReads = 0, cacheWrites = 0, inferenceProvider = "minimax" }),
+            },
+        }));
+        return root;
+    }
+
+    private static string SeedRooCode(string root)
+    {
+        var named = Path.Combine(root, "User", "globalStorage", "rooveterinaryinc.roo-cline", "tasks", "task-model");
+        var proto = Path.Combine(root, "User", "globalStorage", "rooveterinaryinc.roo-cline", "tasks", "task-proto");
+        Directory.CreateDirectory(named);
+        Directory.CreateDirectory(proto);
+        File.WriteAllText(Path.Combine(named, "api_conversation_history.json"),
+            "<environment_details>\n<model>old-model</model>\n</environment_details>\nSECRET\n<model>gpt-5</model>\n");
+        File.WriteAllText(Path.Combine(named, "ui_messages.json"), Line(new object[]
+        {
+            new
+            {
+                say = "api_req_started",
+                ts = 1767225600000L,
+                text = Line(new { tokensIn = 12, tokensOut = 6, cacheReads = 4, cacheWrites = 1, apiProtocol = "openai", prompt = "SECRET" }),
+            },
+        }));
+        File.WriteAllText(Path.Combine(proto, "ui_messages.json"), Line(new object[]
+        {
+            new
+            {
+                say = "api_req_started",
+                ts = 1767225602000L,
+                text = Line(new { tokensIn = 2, tokensOut = 1, cacheReads = 0, cacheWrites = 0, apiProtocol = "anthropic" }),
+            },
+        }));
+        return root;
+    }
+
+    private static string SeedZed(string root)
+    {
+        var db = Path.Combine(root, "threads.db");
+        using var conn = OpenDb(db);
+        Exec(conn, """
+            CREATE TABLE threads (
+              id TEXT,
+              summary TEXT,
+              updated_at TEXT,
+              data_type TEXT,
+              data BLOB
+            );
+            """);
+        InsertZed(conn, "t-req", "json", """
+            {
+              "title": "SECRET",
+              "messages": [{"content": "SECRET"}],
+              "model": {"model": "claude-sonnet", "provider": "anthropic"},
+              "request_token_usage": {
+                "r1": {"input_tokens": 100, "output_tokens": 20, "cache_read_input_tokens": 5, "cache_creation_input_tokens": 2},
+                "r2": {"input_tokens": 50, "output_tokens": "10", "cache_read_input_tokens": "12abc", "cache_creation_input_tokens": 0}
+              },
+              "cumulative_token_usage": {"input_tokens": 99999, "output_tokens": 1}
+            }
+            """);
+        InsertZed(conn, "t-cum", "json", """
+            {
+              "model": {"model": "gpt"},
+              "cumulative_token_usage": {"input_tokens": 7, "output_tokens": 3, "cache_read_input_tokens": "6"}
+            }
+            """);
+        InsertZed(conn, "t-zstd", "zstd", null, ZstdWrap("""
+            {"model":{"model":"zstd-model"},"title":"SECRET","cumulative_token_usage":{"input_tokens":4,"output_tokens":2}}
+            """));
+        InsertZed(conn, "t-import", "json", """
+            {"imported": true, "model": {"model": "skip"}, "cumulative_token_usage": {"input_tokens": 99999, "output_tokens": 1}}
+            """);
+        return db;
+    }
+
+    private static void InsertZed(SqliteConnection conn, string id, string dataType, string? json, byte[]? blob = null)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO threads (id, summary, updated_at, data_type, data)
+            VALUES ($i, $s, $u, $t, $d)
+            """;
+        cmd.Parameters.AddWithValue("$i", id);
+        cmd.Parameters.AddWithValue("$s", "SECRET");
+        cmd.Parameters.AddWithValue("$u", "2026-01-01T00:00:00.000Z");
+        cmd.Parameters.AddWithValue("$t", dataType);
+        cmd.Parameters.Add("$d", SqliteType.Blob).Value = blob ?? System.Text.Encoding.UTF8.GetBytes(json ?? "");
+        cmd.ExecuteNonQuery();
+    }
+
+    private static byte[] ZstdWrap(string json)
+    {
+        using var compressor = new ZstdSharp.Compressor(3);
+        return compressor.Wrap(System.Text.Encoding.UTF8.GetBytes(json)).ToArray();
     }
 
     private static string Dump(UsageRecord row) =>

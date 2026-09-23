@@ -80,6 +80,12 @@ public static class AgentPresence
         ("oh-my-pi", () => AnyFootprint(UsagePaths.OmpHomes())),
         ("omo", () => AnyFootprint(UsagePaths.OmoHomes())),
         ("pi", () => AnyFootprint(UsagePaths.PiHomes())),
+        ("prime-agent", () => AnyFootprint(UsagePaths.PrimeHomes())),
+        ("craft-agents", () => AnyFootprint(UsagePaths.CraftConfigDirs())),
+        ("kilo-cli", () => AnyFootprint(UsagePaths.KiloCliHomes())),
+        ("kilo-code", () => AnyFootprint(UsagePaths.KiloCodeStorageDirs())),
+        ("roo-code", () => AnyFootprint(UsagePaths.RooCodeStorageDirs())),
+        ("zed-agent", () => AnyFootprint(UsagePaths.ZedProbeDirs())),
     ];
 
     /// <summary>按各家 id 探一遍，给设置页排序和灰态徽标用。</summary>
