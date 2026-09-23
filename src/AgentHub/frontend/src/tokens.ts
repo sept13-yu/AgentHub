@@ -86,6 +86,12 @@ export const tokens = {
     srcDevin: '#C084FC',
     srcOpencode: '#2DD4BF',
     srcClaudeCode: '#E8A090',
+    srcGeminiCli: '#7DD3FC',
+    srcKiro: '#A3E635',
+    srcCopilot: '#C4B5FD',
+    srcKimiCode: '#34D399',
+    srcCodebuddy: '#FBBF24',
+    srcHermes: '#F0ABFC',
   },
   light: {
     bg: '#F5F6F8',
@@ -142,6 +148,12 @@ export const tokens = {
     srcDevin: '#7E22CE',
     srcOpencode: '#0F766E',
     srcClaudeCode: '#9A3412',
+    srcGeminiCli: '#0369A1',
+    srcKiro: '#3F6212',
+    srcCopilot: '#5B21B6',
+    srcKimiCode: '#047857',
+    srcCodebuddy: '#A16207',
+    srcHermes: '#86198F',
   },
 } as const
 

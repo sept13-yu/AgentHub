@@ -5,7 +5,7 @@ using Xunit;
 namespace AgentHub.Tests;
 
 /// <summary>
-/// 六家被动用量共用一张表：每个 source id 一份夹具，断言 token / 去重，不落提示词。
+/// 被动用量共用一张表：每个 source id 一份夹具，断言 token / 去重，不落提示词。
 /// </summary>
 public class PassiveUsageTests
 {
@@ -17,6 +17,12 @@ public class PassiveUsageTests
         ["devin"],
         ["opencode"],
         ["antigravity"],
+        ["gemini-cli"],
+        ["kiro"],
+        ["copilot"],
+        ["kimi-code"],
+        ["codebuddy"],
+        ["hermes"],
     ];
 
     [Theory]
@@ -40,6 +46,19 @@ public class PassiveUsageTests
             case "devin": AssertDevin(rows); break;
             case "opencode": AssertOpenCode(rows); break;
             case "antigravity": AssertAntigravity(rows); break;
+            case "gemini-cli": AssertGeminiCli(rows); break;
+            case "kiro": AssertKiro(rows); break;
+            case "copilot": AssertCopilot(rows); break;
+            case "kimi-code": AssertKimiCode(rows); break;
+            case "codebuddy": AssertCodeBuddy(rows); break;
+            case "hermes": AssertHermes(rows); break;
+        }
+
+        if (id == "codebuddy")
+        {
+            var homeOnly = PassiveUsage.ReadCodeBuddy([Path.Combine(root.Path, "home")]);
+            Assert.DoesNotContain(homeOnly, row => row.RequestKey.Contains("extension-log", StringComparison.Ordinal));
+            Assert.Contains(rows, row => row.RequestKey.Contains("extension-log", StringComparison.Ordinal));
         }
     }
 
@@ -62,6 +81,18 @@ public class PassiveUsageTests
         var xdg = Path.Combine("xdg", "data");
         Assert.Equal(Path.Combine(xdg, "opencode"), UsagePaths.OpenCodeDataDir(home, xdg));
         Assert.Equal(Path.Combine(xdg, "devin", "cli", "sessions.db"), UsagePaths.DevinDbPath(home, xdg));
+    }
+
+    [Fact]
+    public void Batch2_paths_match_token_tracker_layouts()
+    {
+        Assert.Equal(
+            Path.Combine("roam", "Kiro", "User", "globalStorage", "kiro.kiroagent"),
+            UsagePaths.KiroBase("roam"));
+        Assert.Equal(Path.Combine("home", ".hermes", "state.db"), UsagePaths.HermesStateDb("home"));
+        Assert.Equal(Path.Combine("home", ".copilot"), UsagePaths.CopilotHome("home"));
+        Assert.Equal(Path.Combine("copilot", "session-store.db"), UsagePaths.CopilotSessionStore("copilot"));
+        Assert.Equal(Path.Combine("copilot", "data.db"), UsagePaths.CopilotAppDb("copilot"));
     }
 
     [Theory]
@@ -126,8 +157,25 @@ public class PassiveUsageTests
         "devin" => PassiveUsage.ReadDevin([SeedDevin(root)]),
         "opencode" => PassiveUsage.ReadOpenCode([SeedOpenCode(root)]),
         "antigravity" => PassiveUsage.ReadAntigravity([SeedAntigravity(root)]),
+        "gemini-cli" => PassiveUsage.ReadGeminiCli([SeedGeminiCli(root)]),
+        "kiro" => PassiveUsage.ReadKiro([Path.Combine(SeedKiro(root), "db"), Path.Combine(root, "jsonl")]),
+        "copilot" => ReadCopilot(SeedCopilot(root)),
+        "kimi-code" => PassiveUsage.ReadKimiCode([
+            Path.Combine(SeedKimiCode(root), "kimi-code"),
+            Path.Combine(root, "kimi"),
+        ]),
+        "codebuddy" => PassiveUsage.ReadCodeBuddy(
+            [Path.Combine(SeedCodeBuddy(root), "home")],
+            [Path.Combine(root, "logs")]),
+        "hermes" => PassiveUsage.ReadHermes([SeedHermes(root)]),
         _ => throw new ArgumentOutOfRangeException(nameof(id)),
     };
+
+    private static List<UsageRecord> ReadCopilot(string root) =>
+        PassiveUsage.ReadCopilot(
+            Directory.EnumerateFiles(Path.Combine(root, "otel"), "*.jsonl"),
+            [Path.Combine(root, "session-store.db")],
+            [Path.Combine(root, "data.db")]);
 
     private static void AssertMiniMax(List<UsageRecord> rows)
     {
@@ -577,6 +625,566 @@ public class PassiveUsageTests
         InsertBlob(conn, 1, BuildProto(
             model: "gemini-3.8-flash", lastStepIndex: 2, promptTokens: 4583, cached: 16319, output: 151, text: 82, reasoning: 69));
         return root;
+    }
+
+    private static void AssertGeminiCli(List<UsageRecord> rows)
+    {
+        Assert.Equal(3, rows.Count);
+        var first = rows.Single(r => r.RequestKey == "0");
+        Assert.Equal("session-abc", first.SessionId);
+        Assert.Equal(10, first.InputTokens);
+        Assert.Equal(2, first.OutputTokens);
+        Assert.Equal(2, first.CachedInputTokens);
+        Assert.Equal(0, first.ReasoningTokens);
+        Assert.Equal("gemini-2.5-pro", first.Model);
+        Assert.Equal(new DateTime(2026, 4, 5, 14, 0, 0, DateTimeKind.Utc), first.TsUtc);
+
+        var grown = rows.Single(r => r.RequestKey == "2");
+        Assert.Equal(8, grown.InputTokens);
+        Assert.Equal(2, grown.OutputTokens);
+        Assert.Equal(0, grown.CachedInputTokens);
+        Assert.Equal(1, grown.ReasoningTokens);
+
+        var reset = rows.Single(r => r.RequestKey == "3");
+        Assert.Equal(3, reset.InputTokens);
+        Assert.Equal(1, reset.OutputTokens);
+        Assert.Equal(0, reset.CachedInputTokens);
+
+        Assert.Equal(21, rows.Sum(r => r.InputTokens));
+        Assert.Equal(5, rows.Sum(r => r.OutputTokens));
+        Assert.Equal(2, rows.Sum(r => r.CachedInputTokens));
+        Assert.Equal(1, rows.Sum(r => r.ReasoningTokens));
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999);
+    }
+
+    private static void AssertKiro(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var db = rows.Single(r => r.Model == "claude-sonnet-4");
+        Assert.Equal("1", db.RequestKey);
+        Assert.Equal(40, db.InputTokens);
+        Assert.Equal(5, db.OutputTokens);
+        Assert.Equal(new DateTime(2026, 1, 9, 15, 25, 30, DateTimeKind.Utc), db.TsUtc);
+
+        var jsonl = rows.Single(r => r.Model == "kiro-agent");
+        Assert.Equal("1", jsonl.RequestKey);
+        Assert.Equal(7, jsonl.InputTokens);
+        Assert.Equal(2, jsonl.OutputTokens);
+        Assert.Equal(new DateTime(2026, 1, 9, 16, 0, 0, DateTimeKind.Utc), jsonl.TsUtc);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999999);
+    }
+
+    private static void AssertCopilot(List<UsageRecord> rows)
+    {
+        Assert.Equal(4, rows.Count);
+        var store = rows.Single(r => r.RequestKey == "store:1");
+        Assert.Equal("s1", store.SessionId);
+        Assert.Equal(100, store.InputTokens);
+        Assert.Equal(10, store.OutputTokens);
+        Assert.Equal("gpt-4o", store.Model);
+
+        Assert.DoesNotContain(rows, r => r.RequestKey == "trace-dup:span-dup");
+        var kept = rows.Single(r => r.RequestKey == "trace-keep:span-keep");
+        Assert.Equal("s2", kept.SessionId);
+        Assert.Equal(30, kept.InputTokens);
+        Assert.Equal(4, kept.OutputTokens);
+
+        var extension = rows.Single(r => r.RequestKey == "resp:resp-ext");
+        Assert.Equal("s1", extension.SessionId);
+        Assert.Equal(100, extension.InputTokens);
+        Assert.Equal(10, extension.OutputTokens);
+
+        var app = rows.Single(r => r.RequestKey == "app:desk");
+        Assert.Equal(30, app.InputTokens);
+        Assert.Equal(20, app.CachedInputTokens);
+        Assert.Equal(5, app.OutputTokens);
+        Assert.Equal(3, app.ReasoningTokens);
+        Assert.Equal("claude-sonnet-4-5", app.Model);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999999);
+        Assert.Equal(260, rows.Sum(r => r.InputTokens));
+    }
+
+    private static void AssertKimiCode(List<UsageRecord> rows)
+    {
+        Assert.Equal(3, rows.Count);
+        var official = rows.Single(r => r.RequestKey == "u1");
+        Assert.Equal("sess-official", official.SessionId);
+        Assert.Equal(11, official.InputTokens);
+        Assert.Equal(6, official.OutputTokens);
+        Assert.Equal(4, official.CachedInputTokens);
+        Assert.Equal(2, official.CacheWriteTokens);
+        Assert.Equal("kimi-k2.6", official.Model);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1_767_225_600_000).UtcDateTime, official.TsUtc);
+
+        var anthropic = rows.Single(r => r.RequestKey == "u2");
+        Assert.Equal("sess-official", anthropic.SessionId);
+        Assert.Equal(14, anthropic.InputTokens);
+        Assert.Equal(6, anthropic.CachedInputTokens);
+        Assert.Equal(5, anthropic.OutputTokens);
+        Assert.Equal("kimi-k2.6", anthropic.Model);
+
+        var legacy = rows.Single(r => r.RequestKey == "m1");
+        Assert.Equal("sess-legacy", legacy.SessionId);
+        Assert.Equal(9, legacy.InputTokens);
+        Assert.Equal(3, legacy.OutputTokens);
+        Assert.Equal(1, legacy.CachedInputTokens);
+        Assert.Equal(2, legacy.CacheWriteTokens);
+        Assert.Equal("kimi-for-coding", legacy.Model);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1_767_225_700).UtcDateTime, legacy.TsUtc);
+        Assert.DoesNotContain(rows, r => r.InputTokens is 99 or 50 or 80);
+    }
+
+    private static void AssertCodeBuddy(List<UsageRecord> rows)
+    {
+        Assert.Equal(3, rows.Count);
+        var main = rows.Single(r => r.RequestKey == "mid-1");
+        Assert.Equal("sess-cb", main.SessionId);
+        Assert.Equal(60, main.InputTokens);
+        Assert.Equal(15, main.OutputTokens);
+        Assert.Equal(40, main.CachedInputTokens);
+        Assert.Equal(5, main.ReasoningTokens);
+        Assert.Equal("glm-5", main.Model);
+
+        var fallback = rows.Single(r => r.RequestKey == "mid-2");
+        Assert.Equal("sess-fallback", fallback.SessionId);
+        Assert.Equal(8, fallback.InputTokens);
+        Assert.Equal(2, fallback.OutputTokens);
+        Assert.Equal("settings-model", fallback.Model);
+
+        var log = rows.Single(r => r.SessionId == "agent-2");
+        Assert.Contains("extension-log", log.RequestKey, StringComparison.Ordinal);
+        Assert.Equal(4, log.InputTokens);
+        Assert.Equal(1, log.OutputTokens);
+        Assert.Equal("claude-x", log.Model);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999);
+    }
+
+    private static void AssertHermes(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var main = rows.Single(r => r.SessionId == "default/s1");
+        Assert.Equal("snapshot", main.RequestKey);
+        Assert.Equal(100, main.InputTokens);
+        Assert.Equal(20, main.OutputTokens);
+        Assert.Equal(5, main.CachedInputTokens);
+        Assert.Equal(3, main.CacheWriteTokens);
+        Assert.Equal(4, main.ReasoningTokens);
+        Assert.Equal("hermes-model", main.Model);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1_767_225_600).UtcDateTime, main.TsUtc);
+
+        var profile = rows.Single(r => r.SessionId == "p1/s2");
+        Assert.Equal("snapshot", profile.RequestKey);
+        Assert.Equal(9, profile.InputTokens);
+        Assert.Equal(2, profile.OutputTokens);
+        Assert.Equal("hermes-agent", profile.Model);
+    }
+
+    private static string SeedGeminiCli(string root)
+    {
+        var chats = Path.Combine(root, "tmp", "proj", "chats");
+        var other = Path.Combine(root, "tmp", "proj", "other");
+        Directory.CreateDirectory(chats);
+        Directory.CreateDirectory(other);
+        File.WriteAllText(Path.Combine(chats, "session-abc.json"), Line(new
+        {
+            messages = new object[]
+            {
+                new
+                {
+                    timestamp = "2026-04-05T14:00:00.000Z",
+                    model = "gemini-2.5-pro",
+                    content = "SECRET",
+                    tokens = new { input = 10, cached = 2, output = 1, tool = 1, thoughts = 0, total = 14 },
+                },
+                new
+                {
+                    timestamp = "2026-04-05T14:00:01.000Z",
+                    content = "SECRET",
+                    tokens = new { input = 10, cached = 2, output = 1, tool = 1, thoughts = 0, total = 14 },
+                },
+                new
+                {
+                    timestamp = "2026-04-05T14:00:02.000Z",
+                    content = "SECRET",
+                    tokens = new { input = 18, cached = 2, output = 4, tool = 0, thoughts = 1, total = 25 },
+                },
+                new
+                {
+                    timestamp = "2026-04-05T14:00:03.000Z",
+                    content = "SECRET",
+                    tokens = new { input = 3, cached = 0, output = 1, tool = 0, thoughts = 0, total = 4 },
+                },
+            },
+        }));
+        File.WriteAllText(Path.Combine(chats, "notes.json"), Line(new
+        {
+            messages = new object[]
+            {
+                new { timestamp = "2026-04-05T14:00:00.000Z", content = "SECRET", tokens = new { input = 999, output = 1, total = 1000 } },
+            },
+        }));
+        File.WriteAllText(Path.Combine(other, "session-nope.json"), Line(new
+        {
+            messages = new object[]
+            {
+                new { timestamp = "2026-04-05T14:00:00.000Z", content = "SECRET", tokens = new { input = 999, output = 1, total = 1000 } },
+            },
+        }));
+        return root;
+    }
+
+    private static string SeedKiro(string root)
+    {
+        var dbRoot = Path.Combine(root, "db");
+        var chatDir = Path.Combine(dbRoot, "ws");
+        var dev = Path.Combine(dbRoot, "dev_data");
+        Directory.CreateDirectory(chatDir);
+        Directory.CreateDirectory(dev);
+        var at = new DateTimeOffset(2026, 1, 9, 15, 25, 30, TimeSpan.Zero).ToUnixTimeMilliseconds();
+        File.WriteAllText(Path.Combine(chatDir, "a.chat"), Line(new
+        {
+            content = "SECRET",
+            metadata = new
+            {
+                modelId = "CLAUDE_SONNET_4_20250514_V1_0",
+                startTime = at - 1000,
+                endTime = at + 1000,
+            },
+        }));
+        var db = Path.Combine(dev, "devdata.sqlite");
+        using (var conn = OpenDb(db))
+        {
+            Exec(conn, """
+                CREATE TABLE tokens_generated (
+                  id INTEGER PRIMARY KEY,
+                  model TEXT,
+                  tokens_prompt INTEGER,
+                  tokens_generated INTEGER,
+                  timestamp TEXT
+                );
+                """);
+            Exec(conn, "INSERT INTO tokens_generated (id, model, tokens_prompt, tokens_generated, timestamp) VALUES (1, 'IGNORED_MODEL', 40, 5, '2026-01-09 15:25:30')");
+            Exec(conn, "INSERT INTO tokens_generated (id, model, tokens_prompt, tokens_generated, timestamp) VALUES (2, 'IGNORED_MODEL', 0, 0, '2026-01-09 15:26:30')");
+        }
+        File.WriteAllText(Path.Combine(dev, "tokens_generated.jsonl"),
+            Line(new { promptTokens = 999999, generatedTokens = 1, content = "SECRET" }) + "\n");
+
+        var jsonlRoot = Path.Combine(root, "jsonl");
+        var jsonlDev = Path.Combine(jsonlRoot, "dev_data");
+        Directory.CreateDirectory(jsonlDev);
+        var jsonl = Path.Combine(jsonlDev, "tokens_generated.jsonl");
+        File.WriteAllText(jsonl, Line(new { promptTokens = 7, generatedTokens = 2, content = "SECRET" }) + "\n");
+        File.SetLastWriteTimeUtc(jsonl, new DateTime(2026, 1, 9, 16, 0, 0, DateTimeKind.Utc));
+        return root;
+    }
+
+    private static string SeedCopilot(string root)
+    {
+        var otel = Path.Combine(root, "otel");
+        Directory.CreateDirectory(otel);
+        File.WriteAllText(Path.Combine(otel, "spans.jsonl"), string.Join('\n',
+            Line(new
+            {
+                scopeMetrics = Array.Empty<object>(),
+                attributes = new Dictionary<string, object> { ["gen_ai.operation.name"] = "chat", ["gen_ai.usage.input_tokens"] = 999999 },
+            }),
+            Line(new
+            {
+                type = "span",
+                name = "chat gpt-4o",
+                traceId = "trace-dup",
+                spanId = "span-dup",
+                endTime = new long[] { 1_767_225_600, 0 },
+                attributes = new Dictionary<string, object>
+                {
+                    ["gen_ai.operation.name"] = "chat",
+                    ["gen_ai.conversation.id"] = "s1",
+                    ["gen_ai.response.model"] = "gpt-4o",
+                    ["gen_ai.usage.input_tokens"] = 100,
+                    ["gen_ai.usage.output_tokens"] = 10,
+                },
+            }),
+            Line(new
+            {
+                type = "span",
+                name = "chat gpt-4o",
+                traceId = "trace-keep",
+                spanId = "span-keep",
+                endTime = new long[] { 1_767_225_700, 0 },
+                attributes = new Dictionary<string, object>
+                {
+                    ["gen_ai.operation.name"] = "chat",
+                    ["gen_ai.conversation.id"] = "s2",
+                    ["gen_ai.response.model"] = "gpt-4o",
+                    ["gen_ai.usage.input_tokens"] = 30,
+                    ["gen_ai.usage.output_tokens"] = 4,
+                },
+            }),
+            Line(new
+            {
+                type = "log",
+                hrTime = new long[] { 1_767_225_600, 0 },
+                attributes = new Dictionary<string, object>
+                {
+                    ["gen_ai.operation.name"] = "chat",
+                    ["gen_ai.conversation.id"] = "s1",
+                    ["gen_ai.response.model"] = "gpt-4o",
+                    ["gen_ai.response.id"] = "resp-ext",
+                    ["gen_ai.usage.input_tokens"] = 100,
+                    ["gen_ai.usage.output_tokens"] = 10,
+                },
+            })) + "\n");
+
+        using (var store = OpenDb(Path.Combine(root, "session-store.db")))
+        {
+            Exec(store, """
+                CREATE TABLE assistant_usage_events (
+                  id INTEGER PRIMARY KEY,
+                  session_id TEXT,
+                  model TEXT,
+                  input_tokens INTEGER,
+                  output_tokens INTEGER,
+                  cache_read_tokens INTEGER,
+                  cache_write_tokens INTEGER,
+                  reasoning_tokens INTEGER,
+                  token_details_json TEXT,
+                  created_at TEXT,
+                  prompt TEXT
+                );
+                """);
+            Exec(store, """
+                INSERT INTO assistant_usage_events
+                  (id, session_id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, created_at, prompt)
+                VALUES (1, 's1', 'gpt-4o', 100, 10, 0, 0, 0, '2026-01-01T00:00:00.000Z', 'SECRET')
+                """);
+        }
+
+        using (var app = OpenDb(Path.Combine(root, "data.db")))
+        {
+            Exec(app, """
+                CREATE TABLE sessions (
+                  id TEXT PRIMARY KEY,
+                  session_type TEXT,
+                  model TEXT,
+                  provider_id TEXT,
+                  created_at TEXT,
+                  updated_at TEXT,
+                  total_input_tokens INTEGER,
+                  total_output_tokens INTEGER,
+                  total_cached_tokens INTEGER,
+                  total_reasoning_tokens INTEGER,
+                  title TEXT
+                );
+                """);
+            Exec(app, """
+                INSERT INTO sessions
+                  (id, session_type, model, created_at, updated_at, total_input_tokens, total_output_tokens, total_cached_tokens, total_reasoning_tokens, title)
+                VALUES ('cli-sess', 'cli', 'gpt-4o', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', 999999, 9, 0, 0, 'SECRET')
+                """);
+            Exec(app, """
+                INSERT INTO sessions
+                  (id, session_type, model, provider_id, created_at, updated_at, total_input_tokens, total_output_tokens, total_cached_tokens, total_reasoning_tokens, title)
+                VALUES ('desk', 'desktop', 'claude-sonnet-4.5', 'app', '2026-01-01T00:00:00.000Z', '2026-01-01T01:00:00.000Z', 50, 8, 20, 3, 'SECRET')
+                """);
+        }
+        return root;
+    }
+
+    private static string SeedKimiCode(string root)
+    {
+        var official = Path.Combine(root, "kimi-code", "sessions", "ws", "sess-official", "agents", "main");
+        var legacy = Path.Combine(root, "kimi", "sessions", "ws", "sess-legacy");
+        Directory.CreateDirectory(official);
+        Directory.CreateDirectory(legacy);
+        File.WriteAllText(Path.Combine(official, "wire.jsonl"), string.Join('\n',
+            Line(new { type = "config.update", modelAlias = "kimi-code/kimi-k2.6" }),
+            Line(new
+            {
+                type = "context.append_loop_event",
+                time = 1_767_225_600_000,
+                content = "SECRET",
+                @event = new
+                {
+                    type = "step.end",
+                    uuid = "u1",
+                    usage = new { inputOther = 11, inputCacheRead = 4, inputCacheCreation = 2, output = 6 },
+                },
+            }),
+            Line(new
+            {
+                type = "context.append_loop_event",
+                time = 1_767_225_601_000,
+                @event = new
+                {
+                    type = "step.end",
+                    uuid = "u1",
+                    usage = new { inputOther = 99, output = 99 },
+                },
+            }),
+            Line(new
+            {
+                type = "usage.record",
+                time = 1_767_225_602_000,
+                uuid = "u-usage",
+                usage = new { inputOther = 50, output = 50 },
+            }),
+            Line(new
+            {
+                type = "step.end",
+                time = 1_767_225_603_000,
+                uuid = "u2",
+                content = "SECRET",
+                usage = new
+                {
+                    input_tokens = 20,
+                    output_tokens = 5,
+                    input_tokens_details = new { cached_tokens = 6 },
+                },
+            })) + "\n");
+        File.WriteAllText(Path.Combine(legacy, "wire.jsonl"), string.Join('\n',
+            Line(new
+            {
+                timestamp = 1_767_225_700,
+                message = new
+                {
+                    type = "StatusUpdate",
+                    content = "SECRET",
+                    payload = new
+                    {
+                        message_id = "m1",
+                        token_usage = new { input_other = 9, output = 3, input_cache_read = 1, input_cache_creation = 2 },
+                    },
+                },
+            }),
+            Line(new
+            {
+                timestamp = 1_767_225_701,
+                message = new
+                {
+                    type = "StatusUpdate",
+                    payload = new
+                    {
+                        message_id = "m1",
+                        token_usage = new { input_other = 80, output = 1 },
+                    },
+                },
+            })) + "\n");
+        return root;
+    }
+
+    private static string SeedCodeBuddy(string root)
+    {
+        var home = Path.Combine(root, "home");
+        var project = Path.Combine(home, "projects", "cwd");
+        var logs = Path.Combine(root, "logs");
+        Directory.CreateDirectory(project);
+        Directory.CreateDirectory(logs);
+        File.WriteAllText(Path.Combine(home, "settings.json"), Line(new { model = "settings-model" }));
+        var mirroredMs = 1_767_225_600_123L;
+        File.WriteAllText(Path.Combine(project, "sess.jsonl"), string.Join('\n',
+            Line(new
+            {
+                timestamp = mirroredMs,
+                sessionId = "sess-cb",
+                content = "SECRET",
+                providerData = new
+                {
+                    messageId = "mid-1",
+                    model = "glm-5",
+                    rawUsage = new
+                    {
+                        prompt_tokens = 100,
+                        completion_tokens = 20,
+                        prompt_tokens_details = new { cached_tokens = 40 },
+                        completion_tokens_details = new { reasoning_tokens = 5 },
+                    },
+                },
+            }),
+            Line(new
+            {
+                timestamp = mirroredMs + 10,
+                sessionId = "sess-cb",
+                content = "SECRET",
+                providerData = new
+                {
+                    messageId = "mid-1",
+                    rawUsage = new { prompt_tokens = 999, completion_tokens = 9 },
+                },
+            }),
+            Line(new
+            {
+                timestamp = 1_767_225_700_000L,
+                sessionId = "sess-fallback",
+                content = "SECRET",
+                providerData = new
+                {
+                    messageId = "mid-2",
+                    rawUsage = new { prompt_tokens = 8, completion_tokens = 2 },
+                },
+            })) + "\n");
+
+        var stamp = DateTimeOffset.FromUnixTimeMilliseconds(mirroredMs).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
+        var unique = DateTimeOffset.FromUnixTimeMilliseconds(1_767_225_800_000).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'");
+        File.WriteAllText(Path.Combine(logs, "extension.log"), string.Join('\n',
+            $"[{stamp}] [CraftInvokableAgent] [agent-1] Model prepared: route (glm-5)",
+            $"[{stamp}] [AgentReporter] [agent-1] Agent execution successful with usage: {Line(new { cachedMissTokens = 60, output_tokens = 15, cache_read_input_tokens = 40, completion_thinking_tokens = 5, prompt = "SECRET" })}",
+            $"[{unique}] [CraftInvokableAgent] [agent-2] Model prepared: route (claude-x)",
+            $"[{unique}] [AgentReporter] [agent-2] Agent execution successful with usage: {Line(new { cachedMissTokens = 4, output_tokens = 1, prompt = "SECRET" })}") + "\n");
+        return root;
+    }
+
+    private static string SeedHermes(string root)
+    {
+        Directory.CreateDirectory(root);
+        WriteHermes(Path.Combine(root, "state.db"), "s1", "hermes-model", 100, 20, 5, 3, 4, 1_767_225_600);
+        var profile = Path.Combine(root, "profiles", "p1");
+        Directory.CreateDirectory(profile);
+        WriteHermes(Path.Combine(profile, "state.db"), "s2", null, 9, 2, 0, 0, 0, 1_767_225_800);
+        return root;
+    }
+
+    private static void WriteHermes(
+        string db, string id, string? model, int input, int output, int cacheRead, int cacheWrite, int reasoning, long ended)
+    {
+        using var conn = OpenDb(db);
+        Exec(conn, """
+            CREATE TABLE sessions (
+              id TEXT PRIMARY KEY,
+              model TEXT,
+              started_at INTEGER,
+              ended_at INTEGER,
+              input_tokens INTEGER,
+              output_tokens INTEGER,
+              cache_read_tokens INTEGER,
+              cache_write_tokens INTEGER,
+              reasoning_tokens INTEGER,
+              title TEXT,
+              body TEXT
+            );
+            """);
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO sessions
+              (id, model, started_at, ended_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, title, body)
+            VALUES ($id, $model, $started, $ended, $input, $output, $read, $write, $reason, 'SECRET', 'SECRET')
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$model", (object?)model ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$started", ended - 10);
+        cmd.Parameters.AddWithValue("$ended", ended);
+        cmd.Parameters.AddWithValue("$input", input);
+        cmd.Parameters.AddWithValue("$output", output);
+        cmd.Parameters.AddWithValue("$read", cacheRead);
+        cmd.Parameters.AddWithValue("$write", cacheWrite);
+        cmd.Parameters.AddWithValue("$reason", reasoning);
+        cmd.ExecuteNonQuery();
+        using var zero = conn.CreateCommand();
+        zero.CommandText = """
+            INSERT INTO sessions
+              (id, model, started_at, ended_at, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, title, body)
+            VALUES ('zero', 'skip', 1, 2, 0, 0, 0, 0, 0, 'SECRET', 'SECRET')
+            """;
+        zero.ExecuteNonQuery();
     }
 
     private static void InsertDevin(SqliteConnection conn, int rowId, string sessionId, string chat)

@@ -63,6 +63,7 @@ public sealed class DashboardSettings
     [
         "dsh", "trae", "workbuddy", "zcode", "mimocode", "grok", "qoder", "qoder-cn", "cursor", "cursor-cloud", "codex",
         "minimax", "antigravity", "reasonix", "devin", "opencode", "claude-code",
+        "gemini-cli", "kiro", "copilot", "kimi-code", "codebuddy", "hermes",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -96,6 +97,12 @@ public sealed class DashboardSettings
         ["devin"] = "devin",
         ["opencode"] = "opencode",
         ["claude-code"] = "claude-code",
+        ["gemini-cli"] = "gemini-cli",
+        ["kiro"] = "kiro",
+        ["copilot"] = "copilot",
+        ["kimi-code"] = "kimi-code",
+        ["codebuddy"] = "codebuddy",
+        ["hermes"] = "hermes",
     };
 
     private static readonly Dictionary<string, string> QuotaGroupOf = new(StringComparer.Ordinal)
@@ -275,6 +282,12 @@ public sealed class DashboardSettings
         "devin" => "Devin",
         "opencode" => "OpenCode",
         "claude-code" => "Claude Code",
+        "gemini-cli" => "Gemini CLI",
+        "kiro" => "Kiro",
+        "copilot" => "GitHub Copilot",
+        "kimi-code" => "Kimi Code",
+        "codebuddy" => "CodeBuddy",
+        "hermes" => "Hermes",
         _ => id,
     };
 
@@ -282,7 +295,8 @@ public sealed class DashboardSettings
     private static bool QuotaOmitsAgent(string id) => id.ToLowerInvariant() switch
     {
         "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud"
-            or "minimax" or "antigravity" or "reasonix" or "devin" or "opencode" or "claude-code" => true,
+            or "minimax" or "antigravity" or "reasonix" or "devin" or "opencode" or "claude-code"
+            or "gemini-cli" or "kiro" or "copilot" or "kimi-code" or "codebuddy" or "hermes" => true,
         _ => false,
     };
 }

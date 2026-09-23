@@ -12,6 +12,12 @@ const INK: Record<string, string> = {
   devin: 'M8 3h8l5 5v8l-5 5H8l-5-5V8l5-5z',
   opencode: 'M4 6h7v2H6v8h5v2H4V6zm9 0h7v12h-7v-2h5V8h-5V6z',
   'claude-code': 'M12 2.2l1.7 5.1 5.1 1.7-5.1 1.7L12 15.8l-1.7-5.1L5.2 9l5.1-1.7L12 2.2z',
+  'gemini-cli': 'M12 3l2.2 5.4L20 9l-4.2 3.6L17 19l-5-3.2L7 19l1.2-6.4L4 9l5.8-.6L12 3z',
+  kiro: 'M4 7h16v3H8v2h8v3H8v2h12v3H4V7z',
+  copilot: 'M12 4a8 8 0 100 16 8 8 0 000-16zm-1.2 4.2h2.4V12H16v2.4h-2.8V18h-2.4v-3.6H8V12h2.8V8.2z',
+  'kimi-code': 'M6 4h4.2L16 12l-5.8 8H6l5.8-8L6 4z',
+  codebuddy: 'M5 5h6v6H5V5zm8 0h6v6h-6V5zM5 13h6v6H5v-6zm8 0h6v6h-6v-6z',
+  hermes: 'M12 3c2.4 2.6 3.6 4.8 3.6 7.2 0 2-.8 3.6-2.2 4.6V19H10.6v-4.2C9.2 13.8 8.4 12.2 8.4 10.2 8.4 7.8 9.6 5.6 12 3z',
 }
 
 const props = defineProps<{ id: string | null | undefined }>()

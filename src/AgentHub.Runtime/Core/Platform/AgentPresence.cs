@@ -68,6 +68,12 @@ public static class AgentPresence
         ("devin", () => AnyFootprint(UsagePaths.DevinProbeRoots())),
         ("opencode", () => AnyFootprint(UsagePaths.OpenCodeDataDirs())),
         ("claude-code", () => AnyFootprint(UsagePaths.ClaudeHomes())),
+        ("gemini-cli", () => AnyFootprint(UsagePaths.GeminiHomes().Select(h => Path.Combine(h, "tmp")))),
+        ("kiro", () => AnyFootprint(UsagePaths.KiroBases())),
+        ("copilot", () => AnyFootprint(UsagePaths.CopilotProbeRoots())),
+        ("kimi-code", () => AnyFootprint(UsagePaths.KimiCodeHomes())),
+        ("codebuddy", () => AnyFootprint(UsagePaths.CodeBuddyHomes())),
+        ("hermes", () => AnyFootprint(UsagePaths.HermesHomes())),
     ];
 
     /// <summary>按各家 id 探一遍，给设置页排序和灰态徽标用。</summary>

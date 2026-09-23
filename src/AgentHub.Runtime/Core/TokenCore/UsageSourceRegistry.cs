@@ -44,6 +44,36 @@ internal static class UsageSourceRegistry
                 return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadDevin(dbs))];
             },
         },
+        Dirs("gemini-cli", UsagePaths.GeminiHomes, PassiveUsage.ReadGeminiCli),
+        Dirs("kiro", UsagePaths.KiroBases, PassiveUsage.ReadKiro),
+        new UsageSource
+        {
+            Id = "copilot",
+            ProbeRoots = UsagePaths.CopilotProbeRoots,
+            Units = () =>
+            {
+                var otel = UsagePaths.CopilotOtelFiles().Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var stores = UsagePaths.CopilotSessionStoreDbs().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var apps = UsagePaths.CopilotAppDbs().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (otel.Count == 0 && stores.Count == 0 && apps.Count == 0) return [];
+                var label = stores.FirstOrDefault() ?? apps.FirstOrDefault() ?? otel[0];
+                return [new UsageUnit(label, () => PassiveUsage.ReadCopilot(otel, stores, apps))];
+            },
+        },
+        Dirs("kimi-code", UsagePaths.KimiCodeHomes, PassiveUsage.ReadKimiCode),
+        new UsageSource
+        {
+            Id = "codebuddy",
+            ProbeRoots = UsagePaths.CodeBuddyHomes,
+            Units = () =>
+            {
+                var homes = UsagePaths.CodeBuddyHomes().Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                var logs = UsagePaths.CodeBuddyLogRoots().Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                if (homes.Count == 0 && logs.Count == 0) return [];
+                return [new UsageUnit(homes.FirstOrDefault() ?? logs[0], () => PassiveUsage.ReadCodeBuddy(homes, logs))];
+            },
+        },
+        Dirs("hermes", UsagePaths.HermesHomes, PassiveUsage.ReadHermes),
     ];
 
     public static UsageSource? Find(string id) =>

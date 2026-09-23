@@ -71,6 +71,78 @@ internal static class UsagePaths
         }
     }
 
+    public static string KiroBase(string roamingAppData) =>
+        Path.Combine(roamingAppData, "Kiro", "User", "globalStorage", "kiro.kiroagent");
+
+    public static IEnumerable<string> KiroBases() =>
+        OneOr(Env("TOKENTRACKER_KIRO_HOME"), KiroBase(PlatformPaths.RoamingAppData));
+
+    public static string HermesStateDb(string home) => Path.Combine(home, ".hermes", "state.db");
+
+    public static IEnumerable<string> HermesHomes()
+    {
+        var over = Env("TOKENTRACKER_HERMES_HOME");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        yield return Path.Combine(Home, ".hermes");
+        if (OperatingSystem.IsWindows())
+            yield return Path.Combine(PlatformPaths.LocalAppData, "hermes");
+    }
+
+    public static string CopilotHome(string home) => Path.Combine(home, ".copilot");
+
+    public static string CopilotSessionStore(string copilotHome) => Path.Combine(copilotHome, "session-store.db");
+
+    public static string CopilotAppDb(string copilotHome) => Path.Combine(copilotHome, "data.db");
+
+    public static IEnumerable<string> CopilotHomes() =>
+        OneOr(Env("COPILOT_HOME"), CopilotHome(Home));
+
+    public static IEnumerable<string> CopilotProbeRoots()
+    {
+        foreach (var home in CopilotHomes()) yield return home;
+        yield return Path.Combine(Home, ".copilot-otel");
+    }
+
+    public static IEnumerable<string> CopilotOtelFiles()
+    {
+        var explicitFile = Env("COPILOT_OTEL_FILE_EXPORTER_PATH");
+        if (explicitFile is not null && File.Exists(explicitFile)) yield return explicitFile;
+        foreach (var dir in CopilotHomes().Select(h => Path.Combine(h, "otel")).Append(Path.Combine(Home, ".copilot-otel")))
+        {
+            foreach (var file in UsageIo.EnumerateFiles(dir, 1, static (path, _) => path.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)))
+                yield return file;
+        }
+    }
+
+    public static IEnumerable<string> CopilotSessionStoreDbs() =>
+        OneOr(Env("TOKENTRACKER_COPILOT_SESSION_STORE_DB"), CopilotSessionStore(CopilotHomes().First()));
+
+    public static IEnumerable<string> CopilotAppDbs() =>
+        OneOr(Env("TOKENTRACKER_COPILOT_APP_DB"), CopilotAppDb(CopilotHomes().First()));
+
+    public static IEnumerable<string> KimiCodeHomes()
+    {
+        yield return Env("KIMI_CODE_HOME") ?? Path.Combine(Home, ".kimi-code");
+        yield return Env("KIMI_HOME") ?? Path.Combine(Home, ".kimi");
+    }
+
+    public static IEnumerable<string> CodeBuddyHomes() =>
+        OneOr(Env("CODEBUDDY_HOME"), Path.Combine(Home, ".codebuddy"));
+
+    public static IEnumerable<string> CodeBuddyLogRoots()
+    {
+        var config = PlatformPaths.RoamingAppData;
+        var data = PlatformPaths.LocalAppData;
+        yield return Path.Combine(config, "CodeBuddy CN", "logs");
+        yield return Path.Combine(config, "Code", "logs");
+        yield return Path.Combine(data, "CodeBuddyExtension", "Logs", "CodeBuddyIDE");
+        yield return Path.Combine(data, "CodeBuddyExtension", "Logs", "VSCode");
+    }
+
     public static IEnumerable<string> ClaudeHomes()
     {
         var over = Env("CLAUDE_CONFIG_DIR");

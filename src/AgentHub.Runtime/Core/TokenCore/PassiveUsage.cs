@@ -10,7 +10,7 @@ namespace AgentHub.Core.TokenCore;
 /// TokenTracker 被动用量。只产出 token / 模型 / 时间 / 项目，不保留提示词或正文。
 /// 新增一家：在这里加一个 Read，再在 <see cref="UsageSourceRegistry"/> 登记一行。
 /// </summary>
-internal static class PassiveUsage
+internal static partial class PassiveUsage
 {
     private const string ObserverSegment = "--claude-mem-observer-sessions";
 

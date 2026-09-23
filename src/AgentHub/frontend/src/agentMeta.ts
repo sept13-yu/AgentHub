@@ -46,6 +46,12 @@ export const AGENT_COLOR: Record<string, string> = {
   devin: 'var(--src-devin)',
   opencode: 'var(--src-opencode)',
   'claude-code': 'var(--src-claude-code)',
+  'gemini-cli': 'var(--src-gemini-cli)',
+  kiro: 'var(--src-kiro)',
+  copilot: 'var(--src-copilot)',
+  'kimi-code': 'var(--src-kimi-code)',
+  codebuddy: 'var(--src-codebuddy)',
+  hermes: 'var(--src-hermes)',
 }
 
 export const AGENT_NAME: Record<string, string> = {
@@ -68,6 +74,12 @@ export const AGENT_NAME: Record<string, string> = {
   devin: 'Devin',
   opencode: 'OpenCode',
   'claude-code': 'Claude Code',
+  'gemini-cli': 'Gemini CLI',
+  kiro: 'Kiro',
+  copilot: 'GitHub Copilot',
+  'kimi-code': 'Kimi Code',
+  codebuddy: 'CodeBuddy',
+  hermes: 'Hermes',
 }
 
 function normalizeAgentId(id: string): string {
