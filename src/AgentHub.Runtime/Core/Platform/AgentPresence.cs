@@ -74,6 +74,12 @@ public static class AgentPresence
         ("kimi-code", () => AnyFootprint(UsagePaths.KimiCodeHomes())),
         ("codebuddy", () => AnyFootprint(UsagePaths.CodeBuddyHomes())),
         ("hermes", () => AnyFootprint(UsagePaths.HermesHomes())),
+        ("openclaw", () => AnyFootprint(UsagePaths.OpenClawHomes())),
+        ("every-code", () => AnyFootprint(UsagePaths.EveryCodeHomes())),
+        ("astudio", () => AnyFootprint(UsagePaths.AcodeHomes())),
+        ("oh-my-pi", () => AnyFootprint(UsagePaths.OmpHomes())),
+        ("omo", () => AnyFootprint(UsagePaths.OmoHomes())),
+        ("pi", () => AnyFootprint(UsagePaths.PiHomes())),
     ];
 
     /// <summary>按各家 id 探一遍，给设置页排序和灰态徽标用。</summary>

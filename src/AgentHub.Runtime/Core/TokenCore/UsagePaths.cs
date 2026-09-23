@@ -143,6 +143,104 @@ internal static class UsagePaths
         yield return Path.Combine(data, "CodeBuddyExtension", "Logs", "VSCode");
     }
 
+    public static string OpenClawHome(string home) => Path.Combine(home, ".openclaw");
+
+    public static IEnumerable<string> OpenClawHomes() =>
+        OneOr(Env("TOKENTRACKER_OPENCLAW_HOME") ?? Env("OPENCLAW_HOME") ?? Env("OPENCLAW_STATE_DIR"),
+            OpenClawHome(Home));
+
+    public static string EveryCodeHome(string home) => Path.Combine(home, ".code");
+
+    public static IEnumerable<string> EveryCodeHomes() =>
+        OneOr(Env("CODE_HOME"), EveryCodeHome(Home));
+
+    public static string AcodeHome(string home) => Path.Combine(home, ".acode");
+
+    public static IEnumerable<string> AcodeHomes() =>
+        OneOr(Env("TOKENTRACKER_ACODE_HOME"), AcodeHome(Home));
+
+    public static string OmpAgentDir(string home) => Path.Combine(home, ".omp", "agent");
+
+    public static IEnumerable<string> OmpHomes()
+    {
+        var omp = Env("OMP_HOME");
+        if (omp is not null)
+        {
+            yield return omp;
+            yield break;
+        }
+        var config = Env("PI_CONFIG_DIR");
+        if (config is not null)
+        {
+            yield return Path.IsPathRooted(config) ? config : Path.Combine(Home, config);
+            yield break;
+        }
+        yield return Path.Combine(Home, ".omp");
+    }
+
+    public static IEnumerable<string> OmpAgentDirs()
+    {
+        var over = Env("TOKENTRACKER_OMP_AGENT_DIR");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        var shared = Env("PI_CODING_AGENT_DIR");
+        if (shared is not null && !PiCodingAgentDirOwnedByPi())
+        {
+            yield return shared;
+            yield break;
+        }
+        foreach (var home in OmpHomes())
+            yield return Path.Combine(home, "agent");
+    }
+
+    public static string OmoAgentDir(string home) => Path.Combine(home, ".omo", "agent");
+
+    public static IEnumerable<string> OmoHomes() =>
+        OneOr(Env("TOKENTRACKER_OMO_HOME") ?? Env("OMO_HOME"), Path.Combine(Home, ".omo"));
+
+    public static IEnumerable<string> OmoAgentDirs()
+    {
+        var over = Env("TOKENTRACKER_OMO_AGENT_DIR");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        foreach (var home in OmoHomes())
+            yield return Path.Combine(home, "agent");
+    }
+
+    public static string PiAgentDir(string home) => Path.Combine(home, ".pi", "agent");
+
+    public static IEnumerable<string> PiHomes()
+    {
+        yield return Path.Combine(Home, ".pi");
+    }
+
+    public static IEnumerable<string> PiAgentDirs()
+    {
+        var over = Env("TOKENTRACKER_PI_AGENT_DIR");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        var shared = Env("PI_CODING_AGENT_DIR");
+        if (shared is not null && PiCodingAgentDirOwnedByPi())
+        {
+            yield return shared;
+            yield break;
+        }
+        yield return Path.Combine(Home, ".pi", "agent");
+    }
+
+    /// <summary>~/.pi 是目录时，PI_CODING_AGENT_DIR 归 pi；否则归 oh-my-pi。</summary>
+    private static bool PiCodingAgentDirOwnedByPi() =>
+        Directory.Exists(Path.Combine(Home, ".pi"));
+
     public static IEnumerable<string> ClaudeHomes()
     {
         var over = Env("CLAUDE_CONFIG_DIR");

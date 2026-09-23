@@ -64,6 +64,7 @@ public sealed class DashboardSettings
         "dsh", "trae", "workbuddy", "zcode", "mimocode", "grok", "qoder", "qoder-cn", "cursor", "cursor-cloud", "codex",
         "minimax", "antigravity", "reasonix", "devin", "opencode", "claude-code",
         "gemini-cli", "kiro", "copilot", "kimi-code", "codebuddy", "hermes",
+        "openclaw", "every-code", "astudio", "oh-my-pi", "omo", "pi",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -103,6 +104,13 @@ public sealed class DashboardSettings
         ["kimi-code"] = "kimi-code",
         ["codebuddy"] = "codebuddy",
         ["hermes"] = "hermes",
+        ["openclaw"] = "openclaw",
+        ["every-code"] = "every-code",
+        ["astudio"] = "astudio",
+        ["oh-my-pi"] = "oh-my-pi",
+        ["omo"] = "omo",
+        ["pi"] = "pi",
+        ["dots"] = "dots",
     };
 
     private static readonly Dictionary<string, string> QuotaGroupOf = new(StringComparer.Ordinal)
@@ -288,6 +296,13 @@ public sealed class DashboardSettings
         "kimi-code" => "Kimi Code",
         "codebuddy" => "CodeBuddy",
         "hermes" => "Hermes",
+        "openclaw" => "OpenClaw",
+        "every-code" => "Every Code",
+        "astudio" => "AStudio",
+        "oh-my-pi" => "oh-my-pi",
+        "omo" => "OmO",
+        "pi" => "pi",
+        "dots" => "Dots",
         _ => id,
     };
 
@@ -296,7 +311,8 @@ public sealed class DashboardSettings
     {
         "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud"
             or "minimax" or "antigravity" or "reasonix" or "devin" or "opencode" or "claude-code"
-            or "gemini-cli" or "kiro" or "copilot" or "kimi-code" or "codebuddy" or "hermes" => true,
+            or "gemini-cli" or "kiro" or "copilot" or "kimi-code" or "codebuddy" or "hermes"
+            or "openclaw" or "every-code" or "astudio" or "oh-my-pi" or "omo" or "pi" or "dots" => true,
         _ => false,
     };
 }

@@ -92,6 +92,13 @@ export const tokens = {
     srcKimiCode: '#34D399',
     srcCodebuddy: '#FBBF24',
     srcHermes: '#F0ABFC',
+    srcOpenclaw: '#E11D48',
+    srcEveryCode: '#4ADE80',
+    srcAstudio: '#0EA5E9',
+    srcOhMyPi: '#EA580C',
+    srcOmo: '#14B8A6',
+    srcPi: '#A78BFA',
+    srcDots: '#F472B6',
   },
   light: {
     bg: '#F5F6F8',
@@ -154,6 +161,13 @@ export const tokens = {
     srcKimiCode: '#047857',
     srcCodebuddy: '#A16207',
     srcHermes: '#86198F',
+    srcOpenclaw: '#9F1239',
+    srcEveryCode: '#166534',
+    srcAstudio: '#075985',
+    srcOhMyPi: '#7C2D12',
+    srcOmo: '#115E59',
+    srcPi: '#4C1D95',
+    srcDots: '#9D174D',
   },
 } as const
 

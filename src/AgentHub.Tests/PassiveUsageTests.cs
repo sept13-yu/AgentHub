@@ -23,6 +23,12 @@ public class PassiveUsageTests
         ["kimi-code"],
         ["codebuddy"],
         ["hermes"],
+        ["openclaw"],
+        ["every-code"],
+        ["astudio"],
+        ["oh-my-pi"],
+        ["omo"],
+        ["pi"],
     ];
 
     [Theory]
@@ -52,6 +58,12 @@ public class PassiveUsageTests
             case "kimi-code": AssertKimiCode(rows); break;
             case "codebuddy": AssertCodeBuddy(rows); break;
             case "hermes": AssertHermes(rows); break;
+            case "openclaw": AssertOpenClaw(rows); break;
+            case "every-code": AssertCodexFamily(rows); break;
+            case "astudio": AssertCodexFamily(rows); break;
+            case "oh-my-pi": AssertOhMyPi(rows); break;
+            case "omo": AssertOmo(rows); break;
+            case "pi": AssertPi(rows); break;
         }
 
         if (id == "codebuddy")
@@ -93,6 +105,57 @@ public class PassiveUsageTests
         Assert.Equal(Path.Combine("home", ".copilot"), UsagePaths.CopilotHome("home"));
         Assert.Equal(Path.Combine("copilot", "session-store.db"), UsagePaths.CopilotSessionStore("copilot"));
         Assert.Equal(Path.Combine("copilot", "data.db"), UsagePaths.CopilotAppDb("copilot"));
+    }
+
+    [Fact]
+    public void Batch3_paths_match_token_tracker_layouts()
+    {
+        Assert.Equal(Path.Combine("home", ".openclaw"), UsagePaths.OpenClawHome("home"));
+        Assert.Equal(Path.Combine("home", ".code"), UsagePaths.EveryCodeHome("home"));
+        Assert.Equal(Path.Combine("home", ".acode"), UsagePaths.AcodeHome("home"));
+        Assert.Equal(Path.Combine("home", ".omp", "agent"), UsagePaths.OmpAgentDir("home"));
+        Assert.Equal(Path.Combine("home", ".omo", "agent"), UsagePaths.OmoAgentDir("home"));
+        Assert.Equal(Path.Combine("home", ".pi", "agent"), UsagePaths.PiAgentDir("home"));
+    }
+
+    [Fact]
+    public void Pi_reader_attributes_dots_and_registry_does_not_rescan()
+    {
+        using var root = new TempDir();
+        var agent = Path.Combine(root.Path, "agent");
+        var cwd = Path.Combine(agent, "sessions", "--cwd--");
+        Directory.CreateDirectory(cwd);
+        File.WriteAllText(Path.Combine(cwd, "t_s.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/dots" }),
+            Line(new
+            {
+                type = "message",
+                id = "d1",
+                timestamp = "2026-01-01T00:00:00.000Z",
+                message = new
+                {
+                    role = "assistant",
+                    provider = "Dots",
+                    model = "dots-model",
+                    content = "SECRET",
+                    usage = new { input = 4, output = 2, cacheRead = 1, cacheWrite = 0, reasoningTokens = 1 },
+                },
+            })) + "\n");
+
+        var rows = PassiveUsage.ReadPi([agent]);
+        var row = Assert.Single(rows);
+        Assert.Equal("dots", row.Tool);
+        Assert.Equal(4, row.InputTokens);
+        Assert.Equal(2, row.OutputTokens);
+        Assert.Equal(1, row.CachedInputTokens);
+        Assert.Equal(1, row.ReasoningTokens);
+        Assert.Equal("dots-model", row.Model);
+        Assert.Equal("/work/dots", row.Project);
+        Assert.DoesNotContain("SECRET", Dump(row), StringComparison.Ordinal);
+
+        var dots = UsageSourceRegistry.Find("dots");
+        Assert.NotNull(dots);
+        Assert.Empty(dots.Units());
     }
 
     [Theory]
@@ -168,6 +231,12 @@ public class PassiveUsageTests
             [Path.Combine(SeedCodeBuddy(root), "home")],
             [Path.Combine(root, "logs")]),
         "hermes" => PassiveUsage.ReadHermes([SeedHermes(root)]),
+        "openclaw" => PassiveUsage.ReadOpenClaw([SeedOpenClaw(root)]),
+        "every-code" => PassiveUsage.ReadEveryCode([SeedCodexHome(root)]),
+        "astudio" => PassiveUsage.ReadAStudio([SeedCodexHome(root)]),
+        "oh-my-pi" => PassiveUsage.ReadOhMyPi([SeedOhMyPi(root)]),
+        "omo" => PassiveUsage.ReadOmo([SeedOmo(root)]),
+        "pi" => PassiveUsage.ReadPi([SeedPi(root)]),
         _ => throw new ArgumentOutOfRangeException(nameof(id)),
     };
 
@@ -1241,6 +1310,395 @@ public class PassiveUsageTests
 
     private static string Line(object value) =>
         System.Text.Json.JsonSerializer.Serialize(value);
+
+    private static void AssertOpenClaw(List<UsageRecord> rows)
+    {
+        Assert.Equal(4, rows.Count);
+        var main = rows.Single(r => r.RequestKey == "m1");
+        Assert.Equal("main/sess.jsonl", main.SessionId);
+        Assert.Equal(60, main.InputTokens);
+        Assert.Equal(8, main.OutputTokens);
+        Assert.Equal(40, main.CachedInputTokens);
+        Assert.Equal(5, main.CacheWriteTokens);
+        Assert.Equal(0, main.ReasoningTokens);
+        Assert.Equal("openclaw-model", main.Model);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), main.TsUtc);
+        Assert.Equal(2, rows.Count(r => r.RequestKey.StartsWith("meta:", StringComparison.Ordinal)));
+
+        var archived = rows.Single(r => r.RequestKey == "arch1");
+        Assert.Equal("main/old.jsonl.reset.1", archived.SessionId);
+        Assert.Equal(3, archived.InputTokens);
+        Assert.Equal(1, archived.OutputTokens);
+        Assert.DoesNotContain(rows, r => r.OutputTokens == 9 || r.InputTokens == 999 || r.RequestKey == "notes");
+    }
+
+    private static void AssertCodexFamily(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var live = rows.Single(r => r.SessionId == "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+        Assert.Equal(80, live.InputTokens);
+        Assert.Equal(7, live.OutputTokens);
+        Assert.Equal(20, live.CachedInputTokens);
+        Assert.Equal(0, live.CacheWriteTokens);
+        Assert.Equal(3, live.ReasoningTokens);
+        Assert.Equal("/work/app", live.Project);
+        Assert.Equal("gpt-5", live.Model);
+        Assert.False(live.IsSubagent);
+
+        var archived = rows.Single(r => r.SessionId == "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
+        Assert.Equal(10, archived.InputTokens);
+        Assert.Equal(2, archived.OutputTokens);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999);
+    }
+
+    private static void AssertOhMyPi(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var main = rows.Single(r => r.RequestKey == "a1");
+        Assert.Equal("t_s", main.SessionId);
+        Assert.Equal(10, main.InputTokens);
+        Assert.Equal(4, main.OutputTokens);
+        Assert.Equal(2, main.CachedInputTokens);
+        Assert.Equal(1, main.CacheWriteTokens);
+        Assert.Equal(3, main.ReasoningTokens);
+        Assert.Equal("claude", main.Model);
+        Assert.Equal("/work/omp", main.Project);
+        Assert.False(main.IsSubagent);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), main.TsUtc);
+
+        var sub = rows.Single(r => r.RequestKey == "sub1");
+        Assert.True(sub.IsSubagent);
+        Assert.Equal("t_s", sub.SessionId);
+        Assert.Equal(1, sub.InputTokens);
+        Assert.Equal("/work/omp", sub.Project);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999 || r.RequestKey == "a0");
+    }
+
+    private static void AssertOmo(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var main = rows.Single(r => r.RequestKey == "o1");
+        Assert.Equal("t_s", main.SessionId);
+        Assert.Equal(8, main.InputTokens);
+        Assert.Equal(7, main.OutputTokens);
+        Assert.Equal(1, main.CachedInputTokens);
+        Assert.Equal(5, main.ReasoningTokens);
+        Assert.Equal("grok-4.6", main.Model);
+        Assert.Equal("/work/omo", main.Project);
+        Assert.False(main.IsSubagent);
+
+        var sub = rows.Single(r => r.RequestKey == "sub1");
+        Assert.True(sub.IsSubagent);
+        Assert.Equal(2, sub.OutputTokens);
+        Assert.Equal(1, sub.ReasoningTokens);
+        Assert.Equal("t_s", sub.SessionId);
+    }
+
+    private static void AssertPi(List<UsageRecord> rows)
+    {
+        Assert.Equal(3, rows.Count);
+        var routed = rows.Single(r => r.RequestKey == "p1");
+        Assert.Equal(10, routed.InputTokens);
+        Assert.Equal(4, routed.OutputTokens);
+        Assert.Equal(3, routed.ReasoningTokens);
+        Assert.Equal("claude", routed.Model);
+        Assert.Equal("/work/pi", routed.Project);
+        Assert.False(routed.IsSubagent);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), routed.TsUtc);
+
+        var plain = rows.Single(r => r.RequestKey == "p2");
+        Assert.Equal(6, plain.InputTokens);
+        Assert.Equal(1, plain.OutputTokens);
+        Assert.Equal("pi-model", plain.Model);
+
+        var sub = rows.Single(r => r.RequestKey == "s1");
+        Assert.True(sub.IsSubagent);
+        Assert.Equal("t_s", sub.SessionId);
+        Assert.Equal(1, sub.InputTokens);
+    }
+
+    private static string SeedOpenClaw(string root)
+    {
+        var sessions = Path.Combine(root, "agents", "main", "sessions");
+        var archive = Path.Combine(root, "agents", "main", "session-sqlite-import-archive");
+        Directory.CreateDirectory(sessions);
+        Directory.CreateDirectory(archive);
+        File.WriteAllText(Path.Combine(sessions, "sess.jsonl"), string.Join('\n',
+            Line(new
+            {
+                type = "message",
+                id = "m1",
+                timestamp = "2026-01-01T00:00:00.000Z",
+                message = new
+                {
+                    role = "assistant",
+                    model = "openclaw-model",
+                    content = "SECRET",
+                    usage = new { input = 100, cacheRead = 40, cacheWrite = 5, output = 8, totalTokens = 113 },
+                },
+            }),
+            Line(new
+            {
+                type = "message",
+                id = "m1",
+                timestamp = "2026-01-01T00:00:01.000Z",
+                message = new
+                {
+                    content = "SECRET",
+                    usage = new { input = 100, cacheRead = 40, cacheWrite = 5, output = 8, totalTokens = 113 },
+                },
+            }),
+            Line(new
+            {
+                type = "message",
+                id = "bad",
+                timestamp = "2026-01-01T00:00:02.000Z",
+                message = new
+                {
+                    content = "SECRET",
+                    usage = new { input = 1.5, cacheRead = 0, cacheWrite = 0, output = 9, totalTokens = 10 },
+                },
+            }),
+            Line(new
+            {
+                type = "message",
+                timestamp = "2026-01-01T00:00:03.000Z",
+                message = new
+                {
+                    content = "SECRET",
+                    usage = new { input = 2, output = 2, cacheRead = 0, cacheWrite = 0, totalTokens = 4 },
+                },
+            }),
+            Line(new
+            {
+                type = "message",
+                timestamp = "2026-01-01T00:00:03.000Z",
+                message = new
+                {
+                    content = "SECRET",
+                    usage = new { input = 2, output = 2, cacheRead = 0, cacheWrite = 0, totalTokens = 4 },
+                },
+            })) + "\n");
+        File.WriteAllText(Path.Combine(sessions, "notes.json"), Line(new
+        {
+            type = "message",
+            id = "notes",
+            timestamp = "2026-01-01T00:00:00.000Z",
+            message = new { content = "SECRET", usage = new { input = 999, output = 999, totalTokens = 1998 } },
+        }));
+        File.WriteAllText(Path.Combine(archive, "old.jsonl.reset.1"), Line(new
+        {
+            type = "message",
+            id = "arch1",
+            timestamp = "2026-01-01T00:00:04.000Z",
+            message = new
+            {
+                model = "openclaw-model",
+                content = "SECRET",
+                usage = new { input = 3, cacheRead = 0, cacheWrite = 0, output = 1, totalTokens = 4 },
+            },
+        }) + "\n");
+        return root;
+    }
+
+    private static string SeedCodexHome(string root)
+    {
+        var day = Path.Combine(root, "sessions", "2026", "01", "01");
+        var archived = Path.Combine(root, "archived_sessions");
+        Directory.CreateDirectory(day);
+        Directory.CreateDirectory(archived);
+        const string live = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        const string old = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        File.WriteAllText(
+            Path.Combine(day, "rollout-2026-01-01T00-00-00-" + live + ".jsonl"),
+            string.Join('\n', CodexMeta(), CodexEvent("2026-01-01T00:00:01.000Z", 100, 20, 10, 3), CodexEvent("2026-01-01T00:00:02.000Z", 100, 20, 10, 3)) + "\n");
+        File.WriteAllText(
+            Path.Combine(archived, "rollout-2026-01-01T00-00-00-" + old + ".jsonl"),
+            string.Join('\n', CodexMeta(), CodexEvent("2026-01-01T00:00:03.000Z", 10, 0, 2, 0)) + "\n");
+        File.WriteAllText(Path.Combine(root, "sessions", "notes.jsonl"), CodexEvent("2026-01-01T00:00:04.000Z", 999, 0, 999, 0) + "\n");
+        return root;
+    }
+
+    private static string CodexMeta() =>
+        Line(new
+        {
+            timestamp = "2026-01-01T00:00:00.000Z",
+            type = "session_meta",
+            payload = new { cwd = "/work/app", model = "gpt-5", prompt = "SECRET" },
+        });
+
+    private static string CodexEvent(string ts, int input, int cached, int output, int reasoning) =>
+        Line(new
+        {
+            timestamp = ts,
+            type = "event_msg",
+            payload = new
+            {
+                type = "token_count",
+                info = new
+                {
+                    last_token_usage = CodexUsage(input, cached, output, reasoning),
+                    total_token_usage = CodexUsage(input, cached, output, reasoning),
+                },
+            },
+        });
+
+    private static object CodexUsage(int input, int cached, int output, int reasoning) => new
+    {
+        input_tokens = input,
+        cached_input_tokens = cached,
+        output_tokens = output,
+        reasoning_output_tokens = reasoning,
+        total_tokens = input + output,
+    };
+
+    private static string SeedOhMyPi(string root)
+    {
+        var cwd = Path.Combine(root, "sessions", "--cwd--");
+        var nested = Path.Combine(cwd, "t_s");
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(cwd, "t_s.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/omp" }),
+            PiMessage("a1", "claude", 10, 4, 2, 1, 3, includeProvider: true, provider: "anthropic", timestampMs: 1767225600000L),
+            PiMessage("a1", "claude", 10, 4, 2, 1, 3, includeProvider: true, provider: "anthropic", timestampMs: 1767225600000L),
+            PiMessage("a0", "claude", 0, 0, 0, 0, 0, includeProvider: false, provider: null, timestampMs: null),
+            PiMessage("a0", "claude", 999, 1, 0, 0, 0, includeProvider: false, provider: null, timestampMs: null),
+            Line(new
+            {
+                type = "message",
+                id = "user1",
+                timestamp = "2026-01-01T00:00:00.000Z",
+                message = new
+                {
+                    role = "user",
+                    content = "SECRET",
+                    usage = new { input = 999, output = 1, cacheRead = 0, cacheWrite = 0, reasoningTokens = 0 },
+                },
+            })) + "\n");
+        File.WriteAllText(Path.Combine(nested, "sub.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/omp" }),
+            PiMessage("sub1", "claude", 1, 1, 0, 0, 0, includeProvider: false, provider: null, timestampMs: null)) + "\n");
+        File.WriteAllText(Path.Combine(root, "sessions", "stray.jsonl"),
+            PiMessage("stray", "claude", 999, 1, 0, 0, 0, includeProvider: false, provider: null, timestampMs: null) + "\n");
+        return root;
+    }
+
+    private static string SeedOmo(string root)
+    {
+        var cwd = Path.Combine(root, "sessions", "--cwd--");
+        var nested = Path.Combine(cwd, "t_s");
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(cwd, "t_s.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/omo" }),
+            Line(new
+            {
+                type = "message",
+                id = "o1",
+                timestamp = "2026-01-02T00:00:00.000Z",
+                message = new
+                {
+                    role = "assistant",
+                    model = "grok-4.6",
+                    content = "SECRET",
+                    timestamp = 1767225600000L,
+                    usage = new { input = 8, output = 12, cacheRead = 1, cacheWrite = 0, reasoningTokens = 5, reasoning = 99 },
+                },
+            })) + "\n");
+        File.WriteAllText(Path.Combine(nested, "sub.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/omo" }),
+            Line(new
+            {
+                type = "message",
+                id = "sub1",
+                timestamp = "2026-01-01T00:00:05.000Z",
+                message = new
+                {
+                    role = "assistant",
+                    model = "grok-4.6",
+                    content = "SECRET",
+                    usage = new { input = 1, output = 3, cacheRead = 0, cacheWrite = 0, reasoning = 1 },
+                },
+            })) + "\n");
+        return root;
+    }
+
+    private static string SeedPi(string root)
+    {
+        var cwd = Path.Combine(root, "sessions", "--cwd--");
+        var nested = Path.Combine(cwd, "t_s");
+        Directory.CreateDirectory(nested);
+        File.WriteAllText(Path.Combine(cwd, "t_s.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/pi" }),
+            PiMessage("p1", "claude", 10, 4, 2, 1, 3, includeProvider: true, provider: "anthropic", timestampMs: 1767225600000L),
+            Line(new
+            {
+                type = "message",
+                id = "p2",
+                timestamp = "2026-01-01T00:00:06.000Z",
+                message = new
+                {
+                    role = "assistant",
+                    model = "pi-model",
+                    content = "SECRET",
+                    usage = new { input = 6, output = 1, cacheRead = 0, cacheWrite = 0, reasoningTokens = 0 },
+                },
+            })) + "\n");
+        File.WriteAllText(Path.Combine(nested, "sub.jsonl"), string.Join('\n',
+            Line(new { type = "session", cwd = "/work/pi" }),
+            PiMessage("s1", "claude", 1, 1, 0, 0, 0, includeProvider: true, provider: "openai", timestampMs: null)) + "\n");
+        return root;
+    }
+
+    private static string PiMessage(
+        string id, string model, int input, int output, int cacheRead, int cacheWrite, int reasoning,
+        bool includeProvider, string? provider, long? timestampMs)
+    {
+        if (includeProvider)
+        {
+            return Line(new
+            {
+                type = "message",
+                id,
+                timestamp = "2026-01-02T00:00:00.000Z",
+                message = new
+                {
+                    role = "assistant",
+                    provider,
+                    model,
+                    content = "SECRET",
+                    timestamp = timestampMs,
+                    usage = new
+                    {
+                        input,
+                        output,
+                        cacheRead,
+                        cacheWrite,
+                        reasoningTokens = reasoning,
+                    },
+                },
+            });
+        }
+        return Line(new
+        {
+            type = "message",
+            id,
+            timestamp = "2026-01-01T00:00:00.000Z",
+            message = new
+            {
+                role = "assistant",
+                model,
+                content = "SECRET",
+                usage = new
+                {
+                    input,
+                    output,
+                    cacheRead,
+                    cacheWrite,
+                    reasoningTokens = reasoning,
+                },
+            },
+        });
+    }
 
     private static string Dump(UsageRecord row) =>
         string.Join('\n', row.SessionId, row.RequestKey, row.Model, row.Project, row.Tool);

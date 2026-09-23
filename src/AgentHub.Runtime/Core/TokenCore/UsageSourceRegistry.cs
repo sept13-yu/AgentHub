@@ -74,6 +74,19 @@ internal static class UsageSourceRegistry
             },
         },
         Dirs("hermes", UsagePaths.HermesHomes, PassiveUsage.ReadHermes),
+        Dirs("openclaw", UsagePaths.OpenClawHomes, PassiveUsage.ReadOpenClaw),
+        Dirs("every-code", UsagePaths.EveryCodeHomes, PassiveUsage.ReadEveryCode),
+        Dirs("astudio", UsagePaths.AcodeHomes, PassiveUsage.ReadAStudio),
+        Dirs("oh-my-pi", UsagePaths.OmpAgentDirs, PassiveUsage.ReadOhMyPi),
+        UnlessSameDir("omo", UsagePaths.OmoAgentDirs, UsagePaths.OmpAgentDirs, PassiveUsage.ReadOmo),
+        UnlessSameDir("pi", UsagePaths.PiAgentDirs, UsagePaths.OmpAgentDirs, PassiveUsage.ReadPi),
+        // Dots 走 pi 的 provider。ReadPi 把 slug dots 写成 Tool=dots；这里不再扫第二遍。
+        new UsageSource
+        {
+            Id = "dots",
+            ProbeRoots = static () => [],
+            Units = static () => [],
+        },
     ];
 
     public static UsageSource? Find(string id) =>
@@ -89,6 +102,29 @@ internal static class UsageSourceRegistry
             Id = id,
             ProbeRoots = roots,
             Units = () => exists() ? [new UsageUnit(label(), read)] : [],
+        };
+
+    /// <summary>目录和 occupiedBy 解析到同一路径时不建扫描单位，避免同一份 JSONL 记到两家。</summary>
+    private static UsageSource UnlessSameDir(
+        string id,
+        Func<IEnumerable<string>> roots,
+        Func<IEnumerable<string>> occupiedBy,
+        Func<IReadOnlyList<string>, IEnumerable<UsageRecord>> read) =>
+        new()
+        {
+            Id = id,
+            ProbeRoots = roots,
+            Units = () =>
+            {
+                var occupied = new HashSet<string>(occupiedBy().Select(Path.GetFullPath), StringComparer.OrdinalIgnoreCase);
+                var found = roots()
+                    .Where(Directory.Exists)
+                    .Select(Path.GetFullPath)
+                    .Where(dir => !occupied.Contains(dir))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                return found.Count == 0 ? [] : [new UsageUnit(found[0], () => read(found))];
+            },
         };
 
     private static UsageSource Dirs(

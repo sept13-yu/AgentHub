@@ -18,6 +18,13 @@ const INK: Record<string, string> = {
   'kimi-code': 'M6 4h4.2L16 12l-5.8 8H6l5.8-8L6 4z',
   codebuddy: 'M5 5h6v6H5V5zm8 0h6v6h-6V5zM5 13h6v6H5v-6zm8 0h6v6h-6v-6z',
   hermes: 'M12 3c2.4 2.6 3.6 4.8 3.6 7.2 0 2-.8 3.6-2.2 4.6V19H10.6v-4.2C9.2 13.8 8.4 12.2 8.4 10.2 8.4 7.8 9.6 5.6 12 3z',
+  openclaw: 'M4 14c2-6 6-8 8-8s6 2 8 8c-2 1-4 2-8 2s-6-1-8-2zm4 1c.6 2.6 1.8 4.4 4 4.4s3.4-1.8 4-4.4',
+  'every-code': 'M8 6L4 12l4 6M16 6l4 6-4 6M13 5l-2 14',
+  astudio: 'M12 3L4 21h3.2l1.6-3.6h6.4L16.8 21H20L12 3zm0 7.2l2.2 5.2H9.8L12 10.2z',
+  'oh-my-pi': 'M7 7h11v2.2H7V7zM9 7v12h2.2V7H9zM13.2 7v8.2h2.2V7h-2.2z',
+  omo: 'M12 4a8 8 0 100 16 8 8 0 000-16zm0 3.2a4.8 4.8 0 110 9.6 4.8 4.8 0 010-9.6z',
+  pi: 'M8 6h10v2.2H8V6zM10 6v12h2.2V6H10zM14.2 6v8h2.2V6h-2.2z',
+  dots: 'M5 10.2h3.2v3.2H5v-3.2zm5.4 0h3.2v3.2h-3.2v-3.2zM15.8 10.2H19v3.2h-3.2v-3.2z',
 }
 
 const props = defineProps<{ id: string | null | undefined }>()

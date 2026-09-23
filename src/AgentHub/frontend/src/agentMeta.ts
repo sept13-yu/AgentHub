@@ -52,6 +52,13 @@ export const AGENT_COLOR: Record<string, string> = {
   'kimi-code': 'var(--src-kimi-code)',
   codebuddy: 'var(--src-codebuddy)',
   hermes: 'var(--src-hermes)',
+  openclaw: 'var(--src-openclaw)',
+  'every-code': 'var(--src-every-code)',
+  astudio: 'var(--src-astudio)',
+  'oh-my-pi': 'var(--src-oh-my-pi)',
+  omo: 'var(--src-omo)',
+  pi: 'var(--src-pi)',
+  dots: 'var(--src-dots)',
 }
 
 export const AGENT_NAME: Record<string, string> = {
@@ -80,6 +87,13 @@ export const AGENT_NAME: Record<string, string> = {
   'kimi-code': 'Kimi Code',
   codebuddy: 'CodeBuddy',
   hermes: 'Hermes',
+  openclaw: 'OpenClaw',
+  'every-code': 'Every Code',
+  astudio: 'AStudio',
+  'oh-my-pi': 'oh-my-pi',
+  omo: 'OmO',
+  pi: 'pi',
+  dots: 'Dots',
 }
 
 function normalizeAgentId(id: string): string {
