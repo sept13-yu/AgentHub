@@ -65,6 +65,12 @@ export const AGENT_COLOR: Record<string, string> = {
   'kilo-code': 'var(--src-kilo-code)',
   'roo-code': 'var(--src-roo-code)',
   'zed-agent': 'var(--src-zed-agent)',
+  goose: 'var(--src-goose)',
+  droid: 'var(--src-droid)',
+  anythingllm: 'var(--src-anythingllm)',
+  'claude-science': 'var(--src-claude-science)',
+  'lm-studio': 'var(--src-lm-studio)',
+  'unsloth-studio': 'var(--src-unsloth-studio)',
 }
 
 export const AGENT_NAME: Record<string, string> = {
@@ -106,6 +112,12 @@ export const AGENT_NAME: Record<string, string> = {
   'kilo-code': 'Kilo Code',
   'roo-code': 'Roo Code',
   'zed-agent': 'Zed Agent',
+  goose: 'Goose',
+  droid: 'Droid',
+  anythingllm: 'AnythingLLM',
+  'claude-science': 'Claude Science',
+  'lm-studio': 'LM Studio',
+  'unsloth-studio': 'Unsloth Studio',
 }
 
 function normalizeAgentId(id: string): string {

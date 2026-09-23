@@ -105,6 +105,12 @@ export const tokens = {
     srcKiloCode: '#65A30D',
     srcRooCode: '#D97706',
     srcZedAgent: '#94A3B8',
+    srcGoose: '#86EFAC',
+    srcDroid: '#FDBA74',
+    srcAnythingllm: '#6366F1',
+    srcClaudeScience: '#FDA4AF',
+    srcLmStudio: '#6EE7B7',
+    srcUnslothStudio: '#A855F7',
   },
   light: {
     bg: '#F5F6F8',
@@ -180,6 +186,12 @@ export const tokens = {
     srcKiloCode: '#365314',
     srcRooCode: '#78350F',
     srcZedAgent: '#334155',
+    srcGoose: '#14532D',
+    srcDroid: '#431407',
+    srcAnythingllm: '#312E81',
+    srcClaudeScience: '#881337',
+    srcLmStudio: '#064E3B',
+    srcUnslothStudio: '#581C87',
   },
 } as const
 

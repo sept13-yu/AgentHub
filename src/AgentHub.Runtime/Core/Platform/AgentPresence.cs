@@ -86,6 +86,12 @@ public static class AgentPresence
         ("kilo-code", () => AnyFootprint(UsagePaths.KiloCodeStorageDirs())),
         ("roo-code", () => AnyFootprint(UsagePaths.RooCodeStorageDirs())),
         ("zed-agent", () => AnyFootprint(UsagePaths.ZedProbeDirs())),
+        ("goose", () => AnyFootprint(UsagePaths.GooseProbeDirs())),
+        ("droid", () => AnyFootprint(UsagePaths.DroidSessionsDirs())),
+        ("anythingllm", () => AnyFootprint(UsagePaths.AnythingLlmProbeDirs())),
+        ("claude-science", () => AnyFootprint(UsagePaths.ClaudeScienceProbeDirs())),
+        ("lm-studio", () => AnyFootprint(UsagePaths.LmStudioLogDirs())),
+        ("unsloth-studio", () => AnyFootprint(UsagePaths.UnslothProbeDirs())),
     ];
 
     /// <summary>按各家 id 探一遍，给设置页排序和灰态徽标用。</summary>

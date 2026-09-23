@@ -66,6 +66,7 @@ public sealed class DashboardSettings
         "gemini-cli", "kiro", "copilot", "kimi-code", "codebuddy", "hermes",
         "openclaw", "every-code", "astudio", "oh-my-pi", "omo", "pi",
         "prime-agent", "craft-agents", "kilo-cli", "kilo-code", "roo-code", "zed-agent",
+        "goose", "droid", "anythingllm", "claude-science", "lm-studio", "unsloth-studio",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -118,6 +119,12 @@ public sealed class DashboardSettings
         ["kilo-code"] = "kilo-code",
         ["roo-code"] = "roo-code",
         ["zed-agent"] = "zed-agent",
+        ["goose"] = "goose",
+        ["droid"] = "droid",
+        ["anythingllm"] = "anythingllm",
+        ["claude-science"] = "claude-science",
+        ["lm-studio"] = "lm-studio",
+        ["unsloth-studio"] = "unsloth-studio",
     };
 
     private static readonly Dictionary<string, string> QuotaGroupOf = new(StringComparer.Ordinal)
@@ -316,6 +323,12 @@ public sealed class DashboardSettings
         "kilo-code" => "Kilo Code",
         "roo-code" => "Roo Code",
         "zed-agent" => "Zed Agent",
+        "goose" => "Goose",
+        "droid" => "Droid",
+        "anythingllm" => "AnythingLLM",
+        "claude-science" => "Claude Science",
+        "lm-studio" => "LM Studio",
+        "unsloth-studio" => "Unsloth Studio",
         _ => id,
     };
 
@@ -326,7 +339,8 @@ public sealed class DashboardSettings
             or "minimax" or "antigravity" or "reasonix" or "devin" or "opencode" or "claude-code"
             or "gemini-cli" or "kiro" or "copilot" or "kimi-code" or "codebuddy" or "hermes"
             or "openclaw" or "every-code" or "astudio" or "oh-my-pi" or "omo" or "pi" or "dots"
-            or "prime-agent" or "craft-agents" or "kilo-cli" or "kilo-code" or "roo-code" or "zed-agent" => true,
+            or "prime-agent" or "craft-agents" or "kilo-cli" or "kilo-code" or "roo-code" or "zed-agent"
+            or "goose" or "droid" or "anythingllm" or "claude-science" or "lm-studio" or "unsloth-studio" => true,
         _ => false,
     };
 }

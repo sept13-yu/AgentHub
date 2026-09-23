@@ -35,6 +35,12 @@ public class PassiveUsageTests
         ["kilo-code"],
         ["roo-code"],
         ["zed-agent"],
+        ["goose"],
+        ["droid"],
+        ["anythingllm"],
+        ["claude-science"],
+        ["lm-studio"],
+        ["unsloth-studio"],
     ];
 
     [Theory]
@@ -76,6 +82,12 @@ public class PassiveUsageTests
             case "kilo-code": AssertKiloCode(rows); break;
             case "roo-code": AssertRooCode(rows); break;
             case "zed-agent": AssertZed(rows); break;
+            case "goose": AssertGoose(rows); break;
+            case "droid": AssertDroid(rows); break;
+            case "anythingllm": AssertAnythingLlm(rows); break;
+            case "claude-science": AssertClaudeScience(rows); break;
+            case "lm-studio": AssertLmStudio(rows); break;
+            case "unsloth-studio": AssertUnsloth(rows); break;
         }
 
         if (id == "codebuddy")
@@ -143,6 +155,22 @@ public class PassiveUsageTests
         Assert.Equal(
             Path.Combine("editor", "User", "globalStorage", "rooveterinaryinc.roo-cline", "tasks"),
             UsagePaths.RooCodeTasks("editor"));
+    }
+
+    [Fact]
+    public void Batch5_paths_match_token_tracker_layouts()
+    {
+        Assert.Equal(Path.Combine("data", "goose", "sessions", "sessions.db"), UsagePaths.GooseSessionsDb("data"));
+        Assert.Equal(
+            Path.Combine("data", "Block", "goose", "sessions", "sessions.db"),
+            UsagePaths.GooseLegacySessionsDb("data"));
+        Assert.Equal(Path.Combine("home", ".factory", "sessions"), UsagePaths.DroidSessionsDir("home"));
+        Assert.Equal(
+            Path.Combine("config", "anythingllm-desktop", "storage", "anythingllm.db"),
+            UsagePaths.AnythingLlmDb("config"));
+        Assert.Equal(Path.Combine("home", ".claude-science", "operon-cli.db"), UsagePaths.ClaudeScienceDb("home"));
+        Assert.Equal(Path.Combine("home", ".lmstudio"), UsagePaths.LmStudioHome("home"));
+        Assert.Equal(Path.Combine("home", ".unsloth", "studio", "studio.db"), UsagePaths.UnslothStudioDb("home"));
     }
 
     [Fact]
@@ -270,6 +298,12 @@ public class PassiveUsageTests
         "kilo-code" => PassiveUsage.ReadKiloCode([SeedKiloCode(root)]),
         "roo-code" => PassiveUsage.ReadRooCode([SeedRooCode(root)]),
         "zed-agent" => PassiveUsage.ReadZed([SeedZed(root)]),
+        "goose" => PassiveUsage.ReadGoose([SeedGoose(root)]),
+        "droid" => PassiveUsage.ReadDroid([SeedDroid(root)]),
+        "anythingllm" => PassiveUsage.ReadAnythingLlm([SeedAnythingLlm(root)]),
+        "claude-science" => PassiveUsage.ReadClaudeScience([SeedClaudeScience(root)]),
+        "lm-studio" => PassiveUsage.ReadLmStudio([SeedLmStudio(root)]),
+        "unsloth-studio" => PassiveUsage.ReadUnsloth([SeedUnsloth(root)]),
         _ => throw new ArgumentOutOfRangeException(nameof(id)),
     };
 
@@ -2093,6 +2127,376 @@ public class PassiveUsageTests
     {
         using var compressor = new ZstdSharp.Compressor(3);
         return compressor.Wrap(System.Text.Encoding.UTF8.GetBytes(json)).ToArray();
+    }
+
+    private static void AssertGoose(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var life = rows.Single(r => r.SessionId == "s-life");
+        Assert.Equal("snapshot", life.RequestKey);
+        Assert.Equal(100, life.InputTokens);
+        Assert.Equal(40, life.OutputTokens);
+        Assert.Equal(10, life.ReasoningTokens);
+        Assert.Equal(0, life.CachedInputTokens);
+        Assert.Equal("goose-model", life.Model);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), life.TsUtc);
+
+        var turn = rows.Single(r => r.SessionId == "s-turn");
+        Assert.Equal(5, turn.InputTokens);
+        Assert.Equal(2, turn.OutputTokens);
+        Assert.Equal(2, turn.ReasoningTokens);
+        Assert.DoesNotContain(rows, r => r.SessionId == "s-empty" || r.InputTokens == 1);
+    }
+
+    private static void AssertDroid(List<UsageRecord> rows)
+    {
+        Assert.Equal(3, rows.Count);
+        var main = rows.Single(r => r.SessionId == "abc");
+        Assert.Equal("snapshot", main.RequestKey);
+        Assert.Equal(10, main.InputTokens);
+        Assert.Equal(4, main.OutputTokens);
+        Assert.Equal(2, main.CachedInputTokens);
+        Assert.Equal(1, main.CacheWriteTokens);
+        Assert.Equal(3, main.ReasoningTokens);
+        Assert.Equal("glm-5-1-0", main.Model);
+        Assert.Equal("/work/droid", main.Project);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), main.TsUtc);
+
+        var named = rows.Single(r => r.SessionId == "def");
+        Assert.Equal("claude-sonnet", named.Model);
+        Assert.Equal(6, named.InputTokens);
+        Assert.Null(named.Project);
+
+        var gap = rows.Single(r => r.SessionId == "ghi");
+        Assert.Equal("gpt-4-1", gap.Model);
+        Assert.Equal(5, gap.InputTokens);
+        Assert.Equal(4, gap.OutputTokens);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 1);
+    }
+
+    private static void AssertAnythingLlm(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var first = rows.Single(r => r.SessionId == "1");
+        Assert.Equal("1", first.RequestKey);
+        Assert.Equal(12, first.InputTokens);
+        Assert.Equal(3, first.OutputTokens);
+        Assert.Equal(5, first.ReasoningTokens);
+        Assert.Equal("llama", first.Model);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), first.TsUtc);
+
+        var second = rows.Single(r => r.SessionId == "3");
+        Assert.Equal(4, second.InputTokens);
+        Assert.Equal(1, second.OutputTokens);
+        Assert.Equal("anythingllm-unknown", second.Model);
+        Assert.DoesNotContain(rows, r => r.SessionId == "2");
+    }
+
+    private static void AssertClaudeScience(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var root = rows.Single(r => r.SessionId == "f1");
+        Assert.Equal("f1", root.RequestKey);
+        Assert.Equal(80, root.InputTokens);
+        Assert.Equal(10, root.OutputTokens);
+        Assert.Equal(30, root.CachedInputTokens);
+        Assert.Equal(10, root.CacheWriteTokens);
+        Assert.Equal(0, root.ReasoningTokens);
+        Assert.Equal("claude-sonnet", root.Model);
+        Assert.False(root.IsSubagent);
+        Assert.Equal(new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc), root.TsUtc);
+
+        var child = rows.Single(r => r.SessionId == "f2");
+        Assert.True(child.IsSubagent);
+        Assert.Equal(10, child.InputTokens);
+        Assert.Equal(1, child.OutputTokens);
+        Assert.DoesNotContain(rows, r => r.SessionId == "demo" || r.InputTokens == 999);
+    }
+
+    private static void AssertLmStudio(List<UsageRecord> rows)
+    {
+        Assert.Equal(2, rows.Count);
+        var shared = rows.Single(r => r.RequestKey == "chatcmpl-shared");
+        Assert.Equal("chatcmpl-shared", shared.SessionId);
+        Assert.Equal(20, shared.InputTokens);
+        Assert.Equal(5, shared.OutputTokens);
+        Assert.Equal(0, shared.CachedInputTokens);
+        Assert.Equal("local-model", shared.Model);
+        Assert.Equal(new DateTime(2026, 7, 9, 10, 0, 0, DateTimeKind.Local).ToUniversalTime(), shared.TsUtc);
+
+        var response = rows.Single(r => r.RequestKey == "resp_2");
+        Assert.Equal(40, response.InputTokens);
+        Assert.Equal(30, response.CachedInputTokens);
+        Assert.Equal(12, response.OutputTokens);
+        Assert.Equal(8, response.ReasoningTokens);
+        Assert.Equal("reasoning-model", response.Model);
+        Assert.DoesNotContain(rows, r => r.InputTokens == 999);
+    }
+
+    private static void AssertUnsloth(List<UsageRecord> rows)
+    {
+        Assert.Equal(3, rows.Count);
+        var paid = rows.Single(r => r.SessionId == "chat:c1");
+        Assert.Equal("chat:c1", paid.RequestKey);
+        Assert.Equal(60, paid.InputTokens);
+        Assert.Equal(35, paid.OutputTokens);
+        Assert.Equal(30, paid.CachedInputTokens);
+        Assert.Equal(10, paid.CacheWriteTokens);
+        Assert.Equal(5, paid.ReasoningTokens);
+        Assert.Equal("openai/gpt-5", paid.Model);
+
+        var local = rows.Single(r => r.SessionId == "chat:c2");
+        Assert.Equal("local/qwen", local.Model);
+        Assert.Equal(8, local.InputTokens);
+        Assert.Equal(2, local.OutputTokens);
+
+        var api = rows.Single(r => r.SessionId == "api:e1");
+        Assert.Equal("local/llama", api.Model);
+        Assert.Equal(4, api.InputTokens);
+        Assert.Equal(1, api.OutputTokens);
+        Assert.DoesNotContain(rows, r => r.SessionId == "chat:user" || r.InputTokens == 999);
+    }
+
+    private static string SeedGoose(string root)
+    {
+        var db = Path.Combine(root, "sessions.db");
+        using var conn = OpenDb(db);
+        Exec(conn, """
+            CREATE TABLE sessions (
+              id TEXT, model_config_json TEXT, created_at TEXT,
+              total_tokens INTEGER, input_tokens INTEGER, output_tokens INTEGER,
+              accumulated_total_tokens INTEGER, accumulated_input_tokens INTEGER, accumulated_output_tokens INTEGER
+            );
+            """);
+        Exec(conn, """
+            INSERT INTO sessions VALUES (
+              's-life', '{"model_name":"goose-model","note":"SECRET"}', '2026-01-01 00:00:00',
+              1, 1, 1, 150, 100, 40);
+            INSERT INTO sessions VALUES (
+              's-turn', '{"model_name":"turn-model"}', '2026-01-02T00:00:00Z',
+              9, 5, 2, NULL, NULL, NULL);
+            INSERT INTO sessions VALUES (
+              's-empty', '{"note":"SECRET"}', '2026-01-01 00:00:00',
+              9, 9, 9, 9, 9, 9);
+            INSERT INTO sessions VALUES (
+              's-zero', '{"model_name":"zero"}', '2026-01-01 00:00:00',
+              0, 0, 0, 0, 0, 0);
+            """);
+        return db;
+    }
+
+    private static string SeedDroid(string root)
+    {
+        var mainDir = Path.Combine(root, "proj");
+        var other = Path.Combine(root, "other");
+        Directory.CreateDirectory(mainDir);
+        Directory.CreateDirectory(other);
+        var main = Path.Combine(mainDir, "abc.settings.json");
+        File.WriteAllText(main, Line(new
+        {
+            model = "custom:GLM-5.1-[Proxy]-0",
+            note = "SECRET",
+            tokenUsage = new
+            {
+                inputTokens = 10,
+                outputTokens = 4,
+                cacheReadTokens = 2,
+                cacheCreationTokens = 1,
+                thinkingTokens = 3,
+                totalTokens = 20,
+            },
+        }));
+        File.WriteAllText(Path.Combine(mainDir, "abc.jsonl"), string.Join('\n',
+            Line(new { type = "session_start", cwd = "/work/droid", prompt = "SECRET" }),
+            "SECRET transcript") + "\n");
+        File.SetLastWriteTimeUtc(main, new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var shadow = Path.Combine(other, "abc.settings.json");
+        File.WriteAllText(shadow, Line(new
+        {
+            model = "custom:GLM-5.1-[Proxy]-0",
+            tokenUsage = new { inputTokens = 1, outputTokens = 0, totalTokens = 1 },
+        }));
+        File.SetLastWriteTimeUtc(shadow, new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        var named = Path.Combine(mainDir, "def.settings.json");
+        File.WriteAllText(named, Line(new
+        {
+            providerLock = "anthropic",
+            tokenUsage = new { inputTokens = 6, outputTokens = 1, totalTokens = 7 },
+        }));
+        File.WriteAllText(Path.Combine(mainDir, "def.jsonl"), "note Model: Claude Sonnet [SECRET]\nSECRET\n");
+
+        File.WriteAllText(Path.Combine(mainDir, "ghi.settings.json"), Line(new
+        {
+            model = "gpt-4.1",
+            tokenUsage = new { inputTokens = 5, outputTokens = 0, totalTokens = 9 },
+        }));
+        return root;
+    }
+
+    private static string SeedAnythingLlm(string root)
+    {
+        var db = Path.Combine(root, "anythingllm.db");
+        using var conn = OpenDb(db);
+        Exec(conn, """
+            CREATE TABLE workspace_chats (
+              id INTEGER, include INTEGER, createdAt INTEGER, response TEXT
+            );
+            """);
+        void Insert(int id, int include, long created, string response)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "INSERT INTO workspace_chats (id, include, createdAt, response) VALUES ($i, $n, $c, $r)";
+            cmd.Parameters.AddWithValue("$i", id);
+            cmd.Parameters.AddWithValue("$n", include);
+            cmd.Parameters.AddWithValue("$c", created);
+            cmd.Parameters.AddWithValue("$r", response);
+            cmd.ExecuteNonQuery();
+        }
+        Insert(1, 1, 1_767_225_600_000, Line(new
+        {
+            textResponse = "SECRET",
+            metrics = new { prompt_tokens = 12, completion_tokens = 3, total_tokens = 20, model = "llama" },
+        }));
+        Insert(2, 0, 1_767_225_600_000, Line(new
+        {
+            textResponse = "SECRET",
+            metrics = new { prompt_tokens = 0, completion_tokens = 0, total_tokens = 0 },
+        }));
+        Insert(3, 1, 1_767_225_601_000, Line(new
+        {
+            textResponse = "SECRET",
+            metrics = new { prompt_tokens = 4, completion_tokens = 1, total_tokens = 5 },
+        }));
+        return db;
+    }
+
+    private static string SeedClaudeScience(string root)
+    {
+        var db = Path.Combine(root, "operon-cli.db");
+        using var conn = OpenDb(db);
+        Exec(conn, """
+            CREATE TABLE frames (
+              id TEXT, parent_frame_id TEXT, model TEXT,
+              input_tokens INTEGER, output_tokens INTEGER,
+              cache_read_tokens INTEGER, cache_write_tokens INTEGER,
+              aux_input_tokens INTEGER, aux_output_tokens INTEGER,
+              aux_cache_read_tokens INTEGER, aux_cache_write_tokens INTEGER,
+              created_at TEXT, context_data TEXT
+            );
+            """);
+        Exec(conn, """
+            INSERT INTO frames VALUES (
+              'f1', NULL, 'claude-sonnet',
+              100, 8, 30, 10, 20, 2, 0, 0,
+              '2026-01-01T00:00:00.000Z', 'SECRET');
+            INSERT INTO frames VALUES (
+              'f2', 'f1', 'claude-sonnet',
+              10, 1, 0, 0, 0, 0, 0, 0,
+              '2026-01-01T00:00:01.000Z', 'SECRET');
+            INSERT INTO frames VALUES (
+              'demo', NULL, 'demo',
+              NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+              '2026-01-01T00:00:02.000Z', 'SECRET 999');
+            """);
+        return db;
+    }
+
+    private static string SeedLmStudio(string root)
+    {
+        var day = Path.Combine(root, "server-logs", "2026-07");
+        Directory.CreateDirectory(day);
+        var shared = string.Join('\n',
+            "[2026-07-09 10:00:00][INFO][local-model]",
+            "Final response: {",
+            "  \"id\": \"chatcmpl-shared\",",
+            "  \"model\": \"local-model\",",
+            "  \"choices\": [{\"message\":{\"content\":\"SECRET\"}}],",
+            "  \"usage\": {",
+            "    \"prompt_tokens\": 20,",
+            "    \"completion_tokens\": 5,",
+            "    \"total_tokens\": 25",
+            "  }",
+            "}");
+        var response = string.Join('\n',
+            "[2026-07-09 10:30:00][INFO][reasoning-model]",
+            "Final response: {",
+            "  \"id\": \"resp_2\",",
+            "  \"model\": \"reasoning-model\",",
+            "  \"output\": [{\"content\":\"SECRET \\\"usage\\\": {\\\"prompt_tokens\\\":999}\"}],",
+            "  \"usage\": {",
+            "    \"input_tokens\": 70,",
+            "    \"output_tokens\": 20,",
+            "    \"total_tokens\": 90,",
+            "    \"input_tokens_details\": {\"cached_tokens\": 30},",
+            "    \"output_tokens_details\": {\"reasoning_tokens\": 8}",
+            "  }",
+            "}");
+        File.WriteAllText(Path.Combine(day, "one.log"), shared + "\n" + response + "\n");
+        File.WriteAllText(Path.Combine(day, "two.log"), shared + "\n");
+        File.WriteAllText(Path.Combine(day, "notes.txt"), shared + "\n");
+        return root;
+    }
+
+    private static string SeedUnsloth(string root)
+    {
+        var db = Path.Combine(root, "studio.db");
+        using var conn = OpenDb(db);
+        Exec(conn, """
+            CREATE TABLE chat_threads (id TEXT, model_id TEXT);
+            CREATE TABLE chat_messages (
+              id TEXT, role TEXT, thread_id TEXT, created_at TEXT, content TEXT, metadata_json TEXT
+            );
+            CREATE TABLE api_usage_events (
+              id TEXT, model TEXT, prompt_tokens INTEGER, completion_tokens INTEGER,
+              total_tokens INTEGER, created_at TEXT
+            );
+            """);
+        Exec(conn, "INSERT INTO chat_threads VALUES ('t1', 'fallback')");
+        void Chat(string id, string role, string meta)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO chat_messages (id, role, thread_id, created_at, content, metadata_json)
+                VALUES ($i, $r, 't1', '2026-01-01T00:00:00Z', 'SECRET', $m)
+                """;
+            cmd.Parameters.AddWithValue("$i", id);
+            cmd.Parameters.AddWithValue("$r", role);
+            cmd.Parameters.AddWithValue("$m", meta);
+            cmd.ExecuteNonQuery();
+        }
+        Chat("c1", "assistant", Line(new
+        {
+            content = "SECRET",
+            responseDetails = new { responseModelId = "gpt-5", providerType = "openai" },
+            contextUsage = new
+            {
+                promptTokens = 100,
+                completionTokens = 40,
+                totalTokens = 140,
+                cachedTokens = 30,
+                cacheWriteTokens = 10,
+                reasoningTokens = 5,
+                modelId = "ignored",
+            },
+        }));
+        Chat("c2", "assistant", Line(new
+        {
+            content = "SECRET",
+            responseDetails = new { responseModelId = "qwen", providerType = "local" },
+            contextUsage = new { promptTokens = 8, completionTokens = 2, totalTokens = 10 },
+        }));
+        Chat("user", "user", Line(new
+        {
+            content = "SECRET",
+            responseDetails = new { responseModelId = "gpt-5", providerType = "openai" },
+            contextUsage = new { promptTokens = 999, completionTokens = 999, totalTokens = 1998 },
+        }));
+        Exec(conn, """
+            INSERT INTO api_usage_events VALUES ('e1', 'llama', 4, 1, 5, '2026-01-01T00:00:02Z');
+            """);
+        return db;
     }
 
     private static string Dump(UsageRecord row) =>

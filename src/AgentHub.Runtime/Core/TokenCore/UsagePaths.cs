@@ -360,6 +360,138 @@ internal static class UsagePaths
         }
     }
 
+    public static string GooseSessionsDb(string dataHome) =>
+        Path.Combine(dataHome, "goose", "sessions", "sessions.db");
+
+    public static string GooseLegacySessionsDb(string dataHome) =>
+        Path.Combine(dataHome, "Block", "goose", "sessions", "sessions.db");
+
+    public static IEnumerable<string> GooseDbCandidates()
+    {
+        var over = Env("TOKENTRACKER_GOOSE_DB");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        var root = Env("GOOSE_PATH_ROOT");
+        if (root is not null)
+        {
+            yield return Path.Combine(root, "data", "sessions", "sessions.db");
+            yield break;
+        }
+        if (OperatingSystem.IsWindows())
+        {
+            yield return Path.Combine(PlatformPaths.RoamingAppData, "goose", "sessions", "sessions.db");
+            yield break;
+        }
+        if (OperatingSystem.IsMacOS())
+        {
+            yield return Path.Combine(PlatformPaths.LocalAppData, "goose", "sessions", "sessions.db");
+            yield break;
+        }
+        yield return GooseSessionsDb(PlatformPaths.LocalAppData);
+        yield return GooseLegacySessionsDb(PlatformPaths.LocalAppData);
+    }
+
+    public static IEnumerable<string> GooseProbeDirs() => ParentDirs(GooseDbCandidates());
+
+    public static string DroidSessionsDir(string home) => Path.Combine(home, ".factory", "sessions");
+
+    public static IEnumerable<string> DroidSessionsDirs()
+    {
+        var over = Environment.GetEnvironmentVariable("DROID_SESSIONS_DIR");
+        if (!string.IsNullOrWhiteSpace(over))
+        {
+            foreach (var part in over.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                if (part.Length > 0) yield return Expand(part);
+            yield break;
+        }
+        var factory = Env("FACTORY_DIR");
+        if (factory is not null)
+        {
+            yield return Path.Combine(factory, "sessions");
+            yield break;
+        }
+        yield return DroidSessionsDir(Home);
+    }
+
+    public static string AnythingLlmDb(string configHome) =>
+        Path.Combine(configHome, "anythingllm-desktop", "storage", "anythingllm.db");
+
+    public static IEnumerable<string> AnythingLlmDbs() =>
+        OneOr(Env("TOKENTRACKER_ANYTHINGLLM_DB"), AnythingLlmDb(PlatformPaths.RoamingAppData));
+
+    public static IEnumerable<string> AnythingLlmProbeDirs() => ParentDirs(AnythingLlmDbs());
+
+    public static string ClaudeScienceDb(string home) =>
+        Path.Combine(home, ".claude-science", "operon-cli.db");
+
+    public static IEnumerable<string> ClaudeScienceDbCandidates()
+    {
+        var explicitPath = Env("CLAUDE_SCIENCE_DB_PATH");
+        if (explicitPath is not null)
+        {
+            yield return explicitPath;
+            yield break;
+        }
+        var root = Env("CLAUDE_SCIENCE_HOME") ?? Path.Combine(Home, ".claude-science");
+        foreach (var name in new[] { "operon-cli.db", "operon.db" })
+            yield return Path.Combine(root, name);
+        var orgs = Path.Combine(root, "orgs");
+        if (!Directory.Exists(orgs)) yield break;
+        IEnumerable<string> dirs;
+        try { dirs = Directory.EnumerateDirectories(orgs).ToList(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { yield break; }
+        foreach (var org in dirs)
+            foreach (var name in new[] { "operon-cli.db", "operon.db" })
+                yield return Path.Combine(org, name);
+    }
+
+    public static IEnumerable<string> ClaudeScienceProbeDirs() => ParentDirs(ClaudeScienceDbCandidates());
+
+    public static string LmStudioHome(string home) => Path.Combine(home, ".lmstudio");
+
+    public static IEnumerable<string> LmStudioHomes() =>
+        OneOr(Env("TOKENTRACKER_LMSTUDIO_HOME") ?? Env("LM_STUDIO_HOME"), LmStudioHome(Home));
+
+    public static IEnumerable<string> LmStudioLogDirs()
+    {
+        foreach (var home in LmStudioHomes())
+            yield return Path.Combine(home, "server-logs");
+    }
+
+    public static string UnslothStudioDb(string home) =>
+        Path.Combine(home, ".unsloth", "studio", "studio.db");
+
+    public static IEnumerable<string> UnslothStudioDbs()
+    {
+        var over = Env("TOKENTRACKER_UNSLOTH_DB");
+        if (over is not null)
+        {
+            yield return over;
+            yield break;
+        }
+        var studio = Env("UNSLOTH_STUDIO_HOME");
+        if (studio is not null)
+        {
+            yield return Path.Combine(studio, "studio.db");
+            yield break;
+        }
+        yield return UnslothStudioDb(Home);
+    }
+
+    public static IEnumerable<string> UnslothProbeDirs() => ParentDirs(UnslothStudioDbs());
+
+    private static IEnumerable<string> ParentDirs(IEnumerable<string> files)
+    {
+        foreach (var file in files)
+        {
+            var dir = Path.GetDirectoryName(file);
+            if (!string.IsNullOrEmpty(dir)) yield return dir;
+        }
+    }
+
     public static IEnumerable<string> ClaudeHomes()
     {
         var over = Env("CLAUDE_CONFIG_DIR");

@@ -31,6 +31,12 @@ const INK: Record<string, string> = {
   'kilo-code': 'M4 6h7v2.2H7.2V11H10v2.2H7.2V18H4V6zm9 0h7v2.2h-4.2V11H19v2.2h-3.2V18H13V6z',
   'roo-code': 'M4 11L12 4l8 7v9H4v-9zm3 2v4h4v-4H7zm6 0v4h4v-4h-4z',
   'zed-agent': 'M4 5h16v3H8.5l8.2 11H20v3H4v-3h10.8L6.6 8H4V5z',
+  goose: 'M4 14c2-5 5-8 8-8 2 0 3.2 1 4 2.4 1.6-.6 3.2.2 4 1.6-1.4.2-2.6.8-3.4 1.6 1 .8 1.6 2 1.4 3.4-2 .2-4-.4-5.4-1.6C11 15.2 8 16 4 14z',
+  droid: 'M8 8h8v2h2v8H6V10h2V8zm2 4h1.4v1.4H10V12zm2.6 0H14v1.4h-1.4V12zM9 16.2h6v1.4H9v-1.4z',
+  anythingllm: 'M5 19L12 4l7 15h-2.4l-1.4-3.2H8.8L7.4 19H5zm4.6-5h4.8L12 9.2 9.6 14z',
+  'claude-science': 'M9 3h6v2.2H13V8c2.8.4 5 2.6 5 5.6V19H6v-5.4C6 10.6 8.2 8.4 11 8V5.2H9V3z',
+  'lm-studio': 'M6 5h3.2v10.2L16.8 5H20v14h-3.2V8.8L9.2 19H6V5z',
+  'unsloth-studio': 'M7 5h3.2l1.8 9.2L13.8 5H17l-3.2 14h-3.6L7 5z',
 }
 
 const props = defineProps<{ id: string | null | undefined }>()

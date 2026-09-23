@@ -111,6 +111,48 @@ internal static class UsageSourceRegistry
                 return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadZed(dbs))];
             },
         },
+        new UsageSource
+        {
+            Id = "goose",
+            ProbeRoots = UsagePaths.GooseProbeDirs,
+            Units = () =>
+            {
+                var db = UsagePaths.GooseDbCandidates().FirstOrDefault(File.Exists);
+                return db is null ? [] : [new UsageUnit(db, () => PassiveUsage.ReadGoose([db]))];
+            },
+        },
+        Dirs("droid", UsagePaths.DroidSessionsDirs, PassiveUsage.ReadDroid),
+        new UsageSource
+        {
+            Id = "anythingllm",
+            ProbeRoots = UsagePaths.AnythingLlmProbeDirs,
+            Units = () =>
+            {
+                var dbs = UsagePaths.AnythingLlmDbs().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadAnythingLlm(dbs))];
+            },
+        },
+        new UsageSource
+        {
+            Id = "claude-science",
+            ProbeRoots = UsagePaths.ClaudeScienceProbeDirs,
+            Units = () =>
+            {
+                var dbs = UsagePaths.ClaudeScienceDbCandidates().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadClaudeScience(dbs))];
+            },
+        },
+        Dirs("lm-studio", UsagePaths.LmStudioHomes, PassiveUsage.ReadLmStudio),
+        new UsageSource
+        {
+            Id = "unsloth-studio",
+            ProbeRoots = UsagePaths.UnslothProbeDirs,
+            Units = () =>
+            {
+                var dbs = UsagePaths.UnslothStudioDbs().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadUnsloth(dbs))];
+            },
+        },
     ];
 
     public static UsageSource? Find(string id) =>
