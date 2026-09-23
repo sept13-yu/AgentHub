@@ -17,36 +17,10 @@ internal static class ZcodeLocal
     public static bool DbExists => File.Exists(DbPath);
 
     /// <summary>拷主文件 + WAL/SHM 到临时目录。调用方用完必须 <see cref="DeleteSnapshot"/>。</summary>
-    public static bool TrySnapshot(out string db, out string tmp)
-    {
-        db = "";
-        tmp = "";
-        if (!DbExists) return false;
-        tmp = Path.Combine(Path.GetTempPath(), "agenthub-zcode-" + Guid.NewGuid().ToString("n"));
-        Directory.CreateDirectory(tmp);
-        try
-        {
-            db = Path.Combine(tmp, "db.sqlite");
-            CopyShared(DbPath, db);
-            CopyIfExists(DbPath + "-wal", db + "-wal");
-            CopyIfExists(DbPath + "-shm", db + "-shm");
-            return true;
-        }
-        catch
-        {
-            DeleteSnapshot(tmp);
-            tmp = "";
-            db = "";
-            throw;
-        }
-    }
+    public static bool TrySnapshot(out string db, out string tmp) =>
+        UsageIo.TrySnapshot(DbExists ? DbPath : null, "agenthub-zcode-", "db.sqlite", out db, out tmp);
 
-    public static void DeleteSnapshot(string? tmp)
-    {
-        if (string.IsNullOrEmpty(tmp)) return;
-        try { Directory.Delete(tmp, recursive: true); }
-        catch (IOException) { }
-    }
+    public static void DeleteSnapshot(string? tmp) => UsageIo.DeleteSnapshot(tmp);
 
     public static IReadOnlyList<UsageRecord> ReadUsage()
     {
@@ -262,15 +236,4 @@ internal static class ZcodeLocal
         return UsageParsers.ParseMs(ms);
     }
 
-    private static void CopyIfExists(string from, string to)
-    {
-        if (File.Exists(from)) CopyShared(from, to);
-    }
-
-    private static void CopyShared(string from, string to)
-    {
-        using var src = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        using var dst = new FileStream(to, FileMode.Create, FileAccess.Write, FileShare.None);
-        src.CopyTo(dst);
-    }
 }
