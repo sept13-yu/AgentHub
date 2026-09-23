@@ -8,15 +8,15 @@ param(
     [string]$TargetCommitish = $env:GITHUB_SHA
 )
 
-# 把 GitHub Actions 打好的 Velopack 产物挂到 Gitee Release（应用内更新源）。
-# 鉴权：GITEE_TOKEN（Gitee 私人令牌，需 projects 权限）。缺 token 直接失败，避免发版只到 GitHub。
+# 本机把 Velopack 产物挂到 Gitee Release（应用内更新源）。
+# GitHub Actions 不再调用本脚本；GitHub Release 成功后再在本地执行。Setup exe 不上传。
+# 鉴权：环境变量 GITEE_TOKEN（Gitee 私人令牌，需 projects 权限）。
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($Token)) {
     throw @'
-缺少 GITEE_TOKEN。应用内更新走 Gitee Release，不能只发 GitHub。
-请在 GitHub 仓库 Settings → Secrets and variables → Actions 添加 GITEE_TOKEN
-（Gitee 私人令牌，勾选 projects 权限），然后重跑本 workflow。
+缺少 GITEE_TOKEN。请在本机设置环境变量 GITEE_TOKEN
+（Gitee 私人令牌，勾选 projects 权限）后再运行本脚本。
 '@
 }
 
@@ -114,7 +114,7 @@ function Invoke-Gitee {
         }
     }
     if ($status -in 401, 403) {
-        throw "GITEE_TOKEN 无效或缺少 projects 权限 (HTTP $status)。请检查仓库 Secrets 中的 GITEE_TOKEN。"
+        throw "GITEE_TOKEN 无效或缺少 projects 权限 (HTTP $status)。请检查本机环境变量 GITEE_TOKEN。"
     }
     $json = $null
     if (-not [string]::IsNullOrWhiteSpace($text)) {

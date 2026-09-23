@@ -66,7 +66,7 @@ dotnet run --project src/AgentHub.Backend
 
 ### 发版
 
-Windows 见 `pack/windows/pack.ps1` 与 tag `v*`。版本号需与 `src/Directory.Build.props` 的 Version、`latest.json` 一致。发版 workflow 会把 Velopack 产物同步到 Gitee Release（应用内更新源）；仓库 Settings → Secrets 需配置 `GITEE_TOKEN`（Gitee 私人令牌，projects 权限）。手动 Setup 安装包只发 GitHub。
+Windows 见 `pack/windows/pack.ps1` 与 tag `v*`。版本号需与 `src/Directory.Build.props` 的 Version、`latest.json` 一致。GitHub Release 成功后，由维护者在本机用 `pack/windows/sync-gitee-release.ps1` 上传 Velopack 资源到 Gitee（应用内更新源）。Setup 安装包只发 GitHub。
 
 Mac 打包脚本在 `pack/macos/`。
 
