@@ -248,51 +248,76 @@ public static class CodexAccountQuota
         }
     }
 
-    /// <summary>解析 wham/usage。窗口 id 只有 5h / 7d。</summary>
+    /// <summary>解析 wham/usage。窗口 id 只有 5h / 7d。
+    /// 按 <c>limit_window_seconds</c> 归类，不按 primary/secondary 槽位：PROLITE / Free
+    /// 常把唯一周窗放在 primary_window（604800s），secondary_window 为 null 或 0 秒禁用窗。
+    /// 空窗仍可能带 used_percent=0；若按槽位 fallback 标成 7d，会覆盖真实周额度变成 100% / 无重置。</summary>
     public static List<Dictionary<string, object?>> ParseWindows(JsonElement root)
     {
         var scope = root;
 
         long WindowSecs(JsonElement w)
         {
-            var secs = (long)Num(w, "window_length_seconds");
-            if (secs <= 0) secs = (long)Num(w, "limit_window_seconds");
-            return secs;
+            if (TryNum(w, "window_length_seconds", out var secs) && secs > 0) return (long)secs;
+            if (TryNum(w, "limit_window_seconds", out secs) && secs > 0) return (long)secs;
+            return 0;
+        }
+
+        bool Disabled(JsonElement w)
+        {
+            if (TryNum(w, "window_length_seconds", out var secs) && secs <= 0) return true;
+            if (TryNum(w, "limit_window_seconds", out secs) && secs <= 0) return true;
+            return false;
         }
 
         string? ResetAt(JsonElement w)
         {
             var s = Str(w, "resets_at") ?? Str(w, "reset_at");
-            if (!string.IsNullOrEmpty(s)) return s;
+            if (!string.IsNullOrEmpty(s) && !string.Equals(s, "never", StringComparison.OrdinalIgnoreCase))
+                return s;
             if (w.ValueKind == JsonValueKind.Object && w.TryGetProperty("reset_at", out var ra)
                 && ra.ValueKind == JsonValueKind.Number)
             {
                 long unix = ra.TryGetInt64(out var i) ? i : (long)ra.GetDouble();
+                if (unix <= 0) return null;
                 if (unix > 10_000_000_000L) unix /= 1000;
-                return DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime.ToString("o");
+                try { return DateTimeOffset.FromUnixTimeSeconds(unix).UtcDateTime.ToString("o"); }
+                catch (ArgumentOutOfRangeException) { return null; }
             }
+            // 实样字段：reset_at 偶发缺失时用相对秒
+            if (TryNum(w, "reset_after_seconds", out var after) && after > 0)
+                return DateTime.UtcNow.AddSeconds((double)after).ToString("o");
             return null;
         }
 
-        string Classify(JsonElement w, string fallback)
+        string Classify(long secs, string fallback)
         {
-            long secs = WindowSecs(w);
             if (secs >= 86_400 * 2) return "7d";
             if (secs > 0) return "5h";
             return fallback;
         }
 
         var windows = new List<Dictionary<string, object?>>();
-        void AddWindow(JsonElement w, string id)
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        void AddWindow(JsonElement w, string fallback)
         {
-            decimal used = Num(w, "used_percent");
+            // null / 非对象：PROLITE 的 secondary_window 常为 null，不能当 7d 空窗写入
+            if (w.ValueKind != JsonValueKind.Object) return;
+            if (!TryNum(w, "used_percent", out var used)) return;
+            if (Disabled(w)) return;
+            var secs = WindowSecs(w);
+            var resetAt = ResetAt(w);
+            // 无长度、无重置的 used=0 是占位/禁用槽，不是「剩余 100%、不限期」
+            if (secs <= 0 && used == 0 && resetAt is null) return;
+            var id = Classify(secs, fallback);
+            if (!seen.Add(id)) return;
             windows.Add(new Dictionary<string, object?>
             {
                 ["id"] = id,
                 ["usedPercent"] = used,
                 ["remainPercent"] = 100 - used,
-                ["resetAt"] = ResetAt(w),
-                ["windowSeconds"] = WindowSecs(w),
+                ["resetAt"] = resetAt,
+                ["windowSeconds"] = secs,
             });
         }
 
@@ -303,31 +328,36 @@ public static class CodexAccountQuota
             sawRateLimit = true;
         }
 
-        if (scope.TryGetProperty("primary_window", out var pw)) AddWindow(pw, Classify(pw, "5h"));
-        if (scope.TryGetProperty("secondary_window", out var sw)) AddWindow(sw, Classify(sw, "7d"));
+        if (scope.TryGetProperty("primary_window", out var pw)) AddWindow(pw, "5h");
+        if (scope.TryGetProperty("secondary_window", out var sw)) AddWindow(sw, "7d");
         if (windows.Count == 0 && sawRateLimit)
         {
-            if (root.TryGetProperty("primary_window", out pw)) AddWindow(pw, Classify(pw, "5h"));
-            if (root.TryGetProperty("secondary_window", out sw)) AddWindow(sw, Classify(sw, "7d"));
+            if (root.TryGetProperty("primary_window", out pw)) AddWindow(pw, "5h");
+            if (root.TryGetProperty("secondary_window", out sw)) AddWindow(sw, "7d");
         }
         if (windows.Count == 0 && root.TryGetProperty("windows", out var ws) && ws.ValueKind == JsonValueKind.Array)
             foreach (var w in ws.EnumerateArray())
-                AddWindow(w, Classify(w, "5h"));
+                AddWindow(w, "5h");
         return windows;
     }
 
     public static string? ReadPlan(JsonElement root) =>
         Str(root, "plan_type") ?? Str(root, "planType") ?? Str(root, "plan_name");
 
-    private static decimal Num(JsonElement el, string name)
+    private static bool TryNum(JsonElement el, string name, out decimal value)
     {
-        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(name, out var v)) return 0;
-        if (v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d)) return d;
-        if (v.ValueKind == JsonValueKind.Number) return (decimal)v.GetDouble();
+        value = 0;
+        if (el.ValueKind != JsonValueKind.Object || !el.TryGetProperty(name, out var v)) return false;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out value)) return true;
+        if (v.ValueKind == JsonValueKind.Number)
+        {
+            value = (decimal)v.GetDouble();
+            return true;
+        }
         if (v.ValueKind == JsonValueKind.String && decimal.TryParse(v.GetString(),
-                System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var p))
-            return p;
-        return 0;
+                System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out value))
+            return true;
+        return false;
     }
 
     private static string? Str(JsonElement el, string name)
