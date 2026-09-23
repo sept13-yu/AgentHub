@@ -474,7 +474,6 @@ onUnmounted(() => {
           <div class="meta">
             <span class="lbl">程序配置</span>
             <span class="hint">修改后重启生效</span>
-            <span class="hint path-text" :title="configPath">{{ configPath }}</span>
           </div>
           <div class="ctrl">
             <n-button type="button" :disabled="readonly" @click="openConfig">
