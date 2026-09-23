@@ -1,6 +1,6 @@
 {
-  "updatedAt": "2026-09-22",
-  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced: auto/unknown/agent_review. mimo-x-*-preview (closed beta) aliases to official mimo-v2.6-flash / mimo-v2.6-pro. Xiaomi MiMo V2.6 list prices match V2.5: Flash CNY 1/2, Pro CNY 3/6 per 1M (cacheRead 0.02 / 0.025); mimo-v2.6-pro-ultraspeed is Pro speed mode with a published 10× Pro token rate (CNY 30/60, cacheRead 0.25). cacheWrite seed 0 (official cache write limited-time free). codex-auto-review aliases to gpt-5.6-luna (OpenAI auto-review backend since ~2026-07); stealth/ox-alpha aliases to GLM-5.3-Flash. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
+  "updatedAt": "2026-09-23",
+  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced: auto/unknown/agent_review. mimo-x-*-preview (closed beta) aliases to official mimo-v2.6-flash / mimo-v2.6-pro. Xiaomi MiMo V2.6 list prices match V2.5: Flash CNY 1/2, Pro CNY 3/6 per 1M (cacheRead 0.02 / 0.025); mimo-v2.6-pro-ultraspeed is Pro speed mode with a published 10× Pro token rate (CNY 30/60, cacheRead 0.25). cacheWrite seed 0 (official cache write limited-time free). Grok 4.7 short-context API matches 4.6 (USD 2/6, cacheRead 0.5; Cursor -fast 2×). Claude Opus 5.5 USD 4/20, cacheRead 0.20, 5m cacheWrite 5. GPT-6 Sol short-context USD 2/10, cacheRead 0.20, cacheWrite 2.50; GPT-6 Luna USD 0.10/0.50, cacheRead 0.01, cacheWrite 0.125; GPT-6 -fast 2× like GPT-5.6. gpt-6-astra remains USD 10/50, cacheRead 1, cacheWrite 12.5. codex-auto-review aliases to gpt-5.6-luna (OpenAI auto-review backend since ~2026-07); stealth/ox-alpha aliases to GLM-5.3-Flash. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
   "prices": [
     {
       "model": "cursor-grok-4.6-xhigh-fast",
@@ -38,12 +38,48 @@
       "cacheReadPer1m": 0.5
     },
     {
+      "model": "cursor-grok-4.7-xhigh-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0
+    },
+    {
+      "model": "cursor-grok-4.7-high-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0
+    },
+    {
+      "model": "cursor-grok-4.7-xhigh",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "cursor-grok-4.7-high",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
       "model": "claude-opus-5-thinking-high",
       "inputPer1m": 5.0,
       "outputPer1m": 25.0,
       "currency": "USD",
       "cacheReadPer1m": 0.5,
       "cacheWritePer1m": 6.25
+    },
+    {
+      "model": "claude-opus-5-5-thinking-high",
+      "inputPer1m": 4.0,
+      "outputPer1m": 20.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.2,
+      "cacheWritePer1m": 5.0
     },
     {
       "model": "gemini-3.7-flash-high",
@@ -233,6 +269,38 @@
       "currency": "USD",
       "cacheReadPer1m": 1.0,
       "cacheWritePer1m": 12.5
+    },
+    {
+      "model": "gpt-6-sol",
+      "inputPer1m": 2.0,
+      "outputPer1m": 10.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.2,
+      "cacheWritePer1m": 2.5
+    },
+    {
+      "model": "gpt-6-sol-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 20.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.4,
+      "cacheWritePer1m": 5.0
+    },
+    {
+      "model": "gpt-6-luna",
+      "inputPer1m": 0.1,
+      "outputPer1m": 0.5,
+      "currency": "USD",
+      "cacheReadPer1m": 0.01,
+      "cacheWritePer1m": 0.125
+    },
+    {
+      "model": "gpt-6-luna-fast",
+      "inputPer1m": 0.2,
+      "outputPer1m": 1.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.02,
+      "cacheWritePer1m": 0.25
     },
     {
       "model": "claude-sonnet-4-6",

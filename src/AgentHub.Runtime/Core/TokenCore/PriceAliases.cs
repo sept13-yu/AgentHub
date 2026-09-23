@@ -272,6 +272,13 @@ public static class PriceAliases
 
 
             ["cursor-grok-4.5-high-fast"] = "cursor-grok-4.6-high-fast",
+            ["cursor-grok-4.7-low"] = "cursor-grok-4.7-high",
+            ["cursor-grok-4.7-medium"] = "cursor-grok-4.7-high",
+            ["cursor-grok-4.7-max"] = "cursor-grok-4.7-xhigh",
+            ["cursor-grok-4.7-low-fast"] = "cursor-grok-4.7-high-fast",
+            ["cursor-grok-4.7-medium-fast"] = "cursor-grok-4.7-high-fast",
+            ["grok-4.7"] = "cursor-grok-4.7-high",
+            ["xai/grok-4.7"] = "cursor-grok-4.7-high",
 
 
 
@@ -320,6 +327,28 @@ public static class PriceAliases
 
 
             ["gpt-5.6-luna-max"] = "gpt-5.6-luna",
+            ["gpt-6-sol-medium"] = "gpt-6-sol",
+            ["gpt-6-sol-high"] = "gpt-6-sol",
+            ["gpt-6-sol-low"] = "gpt-6-sol",
+            ["gpt-6-sol-xhigh"] = "gpt-6-sol",
+            ["gpt-6-sol-max"] = "gpt-6-sol",
+            ["gpt-6-sol-high-fast"] = "gpt-6-sol-fast",
+            ["gpt-6-sol-medium-fast"] = "gpt-6-sol-fast",
+            ["gpt-6-sol-low-fast"] = "gpt-6-sol-fast",
+            ["gpt-6-sol-xhigh-fast"] = "gpt-6-sol-fast",
+            ["gpt-6-sol-max-fast"] = "gpt-6-sol-fast",
+            ["openai/gpt-6-sol"] = "gpt-6-sol",
+            ["gpt-6-luna-max"] = "gpt-6-luna",
+            ["gpt-6-luna-medium"] = "gpt-6-luna",
+            ["gpt-6-luna-high"] = "gpt-6-luna",
+            ["gpt-6-luna-low"] = "gpt-6-luna",
+            ["gpt-6-luna-xhigh"] = "gpt-6-luna",
+            ["gpt-6-luna-high-fast"] = "gpt-6-luna-fast",
+            ["gpt-6-luna-medium-fast"] = "gpt-6-luna-fast",
+            ["gpt-6-luna-low-fast"] = "gpt-6-luna-fast",
+            ["gpt-6-luna-xhigh-fast"] = "gpt-6-luna-fast",
+            ["gpt-6-luna-max-fast"] = "gpt-6-luna-fast",
+            ["openai/gpt-6-luna"] = "gpt-6-luna",
 
 
 
@@ -376,6 +405,22 @@ public static class PriceAliases
 
 
             ["claude-opus-4-8-thinking-medium"] = "claude-opus-4-8",
+            ["claude-opus-5-thinking-medium"] = "claude-opus-5-thinking-high",
+            ["claude-opus-5-thinking-low"] = "claude-opus-5-thinking-high",
+            ["claude-opus-5-thinking-max"] = "claude-opus-5-thinking-high",
+            ["claude-opus-5-thinking-xhigh"] = "claude-opus-5-thinking-high",
+            ["claude-opus-5-5"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5.5"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-thinking-medium"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-thinking-low"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-thinking-max"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-thinking-xhigh"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-high"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-medium"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-low"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-max"] = "claude-opus-5-5-thinking-high",
+            ["claude-opus-5-5-xhigh"] = "claude-opus-5-5-thinking-high",
+            ["anthropic/claude-opus-5-5"] = "claude-opus-5-5-thinking-high",
 
 
 

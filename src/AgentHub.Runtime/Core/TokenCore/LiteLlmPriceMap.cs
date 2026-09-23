@@ -20,6 +20,8 @@ public static class LiteLlmPriceMap
 
             ["claude-opus-5-thinking-high"] = "claude-opus-5",
 
+            ["claude-opus-5-5-thinking-high"] = "claude-opus-5-5",
+
 
 
             ["gpt-5.6-sol"] = "gpt-5.6-sol",
@@ -47,6 +49,14 @@ public static class LiteLlmPriceMap
             ["cursor-grok-4.6-xhigh-fast"] = "xai/grok-4.6",
 
             ["cursor-grok-4.6-high-fast"] = "xai/grok-4.6",
+
+            ["cursor-grok-4.7-xhigh"] = "xai/grok-4.7",
+
+            ["cursor-grok-4.7-high"] = "xai/grok-4.7",
+
+            ["cursor-grok-4.7-xhigh-fast"] = "xai/grok-4.7",
+
+            ["cursor-grok-4.7-high-fast"] = "xai/grok-4.7",
 
             ["grok-bot-default"] = "xai/grok-4.6",
 
@@ -96,6 +106,14 @@ public static class LiteLlmPriceMap
             ["gpt-5.5"] = "gpt-5.5",
 
             ["gpt-6-astra"] = "gpt-6-astra",
+
+            ["gpt-6-sol"] = "gpt-6-sol",
+
+            ["gpt-6-sol-fast"] = "gpt-6-sol",
+
+            ["gpt-6-luna"] = "gpt-6-luna",
+
+            ["gpt-6-luna-fast"] = "gpt-6-luna",
 
             ["claude-sonnet-4-6"] = "claude-sonnet-4-6",
 
