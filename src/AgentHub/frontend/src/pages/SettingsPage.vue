@@ -473,7 +473,7 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <span class="lbl">程序配置</span>
-            <span class="hint">高级选项可直接编辑，修改后重启 AgentHub 生效</span>
+            <span class="hint">修改后重启生效</span>
             <span class="hint path-text" :title="configPath">{{ configPath }}</span>
           </div>
           <div class="ctrl">
@@ -492,9 +492,6 @@ onUnmounted(() => {
             <template v-if="updateSupported">
             <n-button type="button" :disabled="updateBusy" :loading="updateBusy" @click="checkUpdate">
               检查更新
-            </n-button>
-            <n-button type="button" :disabled="readonly || updateBusy || !updateInstalled || (updateLatest !== '' && !updateCanApply)" :loading="updateBusy" @click="applyShow = true">
-              立即更新并重启
             </n-button>
             </template>
             <n-button type="button" @click="openReleasePage">
