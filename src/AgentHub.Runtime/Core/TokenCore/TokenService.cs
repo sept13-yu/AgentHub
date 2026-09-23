@@ -2,7 +2,6 @@ using System.IO;
 using System.Net.Http;
 using Microsoft.Data.Sqlite;
 using AgentHub.Core.ProxyCore;
-using AgentHub.Core.SessionCore.Providers;
 
 namespace AgentHub.Core.TokenCore;
 
@@ -31,8 +30,8 @@ public sealed class TokenService
     // 扫描
     // ------------------------------------------------------------------
 
-    /// <summary>本地源全量入库（codex/workbuddy/dsh/zcode/mimocode/grok/qoder/qoder-cn，单事务）。不碰网络，亚秒级。
-    /// 主键冲突时更新用量列；新解析出名非 unknown 时回填模型（Codex 按轮次/改道、WorkBuddy 曾误读根级 unknown）。</summary>
+    /// <summary>本地源全量入库（<see cref="UsageSourceRegistry"/>，单事务）。不碰网络。
+    /// 主键冲突时更新用量列；新解析出名非 unknown 时回填模型。</summary>
     public ScanAllResult ScanAllLocal()
     {
         lock (_scanGate)
@@ -73,37 +72,21 @@ public sealed class TokenService
                     return new SourceScanStat(files, inserted, skipped);
                 }
 
-                sources["codex"] = Sum(EnumerateCodexSessions()
-                    .Select(x => Ingest("codex", x.File, () => UsageParsers.ParseCodex(x.File, x.Id))));
-                sources["workbuddy"] = Sum(EnumerateWorkBuddySessions()
-                    .Select(x => Ingest("workbuddy", x.File, () => UsageParsers.ParseWorkBuddy(x.File, x.Id, x.IsSub))));
-                sources["dsh"] = Sum(EnumerateDshSessions().Select(x => Ingest("dsh", x.File, () =>
+                foreach (var source in UsageSourceRegistry.Local)
                 {
-                    var (plain, _, _, _) = DshProvider.DecompressAll(File.ReadAllBytes(x.File));
-                    return plain.Length == 0
-                        ? Enumerable.Empty<UsageRecord>()
-                        : UsageParsers.ParseDsh(plain, x.Id, x.Project);
-                })));
-
-                sources["zcode"] = ZcodeLocal.DbExists
-                    ? Ingest("zcode", ZcodeLocal.DbPath, () => ZcodeLocal.ReadUsage())
-                    : new SourceScanStat(0, 0, 0);
-
-                sources["mimocode"] = MimocodeLocal.DbExists
-                    ? Ingest("mimocode", MimocodeLocal.DbPath, () => MimocodeLocal.ReadUsage())
-                    : new SourceScanStat(0, 0, 0);
-
-                sources["grok"] = GrokLocal.SessionsExist
-                    ? Ingest("grok", GrokLocal.Home, () => GrokLocal.ReadUsage())
-                    : new SourceScanStat(0, 0, 0);
-
-                sources["qoder"] = QoderLocal.DbExists(QoderQuota.International)
-                    ? Ingest("qoder", QoderLocal.DbPath(QoderQuota.International),
-                        () => QoderLocal.ReadInternational())
-                    : new SourceScanStat(0, 0, 0);
-                sources["qoder-cn"] = QoderLocal.ChinaUsageExists
-                    ? Ingest("qoder-cn", QoderLocal.ChinaHome, () => QoderLocal.ReadChina())
-                    : new SourceScanStat(0, 0, 0);
+                    try
+                    {
+                        var units = source.Units().ToList();
+                        sources[source.Id] = units.Count == 0
+                            ? new SourceScanStat(0, 0, 0)
+                            : Sum(units.Select(u => Ingest(source.Id, u.Label, u.Read)));
+                    }
+                    catch (Exception ex)
+                    {
+                        _log?.Invoke($"[tokencore] {source.Id} 枚举失败 {ex.GetType().Name}: {ex.Message}");
+                        sources[source.Id] = new SourceScanStat(1, 0, 1);
+                    }
+                }
 
                 tx.Commit();
             }
@@ -153,11 +136,9 @@ public sealed class TokenService
         }
     }
 
-    /// <summary>Trae 官网按会话用量入库。网络在锁外；开关关或本机/设置都没有登录态则跳过。</summary>
+    /// <summary>Trae 官网按会话用量入库。网络在锁外；没有登录态则跳过。</summary>
     public SourceScanStat ScanTraeUsage()
     {
-        if (!_config.Dashboard.ShowAgentTrae)
-            return new SourceScanStat(0, 0, 0);
         if (!TraeAuth.HasCredentials(_config))
             return new SourceScanStat(0, 0, 0);
 
@@ -259,8 +240,7 @@ public sealed class TokenService
         using var conn = Open();
         InitSchema(conn);
 
-        var filter = UsageToolFilter();
-        var rows = ReadModelRows(conn, from, to, filter);
+        var rows = ReadModelRows(conn, from, to);
         var prices = PriceSyncService.Resolve(_config.Dashboard.PriceOverrides);
         IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)>? priceTable = null;
         if (_config.Dashboard.CostEstimate)
@@ -270,7 +250,7 @@ public sealed class TokenService
         }
         var byAgent = BuildByAgent(rows, priceTable);
         var total = byAgent.Sum(a => (long)a["tokens"]!);
-        var prev = SumBilled(conn, prevFrom, prevTo, filter);
+        var prev = SumBilled(conn, prevFrom, prevTo);
         var fx = _config.Dashboard.FxFallbackRate;
         if (_config.Dashboard.CostEstimate)
         {
@@ -302,7 +282,7 @@ public sealed class TokenService
                 ["fxUsdToCny"] = cost is not null ? fx : null,
             },
             ["byAgent"] = byAgent,
-            ["days"] = ReadDailyDays(conn, HeatmapStart(today), today, filter),
+            ["days"] = ReadDailyDays(conn, HeatmapStart(today), today),
         };
     }
 
@@ -315,7 +295,7 @@ public sealed class TokenService
     }
 
     private static List<Dictionary<string, object?>> ReadDailyDays(
-        SqliteConnection conn, DateTime from, DateTime to, string filter)
+        SqliteConnection conn, DateTime from, DateTime to)
     {
         var days = new List<Dictionary<string, object?>>();
         using var cmd = conn.CreateCommand();
@@ -323,7 +303,7 @@ public sealed class TokenService
             SELECT local_date,
                    COALESCE(SUM({BilledExpr}), 0)
             FROM usage_records
-            WHERE local_date BETWEEN $from AND $to {filter}
+            WHERE local_date BETWEEN $from AND $to
             GROUP BY local_date
             HAVING SUM({BilledExpr}) > 0
             ORDER BY local_date
@@ -342,24 +322,6 @@ public sealed class TokenService
         return days;
     }
 
-    private string UsageToolFilter()
-    {
-        var dash = _config.Dashboard;
-        var hide = new List<string>();
-        if (!dash.ShowAgentDsh) hide.Add("dsh");
-        if (!dash.ShowAgentMimocode) hide.Add("mimocode");
-        if (!dash.ShowAgentGrok) hide.Add("grok");
-        if (!dash.ShowAgentQoder) hide.Add("qoder");
-        if (!dash.ShowAgentQoderCn) hide.Add("qoder-cn");
-        if (!dash.ShowAgentTrae) hide.Add("trae");
-        if (!dash.ShowAgentWorkBuddy) hide.Add("workbuddy");
-        if (!dash.ShowAgentZcode) hide.Add("zcode");
-        if (!dash.ShowAgentCursor) hide.Add("cursor");
-        if (!dash.ShowAgentCodex) hide.Add("codex");
-        if (hide.Count == 0) return "";
-        return "AND tool NOT IN (" + string.Join(", ", hide.Select(t => "'" + t + "'")) + ")";
-    }
-
     private sealed record ModelRow(
         string Tool, string Model, bool IsSub, long Input, long Output, long Cached, long CacheWrite,
         long Reasoning, double? ReportedUsd)
@@ -376,7 +338,7 @@ public sealed class TokenService
         }
     }
 
-    private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to, string filter)
+    private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to)
     {
         var rows = new List<ModelRow>();
         using var cmd = conn.CreateCommand();
@@ -386,7 +348,7 @@ public sealed class TokenService
                    SUM(cached_input_tokens), SUM(cache_write_tokens),
                    SUM(reasoning_tokens), SUM(reported_cost_usd)
             FROM usage_records
-            WHERE local_date BETWEEN $from AND $to {filter}
+            WHERE local_date BETWEEN $from AND $to
             GROUP BY tool, model, is_subagent
             """;
         cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd"));
@@ -407,13 +369,13 @@ public sealed class TokenService
         return rows;
     }
 
-    private static long SumBilled(SqliteConnection conn, DateTime from, DateTime to, string filter)
+    private static long SumBilled(SqliteConnection conn, DateTime from, DateTime to)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
             SELECT COALESCE(SUM({BilledExpr}), 0)
             FROM usage_records
-            WHERE local_date BETWEEN $from AND $to {filter}
+            WHERE local_date BETWEEN $from AND $to
             """;
         cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("$to", to.ToString("yyyy-MM-dd"));
@@ -528,54 +490,6 @@ public sealed class TokenService
         {
             redirected?.Dispose();
         }
-    }
-
-    private static IEnumerable<(string File, string Id)> EnumerateCodexSessions()
-    {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        foreach (var root in new[] { Path.Combine(home, ".codex", "sessions"), Path.Combine(home, ".codex", "archived_sessions") })
-        {
-            if (!Directory.Exists(root)) continue;
-            foreach (var f in Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories))
-            {
-                var id = CodexProvider.SessionIdFromName(Path.GetFileName(f));
-                if (id is not null) yield return (f, id);
-            }
-        }
-    }
-
-    private static IEnumerable<(string File, string Id, bool IsSub)> EnumerateWorkBuddySessions()
-    {
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".workbuddy", "projects");
-        if (!Directory.Exists(root)) yield break;
-        foreach (var f in Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories))
-        {
-            if (f.Contains($"{Path.DirectorySeparatorChar}tool-results{Path.DirectorySeparatorChar}")) continue;
-            var id = Path.GetFileNameWithoutExtension(f);
-            bool isSub = f.Contains($"{Path.DirectorySeparatorChar}subagents{Path.DirectorySeparatorChar}");
-            if (isSub)
-            {
-                // 子代理挂到父目录 uuid（probe _session_id 语义）
-                var dir = Path.GetDirectoryName(Path.GetDirectoryName(f))!;
-                var parent = Path.GetFileName(dir);
-                if (Guid.TryParse(parent, out _)) id = parent;
-            }
-            else if (!Guid.TryParse(id, out _)) continue;   // 心跳等非会话文件
-            yield return (f, id, isSub);
-        }
-    }
-
-    private static IEnumerable<(string File, string Id, string? Project)> EnumerateDshSessions()
-    {
-        var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".dsh", "sessions");
-        if (!Directory.Exists(root)) yield break;
-        foreach (var dir in Directory.EnumerateDirectories(root))
-            foreach (var sessionDir in Directory.EnumerateDirectories(dir))
-            {
-                var file = DshProvider.PickSessionLog(sessionDir);
-                if (file is null) continue;
-                yield return (file, DshProvider.NormalizeSessionId(Path.GetFileName(sessionDir)), null);
-            }
     }
 
     // ------------------------------------------------------------------

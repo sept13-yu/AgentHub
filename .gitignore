@@ -80,3 +80,6 @@ src/AgentHub.Mac/src-tauri/target/
 src/AgentHub.Mac/src-tauri/gen/
 src/AgentHub.Mac/src-tauri/icons/
 
+
+# Playwright CLI 本机产物
+.playwright-cli/

@@ -523,7 +523,7 @@ onMounted(() => { void load() })
     </n-button>
   </teleport>
 
-  <div class="card mcp">
+  <div class="mcp">
 
     <div class="mcp-adapters" v-if="visibleAdapters.length">
       <button
@@ -549,6 +549,7 @@ onMounted(() => { void load() })
 
     <div v-if="!filtered.length" class="docs-empty">暂无 MCP 项</div>
 
+    <div v-else class="mcp-grid">
     <article
       v-for="item in filtered"
       :key="item.id"
@@ -564,7 +565,7 @@ onMounted(() => { void load() })
         </div>
       </header>
       <p v-if="item.note" class="mcp-note">{{ item.note }}</p>
-      <p class="mcp-cmd">
+      <p class="mcp-cmd" :title="item.transport === 'http' ? item.url || '' : item.command || ''">
         <template v-if="item.transport === 'http'">{{ item.url || '（无 URL）' }}</template>
         <template v-else>{{ item.command || '（无 command）' }}</template>
       </p>
@@ -589,6 +590,7 @@ onMounted(() => { void load() })
         </div>
       </div>
     </article>
+    </div>
   </div>
 
   <n-modal
@@ -666,9 +668,12 @@ onMounted(() => { void load() })
 </template>
 
 <style scoped>
-.mcp { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); }
+.mcp { container: mcp / inline-size; display: flex; flex-direction: column; gap: var(--sp-4); }
+.mcp-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
+@container mcp (min-width: 900px) { .mcp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container mcp (min-width: 1500px) { .mcp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .mcp-search { width: 180px; }
-.mcp-adapters { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.mcp-adapters { display: flex; flex-wrap: wrap; gap: var(--sp-2); padding-bottom: var(--sp-4); border-bottom: 1px solid var(--stroke); }
 .mcp-adapter {
   display: inline-flex; align-items: center; gap: 6px;
   height: var(--h-control); padding: 0 10px;
@@ -678,7 +683,7 @@ onMounted(() => { void load() })
 .mcp-adapter:hover { color: var(--text); border-color: var(--stroke-strong); }
 .mcp-adapter b { font-weight: 500; color: var(--text); }
 .mcp-adapter-file { color: var(--faint); font-family: var(--mono); font-size: var(--fs-caption); }
-.mcp-hidden { margin: var(--sp-2) 0 0; font-size: var(--fs-caption); color: var(--faint); }
+.mcp-hidden { margin: 0; font-size: var(--fs-caption); color: var(--faint); }
 .link-quiet {
   padding: 0; border: 0; background: transparent;
   color: var(--dim); font: inherit; cursor: pointer;
@@ -687,33 +692,34 @@ onMounted(() => { void load() })
 .link-quiet:hover { color: var(--text); }
 .mcp-card {
   border: 1px solid var(--stroke); border-radius: var(--r-card);
-  padding: var(--sp-2) var(--sp-3); background: var(--surface);
+  padding: var(--sp-5); background: var(--surface); min-width: 0;
 }
 .mcp-card-head { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; cursor: default; }
 .mcp-title { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.mcp-title b { font-weight: 600; }
+.mcp-title b { font-size: var(--fs-card); font-weight: 600; overflow-wrap: anywhere; }
 .mcp-title code { font-size: var(--fs-caption); color: var(--faint); }
 .tag {
   font-size: var(--fs-caption); padding: 0 6px; height: 20px; line-height: 20px;
   border-radius: 999px; background: var(--wash); color: var(--dim);
 }
-.tag.risk { background: color-mix(in srgb, #e11 18%, transparent); color: #e11; }
+.tag.risk { background: var(--danger-soft); color: var(--danger); }
 .mcp-note { margin: 4px 0 0; font-size: var(--fs-small); color: var(--dim); }
 .mcp-cmd {
-  margin: 4px 0 0; font-size: var(--fs-caption); color: var(--faint);
+  margin: var(--sp-2) 0 0; font-size: var(--fs-caption); color: var(--faint);
   font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.mcp-agents { display: flex; flex-wrap: wrap; gap: 6px; margin-top: var(--sp-2); }
+.mcp-agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: var(--sp-2); margin-top: var(--sp-4); }
 .mcp-agent {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 2px 8px; border-radius: var(--r-in); background: var(--wash); font-size: var(--fs-caption);
+  padding: var(--sp-2); border-radius: var(--r-in); background: var(--wash); font-size: var(--fs-caption); min-width: 0;
 }
+.mcp-agent .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mcp-agent :deep(.src-ico) { width: 14px; height: 14px; }
 .mcp-adapter :deep(.src-ico) { width: 16px; height: 16px; }
-.mcp-agent.ok { background: var(--accent-soft); }
+.mcp-agent.ok { background: var(--wash); }
 .mcp-agent.miss { opacity: 0.85; }
 .mcp-agent.sys { outline: 1px dashed var(--stroke-strong); }
-.mcp-agent .drift { color: #c80; font-weight: 600; }
+.mcp-agent .drift { color: var(--warn); font-weight: 600; }
 .mcp-form { display: flex; flex-direction: column; gap: var(--sp-3); }
 .mcp-form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-small); color: var(--dim); }
 .mcp-form-row { display: flex; gap: var(--sp-4); flex-wrap: wrap; }

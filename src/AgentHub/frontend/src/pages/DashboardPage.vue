@@ -6,7 +6,6 @@ import AgentMark from '../components/AgentMark.vue'
 import UsageHeatmap from '../components/UsageHeatmap.vue'
 import DashboardUsage from '../components/DashboardUsage.vue'
 import { get, post, put, WRITABLE } from '../api'
-import { moveItem } from '../settingsModel'
 import { toQuotaTiles, type QuotaTile } from '../quotaView'
 import { dashCache } from '../dashCache'
 import { usePageHotkeys } from '../hotkeys'
@@ -20,6 +19,14 @@ import {
 
 const message = useMessage()
 const pageLoading = inject<Ref<boolean>>('page-loading')
+
+function moveItem<T>(list: T[], from: number, to: number): T[] {
+  if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return list
+  const next = list.slice()
+  const [item] = next.splice(from, 1)
+  next.splice(to, 0, item)
+  return next
+}
 
 const range = ref<RangeKey>(dashCache.range)
 const refreshing = ref(false)
@@ -575,7 +582,7 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-    <p v-else class="quota-empty">暂无可用额度，可在设置中检查已启用来源。</p>
+    <p v-else class="quota-empty">暂无可用额度，请检查登录态或凭据后刷新。</p>
   </section>
 
   <details v-if="!usage.error" class="history" :open="historyOpen" @toggle="toggleHistory">

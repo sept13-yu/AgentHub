@@ -403,6 +403,21 @@ const nav = [
   }
 }
 
+/* 极窄窗口把页面操作放到下一行，避免搜索与按钮在右侧被裁切。 */
+@media (max-width: 600px) {
+  .chrome-end { width: 100%; flex-wrap: wrap; gap: var(--sp-2); }
+  #chrome-tabs { order: -2; min-width: 0; }
+  .chrome-theme { order: -1; margin-left: auto; }
+  #chrome-extra { flex-wrap: wrap; }
+  #chrome-actions:not(:empty) {
+    width: 100%;
+    flex-wrap: wrap;
+    padding-left: 0;
+    border-left: 0;
+  }
+  #chrome-actions :deep(.n-input) { flex: 1 1 160px; min-width: 0; max-width: 240px; }
+}
+
 /* 矮屏：内容区滚动优先，避免主栏裁切 */
 @media (max-height: 700px) {
   .main {

@@ -423,37 +423,11 @@ internal static class QoderLocal
         return "row:" + rowId.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static bool TrySnapshot(QoderQuota.Site site, out string db, out string tmp)
-    {
-        db = "";
-        tmp = "";
-        var src = DbPath(site);
-        if (!File.Exists(src)) return false;
-        tmp = Path.Combine(Path.GetTempPath(), "agenthub-qoder-" + site.CacheNamespace + "-" + Guid.NewGuid().ToString("n"));
-        Directory.CreateDirectory(tmp);
-        try
-        {
-            db = Path.Combine(tmp, "local.db");
-            CopyShared(src, db);
-            CopyIfExists(src + "-wal", db + "-wal");
-            CopyIfExists(src + "-shm", db + "-shm");
-            return true;
-        }
-        catch
-        {
-            DeleteSnapshot(tmp);
-            tmp = "";
-            db = "";
-            throw;
-        }
-    }
+    private static bool TrySnapshot(QoderQuota.Site site, out string db, out string tmp) =>
+        UsageIo.TrySnapshot(File.Exists(DbPath(site)) ? DbPath(site) : null,
+            "agenthub-qoder-" + site.CacheNamespace + "-", "local.db", out db, out tmp);
 
-    private static void DeleteSnapshot(string? tmp)
-    {
-        if (string.IsNullOrEmpty(tmp)) return;
-        try { Directory.Delete(tmp, recursive: true); }
-        catch (IOException) { }
-    }
+    private static void DeleteSnapshot(string? tmp) => UsageIo.DeleteSnapshot(tmp);
 
     private static List<UsageRecord> ReadCopied(string db, string tool)
     {
@@ -628,15 +602,4 @@ internal static class QoderLocal
 
     private static string? EmptyToNull(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
-    private static void CopyIfExists(string from, string to)
-    {
-        if (File.Exists(from)) CopyShared(from, to);
-    }
-
-    private static void CopyShared(string from, string to)
-    {
-        using var src = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        using var dst = new FileStream(to, FileMode.Create, FileAccess.Write, FileShare.None);
-        src.CopyTo(dst);
-    }
 }
