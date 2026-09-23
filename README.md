@@ -1,10 +1,10 @@
 # AgentHub
 
-本机桌面控制台：把 Cursor / Codex / Trae / WorkBuddy 等 Agent 的**用量、会话、Skill、MCP、共用规则**收拢到一个窗口里管理。
+本机桌面控制台：把各家 Agent 的**用量、会话、Skill、MCP、共用规则**收拢到一个窗口。
+
+会话目前覆盖 Codex、DSH、Cursor（含云端）、WorkBuddy、ZCode、MiMo、Qoder CN；用量另含 Trae、Qoder、Grok、DeepSeek、Relay，以及一批只读本地扫描源。具体以当前扫描实现为准。
 
 > Windows 桌面应用（WPF + 同进程 Kestrel + Vue 3）。Mac 为 Tauri 薄壳 + 无界面 Backend。默认只监听 `127.0.0.1`，写操作需要本机令牌，不对外网暴露。
-
-![首页用量总览](media/readme/dashboard.png)
 
 ## 能做什么
 
@@ -16,6 +16,7 @@
 | **资料** | 浏览外置方案库（默认不落业务仓） |
 | **规则** | 编辑并同步各家 Agent 的共用规则母本 |
 | **Codex** | 管理 Codex 连接与 ChatGPT 账号档案 |
+| **设置** | 开机自启、检查更新、本机凭据，以及成本估算、Token 单位和扫描间隔 |
 
 ## 技术栈
 
@@ -86,5 +87,5 @@ src/
   AgentHub.Runtime/    Core + Web + Hosting
   AgentHub.Backend/    无界面入口
   AgentHub.Mac/        Tauri 壳
-media/readme/
+  AgentHub.Tests/      用量、额度与牌价测试
 ```
