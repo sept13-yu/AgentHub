@@ -1,0 +1,137 @@
+using AgentHub.Core.Platform;
+using AgentHub.Core.SessionCore.Providers;
+
+namespace AgentHub.Core.TokenCore;
+
+/// <summary>一次入库单位。一个坏文件只跳过自己。</summary>
+internal sealed record UsageUnit(string Label, Func<IEnumerable<UsageRecord>> Read);
+
+/// <summary>本地用量源。ScanAllLocal 只循环这张表；下一批工具加一行即可。</summary>
+internal sealed class UsageSource
+{
+    public required string Id { get; init; }
+    public required Func<IEnumerable<string>> ProbeRoots { get; init; }
+    public required Func<IEnumerable<UsageUnit>> Units { get; init; }
+}
+
+internal static class UsageSourceRegistry
+{
+    public static IReadOnlyList<UsageSource> Local { get; } =
+    [
+        Files("codex", () => [Path.Combine(UsagePaths.Home, ".codex")], CodexUnits),
+        Files("workbuddy", () => [Path.Combine(UsagePaths.Home, ".workbuddy")], WorkBuddyUnits),
+        Files("dsh", () => [Path.Combine(UsagePaths.Home, ".dsh")], DshUnits),
+        Db("zcode", () => [Path.Combine(UsagePaths.Home, ".zcode")], () => ZcodeLocal.DbExists, () => ZcodeLocal.DbPath, ZcodeLocal.ReadUsage),
+        Db("mimocode", () => [Path.Combine(UsagePaths.Home, ".config", "mimocode")], () => MimocodeLocal.DbExists, () => MimocodeLocal.DbPath, MimocodeLocal.ReadUsage),
+        Db("grok", () => [GrokLocal.Home], () => GrokLocal.SessionsExist, () => GrokLocal.Home, GrokLocal.ReadUsage),
+        Db("qoder", () => [Path.Combine(PlatformPaths.RoamingAppData, "Qoder")],
+            () => QoderLocal.DbExists(QoderQuota.International),
+            () => QoderLocal.DbPath(QoderQuota.International),
+            QoderLocal.ReadInternational),
+        Db("qoder-cn", () => [QoderLocal.ChinaHome], () => QoderLocal.ChinaUsageExists, () => QoderLocal.ChinaHome, QoderLocal.ReadChina),
+        Dirs("minimax", UsagePaths.MiniMaxHomes, PassiveUsage.ReadMiniMax),
+        Dirs("antigravity", UsagePaths.GeminiHomes, PassiveUsage.ReadAntigravity),
+        Dirs("reasonix", UsagePaths.ReasonixHomes, PassiveUsage.ReadReasonix),
+        Dirs("opencode", UsagePaths.OpenCodeDataDirs, PassiveUsage.ReadOpenCode),
+        Dirs("claude-code", UsagePaths.ClaudeHomes, PassiveUsage.ReadClaudeCode),
+        new UsageSource
+        {
+            Id = "devin",
+            ProbeRoots = UsagePaths.DevinProbeRoots,
+            Units = () =>
+            {
+                var dbs = UsagePaths.DevinDbCandidates().Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadDevin(dbs))];
+            },
+        },
+    ];
+
+    public static UsageSource? Find(string id) =>
+        Local.FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    private static UsageSource Files(string id, Func<IEnumerable<string>> roots, Func<IEnumerable<UsageUnit>> units) =>
+        new() { Id = id, ProbeRoots = roots, Units = units };
+
+    private static UsageSource Db(
+        string id, Func<IEnumerable<string>> roots, Func<bool> exists, Func<string> label, Func<IEnumerable<UsageRecord>> read) =>
+        new()
+        {
+            Id = id,
+            ProbeRoots = roots,
+            Units = () => exists() ? [new UsageUnit(label(), read)] : [],
+        };
+
+    private static UsageSource Dirs(
+        string id, Func<IEnumerable<string>> roots, Func<IReadOnlyList<string>, IEnumerable<UsageRecord>> read) =>
+        new()
+        {
+            Id = id,
+            ProbeRoots = roots,
+            Units = () =>
+            {
+                var found = roots().Where(Directory.Exists).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                return found.Count == 0 ? [] : [new UsageUnit(found[0], () => read(found))];
+            },
+        };
+
+    private static IEnumerable<UsageUnit> CodexUnits()
+    {
+        var home = UsagePaths.Home;
+        foreach (var root in new[] { Path.Combine(home, ".codex", "sessions"), Path.Combine(home, ".codex", "archived_sessions") })
+        {
+            if (!Directory.Exists(root)) continue;
+            foreach (var file in Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories))
+            {
+                var id = CodexProvider.SessionIdFromName(Path.GetFileName(file));
+                if (id is null) continue;
+                var path = file;
+                var sessionId = id;
+                yield return new UsageUnit(path, () => UsageParsers.ParseCodex(path, sessionId));
+            }
+        }
+    }
+
+    private static IEnumerable<UsageUnit> WorkBuddyUnits()
+    {
+        var root = Path.Combine(UsagePaths.Home, ".workbuddy", "projects");
+        if (!Directory.Exists(root)) yield break;
+        foreach (var file in Directory.EnumerateFiles(root, "*.jsonl", SearchOption.AllDirectories))
+        {
+            if (file.Contains($"{Path.DirectorySeparatorChar}tool-results{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                continue;
+            var id = Path.GetFileNameWithoutExtension(file);
+            var sub = file.Contains($"{Path.DirectorySeparatorChar}subagents{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
+            if (sub)
+            {
+                var parent = Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(file))!);
+                if (Guid.TryParse(parent, out _)) id = parent;
+            }
+            else if (!Guid.TryParse(id, out _)) continue;
+            var path = file;
+            var sessionId = id;
+            var isSub = sub;
+            yield return new UsageUnit(path, () => UsageParsers.ParseWorkBuddy(path, sessionId, isSub));
+        }
+    }
+
+    private static IEnumerable<UsageUnit> DshUnits()
+    {
+        var root = Path.Combine(UsagePaths.Home, ".dsh", "sessions");
+        if (!Directory.Exists(root)) yield break;
+        foreach (var dir in Directory.EnumerateDirectories(root))
+        {
+            foreach (var sessionDir in Directory.EnumerateDirectories(dir))
+            {
+                var file = DshProvider.PickSessionLog(sessionDir);
+                if (file is null) continue;
+                var path = file;
+                var id = DshProvider.NormalizeSessionId(Path.GetFileName(sessionDir));
+                yield return new UsageUnit(path, () =>
+                {
+                    var (plain, _, _, _) = DshProvider.DecompressAll(File.ReadAllBytes(path));
+                    return plain.Length == 0 ? [] : UsageParsers.ParseDsh(plain, id, null);
+                });
+            }
+        }
+    }
+}

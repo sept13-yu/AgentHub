@@ -40,6 +40,12 @@ export const AGENT_COLOR: Record<string, string> = {
   relay: 'var(--src-relay)',
   qoder: 'var(--src-qoder)',
   'qoder-cn': 'var(--src-qoder-cn)',
+  minimax: 'var(--src-minimax)',
+  antigravity: 'var(--src-antigravity)',
+  reasonix: 'var(--src-reasonix)',
+  devin: 'var(--src-devin)',
+  opencode: 'var(--src-opencode)',
+  'claude-code': 'var(--src-claude-code)',
 }
 
 export const AGENT_NAME: Record<string, string> = {
@@ -56,6 +62,12 @@ export const AGENT_NAME: Record<string, string> = {
   relay: 'Sub2API',
   qoder: 'Qoder',
   'qoder-cn': 'Qoder CN',
+  minimax: 'MiniMax Code',
+  antigravity: 'Antigravity',
+  reasonix: 'Reasonix',
+  devin: 'Devin',
+  opencode: 'OpenCode',
+  'claude-code': 'Claude Code',
 }
 
 function normalizeAgentId(id: string): string {

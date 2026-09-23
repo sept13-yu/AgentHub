@@ -1,3 +1,5 @@
+using AgentHub.Core.TokenCore;
+
 namespace AgentHub.Core.Platform;
 
 /// <summary>
@@ -45,17 +47,34 @@ public static class AgentPresence
     }
 
     /// <summary>设置页要画徽标的家。没列在这里的 id（deepseek、relay 这类纯云端）不参与本机探测。</summary>
-    private static readonly string[] ProbeIds =
+    private static readonly (string Id, Func<bool> Installed)[] Probes =
     [
-        "dsh", "trae", "workbuddy", "zcode", "mimocode", "grok",
-        "qoder", "qoder-cn", "cursor", "cursor-cloud", "codex",
+        ("dsh", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".dsh"))),
+        ("trae", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".trae-cn"))
+                       || Directory.Exists(Path.Combine(PlatformPaths.RoamingAppData, "TRAE SOLO CN"))),
+        ("workbuddy", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".workbuddy"))),
+        ("zcode", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".zcode"))),
+        ("mimocode", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".config", "mimocode"))),
+        ("grok", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".grok"))),
+        ("qoder", () => Directory.Exists(Path.Combine(PlatformPaths.RoamingAppData, "Qoder"))),
+        ("qoder-cn", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".qoder-cn"))
+                           || Directory.Exists(Path.Combine(PlatformPaths.RoamingAppData, "com.qodercn.app.stable"))),
+        ("cursor", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".cursor"))),
+        ("cursor-cloud", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".cursor"))),
+        ("codex", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".codex"))),
+        ("minimax", () => AnyFootprint(UsagePaths.MiniMaxHomes())),
+        ("antigravity", () => AnyFootprint(UsagePaths.AntigravityVariantHomes())),
+        ("reasonix", () => AnyFootprint(UsagePaths.ReasonixHomes())),
+        ("devin", () => AnyFootprint(UsagePaths.DevinProbeRoots())),
+        ("opencode", () => AnyFootprint(UsagePaths.OpenCodeDataDirs())),
+        ("claude-code", () => AnyFootprint(UsagePaths.ClaudeHomes())),
     ];
 
     /// <summary>按各家 id 探一遍，给设置页排序和灰态徽标用。</summary>
     public static IReadOnlyDictionary<string, bool> Snapshot()
     {
         var map = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        foreach (var id in ProbeIds) map[id] = IsInstalled(id);
+        foreach (var probe in Probes) map[probe.Id] = probe.Installed();
         return map;
     }
 
@@ -65,22 +84,16 @@ public static class AgentPresence
     /// </summary>
     public static bool IsInstalled(string agentId)
     {
-        var appData = PlatformPaths.RoamingAppData;
-        return agentId.ToLowerInvariant() switch
-        {
-            "codex" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".codex")),
-            "cursor" or "cursor-cloud" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".cursor")),
-            "dsh" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".dsh")),
-            "mimocode" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".config", "mimocode")),
-            "workbuddy" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".workbuddy")),
-            "zcode" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".zcode")),
-            "grok" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".grok")),
-            "trae" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".trae-cn"))
-                      || Directory.Exists(Path.Combine(appData, "TRAE SOLO CN")),
-            "qoder" => Directory.Exists(Path.Combine(appData, "Qoder")),
-            "qoder-cn" => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".qoder-cn"))
-                          || Directory.Exists(Path.Combine(appData, "com.qodercn.app.stable")),
-            _ => false,
-        };
+        foreach (var probe in Probes)
+            if (string.Equals(probe.Id, agentId, StringComparison.OrdinalIgnoreCase))
+                return probe.Installed();
+        return false;
+    }
+
+    private static bool AnyFootprint(IEnumerable<string> roots)
+    {
+        foreach (var root in roots)
+            if (HasOwnFootprint(root)) return true;
+        return false;
     }
 }

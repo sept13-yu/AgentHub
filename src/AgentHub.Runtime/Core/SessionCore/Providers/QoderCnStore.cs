@@ -52,36 +52,10 @@ internal static class QoderCnStore
     internal static bool TrySnapshot(out string db, out string tmp) =>
         TrySnapshot(DbPath, out db, out tmp);
 
-    internal static bool TrySnapshot(string? src, out string db, out string tmp)
-    {
-        db = "";
-        tmp = "";
-        if (string.IsNullOrEmpty(src) || !File.Exists(src)) return false;
-        tmp = Path.Combine(Path.GetTempPath(), "agenthub-qoder-cn-sess-" + Guid.NewGuid().ToString("n"));
-        Directory.CreateDirectory(tmp);
-        try
-        {
-            db = Path.Combine(tmp, "main.sqlite");
-            CopyShared(src, db);
-            CopyIfExists(src + "-wal", db + "-wal");
-            CopyIfExists(src + "-shm", db + "-shm");
-            return true;
-        }
-        catch
-        {
-            DeleteSnapshot(tmp);
-            tmp = "";
-            db = "";
-            throw;
-        }
-    }
+    internal static bool TrySnapshot(string? src, out string db, out string tmp) =>
+        UsageIo.TrySnapshot(src, "agenthub-qoder-cn-sess-", "main.sqlite", out db, out tmp);
 
-    internal static void DeleteSnapshot(string? tmp)
-    {
-        if (string.IsNullOrEmpty(tmp)) return;
-        try { Directory.Delete(tmp, recursive: true); }
-        catch (IOException) { }
-    }
+    internal static void DeleteSnapshot(string? tmp) => UsageIo.DeleteSnapshot(tmp);
 
     internal static string? FindJsonl(string sessionId)
     {
@@ -171,15 +145,4 @@ internal static class QoderCnStore
         return set;
     }
 
-    private static void CopyIfExists(string from, string to)
-    {
-        if (File.Exists(from)) CopyShared(from, to);
-    }
-
-    private static void CopyShared(string from, string to)
-    {
-        using var src = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-        using var dst = new FileStream(to, FileMode.Create, FileAccess.Write, FileShare.None);
-        src.CopyTo(dst);
-    }
 }

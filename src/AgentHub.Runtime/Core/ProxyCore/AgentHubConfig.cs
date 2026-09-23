@@ -62,6 +62,7 @@ public sealed class DashboardSettings
     public static readonly string[] DefaultAgentOrder =
     [
         "dsh", "trae", "workbuddy", "zcode", "mimocode", "grok", "qoder", "qoder-cn", "cursor", "cursor-cloud", "codex",
+        "minimax", "antigravity", "reasonix", "devin", "opencode", "claude-code",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -89,6 +90,12 @@ public sealed class DashboardSettings
         ["codex"] = "codex",
         ["codex-5h"] = "codex",
         ["codex-7d"] = "codex",
+        ["minimax"] = "minimax",
+        ["antigravity"] = "antigravity",
+        ["reasonix"] = "reasonix",
+        ["devin"] = "devin",
+        ["opencode"] = "opencode",
+        ["claude-code"] = "claude-code",
     };
 
     private static readonly Dictionary<string, string> QuotaGroupOf = new(StringComparer.Ordinal)
@@ -214,7 +221,7 @@ public sealed class DashboardSettings
         q.AddRange(["deepseek", "relay", "qoder", "qoder-cn"]);
         foreach (var id in ResolvedAgentOrder())
         {
-            if (id is "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud") continue;
+            if (QuotaOmitsAgent(id)) continue;
             q.Add(id);
         }
         return q;
@@ -224,14 +231,7 @@ public sealed class DashboardSettings
     public static List<string> MergeQuotaOrder(IEnumerable<string>? quotaOrder, IEnumerable<string>? agentOrder)
     {
         var quota = NormalizeQuotaOrder(quotaOrder);
-        var agents = NormalizeAgentOrder(agentOrder)
-            .Where(id => !string.Equals(id, "dsh", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(id, "mimocode", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(id, "grok", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(id, "qoder", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(id, "qoder-cn", StringComparison.OrdinalIgnoreCase)
-                      && !string.Equals(id, "cursor-cloud", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var agents = NormalizeAgentOrder(agentOrder).Where(id => !QuotaOmitsAgent(id)).ToList();
         var agentSet = new HashSet<string>(agents, StringComparer.Ordinal);
         var qi = 0;
         var result = new List<string>(quota.Count);
@@ -269,7 +269,21 @@ public sealed class DashboardSettings
         "cursor" => "Cursor",
         "cursor-cloud" => "Cursor 云端",
         "codex" => "Codex",
+        "minimax" => "MiniMax Code",
+        "antigravity" => "Antigravity",
+        "reasonix" => "Reasonix",
+        "devin" => "Devin",
+        "opencode" => "OpenCode",
+        "claude-code" => "Claude Code",
         _ => id,
+    };
+
+    /// <summary>只有用量、没有额度砖的家。qoder 自己在额度表最前面，这里从 Agent 顺序里摘掉，避免再插一次。</summary>
+    private static bool QuotaOmitsAgent(string id) => id.ToLowerInvariant() switch
+    {
+        "dsh" or "mimocode" or "grok" or "qoder" or "qoder-cn" or "cursor-cloud"
+            or "minimax" or "antigravity" or "reasonix" or "devin" or "opencode" or "claude-code" => true,
+        _ => false,
     };
 }
 
