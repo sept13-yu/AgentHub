@@ -741,14 +741,11 @@ onUnmounted(() => {
   box-shadow: none;
   min-width: 0;
 }
-.credentials-grid .meta { min-height: 40px; }
+.credentials-grid .meta { min-height: 42px; }
 .credentials-grid .ctrl--secret {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-start;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
-.credentials-grid .ctrl--secret :deep(.n-input) { flex: 1 1 200px; width: 0; }
-.credentials-grid .ctrl--secret .lock { flex: none; }
+.credentials-grid .ctrl--secret :deep(.n-input) { width: 100%; grid-column: 1 / -1; }
 .price-status { overflow-wrap: anywhere; max-width: 78ch; }
 .cost-details {
   margin-top: var(--sp-2);
@@ -762,11 +759,16 @@ onUnmounted(() => {
 .cost-details p { margin: var(--sp-2) 0 0; line-height: 1.7; }
 @container settings (min-width: 760px) {
   .credentials-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .credentials-grid .ctrl--field { grid-template-columns: minmax(0, 1fr) 72px 36px; }
+  .credentials-grid .ctrl--secret { grid-template-columns: minmax(0, 1fr) 72px 36px; }
+  .credentials-grid .ctrl--secret :deep(.n-input) { grid-column: 1; }
 }
 @container settings (min-width: 1000px) {
-  .general-grid { grid-template-columns: minmax(0, .7fr) minmax(0, 1fr) minmax(0, 1.3fr); }
+  .general-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .general-grid .row { grid-template-columns: 1fr; align-content: start; box-shadow: none; }
+  .general-grid .meta { min-height: 42px; }
   .general-grid .ctrl { justify-content: flex-start; }
+  .general-grid .ctrl :deep(.n-button:first-child) { padding-left: 0; }
 }
 
 .tabs {
@@ -914,7 +916,7 @@ onUnmounted(() => {
 @container settings (max-width: 640px) {
   .row { grid-template-columns: 1fr; }
   .ctrl { justify-content: flex-start; }
-  .ctrl--secret { grid-template-columns: minmax(0, 1fr); }
+  .general-grid .ctrl :deep(.n-button:first-child) { padding-left: 0; }
   .lock { justify-self: start; }
 }
 </style>
