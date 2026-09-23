@@ -14,7 +14,7 @@ public class RecentModelPriceTests
         Assert.Equal("2026-09-23", file.UpdatedAt);
         Assert.False(string.IsNullOrWhiteSpace(file.Note));
 
-        var fromJson = file.Prices
+        var fromJson = file.Prices!
             .Where(p => !string.IsNullOrWhiteSpace(p.Model))
             .ToDictionary(p => p.Model!, StringComparer.OrdinalIgnoreCase);
         var fromCode = PriceSyncService.DefaultPrices

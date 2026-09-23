@@ -61,6 +61,7 @@ public static class PriceSyncService
         new() { Model = "DeepSeek-V4-Pro 正式版", InputPer1m = 9.0, OutputPer1m = 27.0, CacheReadPer1m = 0.299997, CacheWritePer1m = 0.0, Currency = "CNY" },
         new() { Model = "kimi-k3", InputPer1m = 20.0, OutputPer1m = 100.0, CacheReadPer1m = 3.36842, Currency = "CNY" },
         new() { Model = "Qwen3.8-Max", InputPer1m = 12.0, OutputPer1m = 36.0, CacheReadPer1m = 1.5, Currency = "CNY" },
+        new() { Model = "Qwen3.8-Flash", InputPer1m = 0.8, OutputPer1m = 2.7, CacheReadPer1m = 0.08, Currency = "CNY" },
         new() { Model = "hy4-preview", InputPer1m = 6.0, OutputPer1m = 18.0, Currency = "CNY" },
         // Xiaomi MiMo V2.6：与 V2.5 同价；UltraSpeed 为官方公布的 10× Pro 牌价。缓存写入限时免费。
         new() { Model = "mimo-v2.6-flash", InputPer1m = 1.0, OutputPer1m = 2.0, CacheReadPer1m = 0.02, CacheWritePer1m = 0.0, Currency = "CNY" },
