@@ -467,7 +467,10 @@ onUnmounted(() => {
       <div class="card-head">常规外观</div>
       <div class="card-body general-grid">
         <div v-if="autostartSupported" class="row">
-          <div class="meta"><label class="lbl" for="s-autostart">开机自启</label></div>
+          <div class="meta">
+            <label class="lbl" for="s-autostart">开机自启</label>
+            <span class="hint">登录系统时启动 AgentHub</span>
+          </div>
           <div class="ctrl"><n-switch id="s-autostart" :disabled="readonly" v-model:value="f.autostart" /></div>
         </div>
         <div class="row">
@@ -505,94 +508,107 @@ onUnmounted(() => {
       <div class="card-head">
         凭据与外部服务
         <span class="spacer" />
-        <span class="hint">Key 留空不修改</span>
+        <span class="hint">凭据留空保留</span>
       </div>
       <div class="card-body credentials-grid">
         <p v-if="!secretsSupported" class="usage-error">当前平台尚未支持凭据加密存储</p>
-        <div class="row row--fill">
-          <div class="meta">
-            <label class="lbl" for="s-relay-base">Sub2API 地址</label>
-            <span class="hint">用于查询余额，自动拼接 /v1/usage</span>
+        <section class="service-group service-group--relay" aria-labelledby="relay-title">
+          <div class="service-heading">
+            <h3 id="relay-title">Sub2API</h3>
+            <span class="hint">查询中转服务余额</span>
           </div>
-          <div class="ctrl ctrl--field">
-            <n-input id="s-relay-base" class="num url-input" :disabled="readonly" :spellcheck="false" v-model:value="f.relayPanelBaseUrl" placeholder=" " />
+          <div class="service-fields relay-fields">
+            <div class="credential-field">
+              <label class="field-label" for="s-relay-base" title="自动拼接 /v1/usage 查询余额">服务地址</label>
+              <n-input id="s-relay-base" class="url-input" :disabled="readonly" :spellcheck="false" v-model:value="f.relayPanelBaseUrl" placeholder="输入服务地址" />
+            </div>
+            <div class="credential-field">
+              <div class="field-heading">
+                <label class="field-label" for="s-relay">API Key</label>
+                <span v-if="f.relayKeySet" class="lock" role="img" title="凭据已加密存储" aria-label="凭据已加密存储"><n-icon :size="14"><Lock :stroke-width="1.8" /></n-icon></span>
+              </div>
+              <n-input
+                id="s-relay"
+                type="password"
+                show-password-on="click"
+                :disabled="readonly || !secretsSupported"
+                autocomplete="off"
+                :placeholder="f.relayKeySet ? '已配置，留空保留' : '粘贴 API Key'"
+                v-model:value="f.relayKey"
+              />
+            </div>
           </div>
-        </div>
-        <div class="row row--fill">
-          <div class="meta"><label class="lbl" for="s-dsk">DeepSeek API Key</label></div>
-          <div class="ctrl ctrl--secret">
+        </section>
+        <section class="service-group" aria-labelledby="deepseek-title">
+          <div class="service-heading">
+            <h3 id="deepseek-title">DeepSeek</h3>
+            <span class="hint">查询账户余额</span>
+          </div>
+          <div class="credential-field">
+            <div class="field-heading">
+              <label class="field-label" for="s-dsk">API Key</label>
+              <span v-if="f.deepseekKeySet" class="lock" role="img" title="凭据已加密存储" aria-label="凭据已加密存储"><n-icon :size="14"><Lock :stroke-width="1.8" /></n-icon></span>
+            </div>
             <n-input
               id="s-dsk"
               type="password"
               show-password-on="click"
               :disabled="readonly || !secretsSupported"
               autocomplete="off"
-              :placeholder="f.deepseekKeySet ? '已配置（留空不修改）' : ' '"
+              :placeholder="f.deepseekKeySet ? '已配置，留空保留' : '粘贴 API Key'"
               v-model:value="f.deepseekKey"
             />
-            <span v-if="f.deepseekKeySet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
           </div>
-        </div>
-        <div class="row row--fill">
-          <div class="meta">
-            <label class="lbl" for="s-relay">Sub2API API Key</label>
-            <span class="hint">查余额走 GET /v1/usage</span>
+        </section>
+        <section class="service-group" aria-labelledby="workbuddy-title">
+          <div class="service-heading">
+            <h3 id="workbuddy-title">WorkBuddy</h3>
+            <span class="hint">查询积分与清理云端会话</span>
           </div>
-          <div class="ctrl ctrl--secret">
-            <n-input
-              id="s-relay"
-              type="password"
-              show-password-on="click"
-              :disabled="readonly || !secretsSupported"
-              autocomplete="off"
-              :placeholder="f.relayKeySet ? '已配置（留空不修改）' : ' '"
-              v-model:value="f.relayKey"
-            />
-            <span v-if="f.relayKeySet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
-          </div>
-        </div>
-        <div class="row row--fill">
-          <div class="meta">
-            <label class="lbl" for="s-wb">WorkBuddy Cookie</label>
-            <span class="hint">查积分、清云端会话，Cookie 名 session</span>
-          </div>
-          <div class="ctrl ctrl--secret">
+          <div class="credential-field">
+            <div class="field-heading">
+              <label class="field-label" for="s-wb">Cookie · session</label>
+              <span v-if="f.workbuddySessionSet" class="lock" role="img" title="凭据已加密存储" aria-label="凭据已加密存储"><n-icon :size="14"><Lock :stroke-width="1.8" /></n-icon></span>
+            </div>
             <n-input
               id="s-wb"
               type="password"
               show-password-on="click"
               :disabled="readonly || !secretsSupported"
               autocomplete="off"
-              :placeholder="f.workbuddySessionSet ? '已配置（留空不修改）' : ' '"
+              :placeholder="f.workbuddySessionSet ? '已配置，留空保留' : '粘贴 session Cookie'"
               v-model:value="f.workbuddySession"
             />
-            <span v-if="f.workbuddySessionSet" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
           </div>
-        </div>
-        <div class="row row--fill">
-          <div class="meta">
-            <label class="lbl" for="s-ccloud">Cursor Cloud API Key</label>
-            <span class="hint">会话页合并云端 Agent；Dashboard → API Keys</span>
+        </section>
+        <section class="service-group service-group--cursor" aria-labelledby="cursor-title">
+          <div class="service-heading">
+            <h3 id="cursor-title">Cursor Cloud</h3>
+            <span class="hint">在会话页查看云端 Agent</span>
           </div>
-          <div class="ctrl ctrl--secret">
+          <div class="credential-field">
+            <div class="field-heading">
+              <label class="field-label" for="s-ccloud" title="在 Cursor Dashboard 的 API Keys 页面获取">API Key</label>
+              <span v-if="f.cursorCloudApiKeySet && !clearCursorCloudKey" class="lock" role="img" title="凭据已加密存储" aria-label="凭据已加密存储"><n-icon :size="14"><Lock :stroke-width="1.8" /></n-icon></span>
+              <n-button
+                v-if="(f.cursorCloudApiKeySet || clearCursorCloudKey) && !readonly"
+                text
+                size="tiny"
+                :disabled="!secretsSupported || clearCursorCloudKey"
+                @click="clearCursorCloudApiKey"
+              >{{ clearCursorCloudKey ? '保存后清除' : '清除' }}</n-button>
+            </div>
             <n-input
               id="s-ccloud"
               type="password"
               show-password-on="click"
               :disabled="readonly || !secretsSupported"
               autocomplete="off"
-              :placeholder="f.cursorCloudApiKeySet && !clearCursorCloudKey ? '已配置（留空不修改）' : ' '"
+              :placeholder="f.cursorCloudApiKeySet && !clearCursorCloudKey ? '已配置，留空保留' : '粘贴 API Key'"
               v-model:value="f.cursorCloudApiKey"
             />
-            <span v-if="f.cursorCloudApiKeySet && !clearCursorCloudKey" class="lock"><n-icon :size="16"><Lock :stroke-width="1.8" /></n-icon> 已加密</span>
-            <n-button
-              v-if="(f.cursorCloudApiKeySet || clearCursorCloudKey) && !readonly"
-              quaternary
-              size="tiny"
-              @click="clearCursorCloudApiKey"
-            >清除</n-button>
           </div>
-        </div>
+        </section>
       </div>
     </section>
 
@@ -731,21 +747,19 @@ onUnmounted(() => {
 .set-card { scroll-margin-top: var(--sp-3); }
 .set-card:hover { border-color: var(--stroke); }
 .general-grid,
-.credentials-grid {
-  display: grid;
-  gap: 0 var(--sp-6);
-}
+.credentials-grid { display: grid; gap: var(--sp-5) var(--sp-6); }
 .credentials-grid > .usage-error { grid-column: 1 / -1; }
-.credentials-grid .row {
-  align-content: start;
-  box-shadow: none;
-  min-width: 0;
-}
-.credentials-grid .meta { min-height: 42px; }
-.credentials-grid .ctrl--secret {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-.credentials-grid .ctrl--secret :deep(.n-input) { width: 100%; grid-column: 1 / -1; }
+.service-group { min-width: 0; }
+.service-group + .service-group { padding-top: var(--sp-5); border-top: 1px solid var(--stroke); }
+.service-heading { display: flex; flex-direction: column; gap: var(--sp-1); margin-bottom: var(--sp-4); }
+.service-heading h3 { margin: 0; font-size: var(--fs-body); font-weight: 600; line-height: 1.5; }
+.service-fields { display: grid; gap: var(--sp-4) var(--sp-6); }
+.credential-field { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.field-heading { display: flex; align-items: center; gap: var(--sp-2); min-height: 20px; }
+.field-heading :deep(.n-button) { margin-left: auto; font-size: var(--fs-caption); }
+.field-label { font-size: var(--fs-caption); color: var(--dim); min-height: 20px; }
+.credential-field :deep(.n-input) { width: 100%; }
+.general-grid .row { padding-block: 0; box-shadow: none; }
 .price-status { overflow-wrap: anywhere; max-width: 78ch; }
 .cost-details {
   margin-top: var(--sp-2);
@@ -757,18 +771,22 @@ onUnmounted(() => {
 .cost-details summary:hover { color: var(--text); }
 .cost-details summary:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 3px; }
 .cost-details p { margin: var(--sp-2) 0 0; line-height: 1.7; }
-@container settings (min-width: 760px) {
+@container settings (min-width: 680px) {
   .credentials-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .credentials-grid .ctrl--field { grid-template-columns: minmax(0, 1fr) 72px 36px; }
-  .credentials-grid .ctrl--secret { grid-template-columns: minmax(0, 1fr) 72px 36px; }
-  .credentials-grid .ctrl--secret :deep(.n-input) { grid-column: 1; }
+  .service-group--relay, .service-group--cursor { grid-column: 1 / -1; }
+  .relay-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@container settings (min-width: 1000px) {
-  .general-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .general-grid .row { grid-template-columns: 1fr; align-content: start; box-shadow: none; }
+@container settings (min-width: 760px) {
+  .general-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .general-grid .row { grid-template-columns: 1fr; align-content: start; gap: var(--sp-3); }
+  .general-grid .row + .row { padding-left: var(--sp-6); border-left: 1px solid var(--stroke); }
   .general-grid .meta { min-height: 42px; }
-  .general-grid .ctrl { justify-content: flex-start; }
+  .general-grid .ctrl { justify-content: flex-start; min-height: var(--h-control); }
   .general-grid .ctrl :deep(.n-button:first-child) { padding-left: 0; }
+}
+@container settings (min-width: 900px) {
+  .credentials-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .service-group--cursor { grid-column: auto; }
 }
 
 .tabs {
@@ -811,14 +829,6 @@ onUnmounted(() => {
   box-shadow: var(--rule-hi);
 }
 .row:last-child { box-shadow: none; }
-.row--fill {
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--sp-2);
-}
-.row--fill .ctrl {
-  justify-content: stretch;
-  width: 100%;
-}
 .meta {
   display: flex;
   flex-direction: column;
@@ -842,29 +852,9 @@ onUnmounted(() => {
   min-width: 0;
 }
 .ctrl--actions { gap: var(--sp-2); flex-wrap: wrap; }
-.ctrl--field,
-.ctrl--secret {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  gap: var(--sp-2);
-  align-items: center;
-}
-.ctrl--field { grid-template-columns: minmax(0, 1fr); }
-.ctrl--secret { grid-template-columns: minmax(0, 1fr) auto; }
-.row--fill :deep(.n-input) { width: 100%; }
-.path-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--mono);
-  font-size: var(--fs-caption);
-  color: var(--faint);
-}
 .field-num { width: 120px; }
 :deep(.field-num.n-input-number) { width: 120px; }
-/* .num 现在只管数字对齐；地址是路径类文本，等宽单独留在这里 */
+/* 地址按路径文本展示，数字仍使用正文的等宽数字。 */
 .url-input { font-family: var(--mono); }
 .lock {
   display: inline-flex;
@@ -872,7 +862,7 @@ onUnmounted(() => {
   gap: var(--sp-1);
   white-space: nowrap;
   font-size: var(--fs-caption);
-  color: var(--ok);
+  color: var(--faint);
 }
 .segs {
   display: inline-flex;
@@ -916,7 +906,10 @@ onUnmounted(() => {
 @container settings (max-width: 640px) {
   .row { grid-template-columns: 1fr; }
   .ctrl { justify-content: flex-start; }
-  .general-grid .ctrl :deep(.n-button:first-child) { padding-left: 0; }
+  .general-grid .row { grid-template-columns: minmax(0, 1fr) auto; gap: var(--sp-3); }
+  .general-grid .ctrl { justify-content: flex-end; max-width: 148px; }
+  .general-grid .ctrl--actions { flex-direction: column; align-items: flex-end; gap: 0; }
+  .general-grid .ctrl :deep(.n-button) { padding-inline: 0; max-width: 100%; }
   .lock { justify-self: start; }
 }
 </style>

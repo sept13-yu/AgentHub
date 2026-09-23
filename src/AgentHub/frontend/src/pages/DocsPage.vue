@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NInput, NModal, NSwitch, useMessage } from 'naive-ui'
-import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, ListChecks, Plus, RefreshCw, Trash2, X } from 'lucide-vue-next'
+import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, ListChecks, Plus, RefreshCw, SearchX, Trash2, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
 import { agentName } from '../agentMeta'
 import AgentMark from '../components/AgentMark.vue'
@@ -147,6 +147,13 @@ function setLoading(on: boolean) {
 
 function skillTitle(s: SkillItem) {
   return (s.alias || s.displayName || s.name).trim()
+}
+
+function skillSummary(s: SkillItem) {
+  const note = s.note?.trim()
+  if (note) return note
+  const description = s.description?.trim() || ''
+  return /^[>|][-+]?$/.test(description) ? '' : description
 }
 
 function syncMetaDraft(s: SkillItem | null) {
@@ -919,7 +926,7 @@ onUnmounted(() => { stopPoll() })
               </h3>
               <table class="docs-table docs-table--skills">
                 <colgroup>
-                  <col v-if="selecting && !readonly" class="docs-col-check" /><col class="docs-col-name" /><col class="docs-col-state" /><col class="docs-col-when" /><col class="docs-col-switch" />
+                  <col v-if="selecting && !readonly" class="docs-col-check" /><col class="docs-col-name" /><col class="docs-col-when" /><col class="docs-col-switch" />
                 </colgroup>
                 <thead>
                   <tr>
@@ -931,10 +938,9 @@ onUnmounted(() => { stopPoll() })
                         @update:checked="toggleAllDeletable"
                       />
                     </th>
-                    <th>名称</th>
-                    <th>状态</th>
-                    <th>最近修改</th>
-                    <th>启用</th>
+                    <th>技能与用途</th>
+                    <th class="docs-when">最近修改</th>
+                    <th class="docs-toggle">启用</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -961,15 +967,19 @@ onUnmounted(() => { stopPoll() })
                     </td>
                     <td>
                       <span class="docs-name">
-                        <i class="doc-pip" />
-                        <b>{{ skillTitle(s) }}</b>
+                        <button
+                          type="button"
+                          class="skill-title"
+                          :title="skillTitle(s)"
+                          :aria-expanded="picked?.path === s.path && !!preview"
+                          @click.stop="openPreview(s)"
+                        >{{ skillTitle(s) }}</button>
                         <span v-if="skillCardTag(s.state)" class="doc-tag">{{ skillCardTag(s.state) }}</span>
                       </span>
-                      <span v-if="s.note" class="docs-note" :title="s.note">{{ s.note }}</span>
+                      <span v-if="skillSummary(s)" class="docs-note" :title="skillSummary(s)">{{ skillSummary(s) }}</span>
                     </td>
-                    <td class="docs-state">{{ skillStateText(s.state) }}</td>
-                    <td class="docs-when">{{ formatMonthDay(s.modifiedUtc) }}</td>
-                    <td @click.stop>
+                    <td class="docs-when" :title="formatWhen(s.modifiedUtc)">{{ formatMonthDay(s.modifiedUtc) }}</td>
+                    <td class="docs-toggle" @click.stop>
                       <n-switch
                         size="small"
                         :value="['enabled', 'modified', 'legacyLink'].includes(s.state)"
@@ -983,7 +993,15 @@ onUnmounted(() => { stopPoll() })
               </table>
             </section>
           </template>
-          <p v-else class="docs-empty">{{ q.trim() ? '没有匹配的技能' : '还没有技能，可以从 GitHub 安装' }}</p>
+          <div v-else class="skills-empty">
+            <component :is="q.trim() ? SearchX : Archive" :size="30" :stroke-width="1.35" aria-hidden="true" />
+            <h3>{{ q.trim() ? '没有匹配的技能' : '还没有技能' }}</h3>
+            <p v-if="q.trim()">试试技能名称或备注中的关键词。</p>
+            <p v-else-if="readonly">请在桌面端安装技能，安装后会显示在这里。</p>
+            <p v-else-if="!data?.skillsCli.available">安装服务暂不可用，请查看页面底部的状态。</p>
+            <p v-else>使用页面上方的“安装”添加技能，集中管理启用状态。</p>
+            <n-button v-if="q.trim()" text type="primary" @click="q = ''">清空搜索</n-button>
+          </div>
         </template>
         <template v-else>
           <p v-if="data && !data.libraryRootExists" class="docs-empty">资料目录不存在</p>
@@ -1303,17 +1321,19 @@ onUnmounted(() => { stopPoll() })
   cursor: pointer;
 }
 .docs-roots button:disabled { cursor: default; }
-.doc-pip {
-  width: 8px; height: 8px; border-radius: 50%; flex: none;
-  background: var(--accent-solid);
-  box-shadow: 0 0 0 1px var(--dot-ring);
+.docs-table--skills tr.is-off .skill-title { color: var(--faint); font-weight: 400; }
+.docs-table--skills tr.is-updating .skill-title { color: var(--accent-solid); }
+.docs-note {
+  display: block;
+  max-width: 90ch;
+  margin-top: var(--sp-1);
+  color: var(--faint);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-/* 停用态只降名称色与 pip 灰，不换整行底色 */
-.docs-table tr.is-off .doc-pip { background: var(--idle); }
-.docs-table tr.is-off .docs-name b { color: var(--faint); font-weight: 400; }
-.docs-table tr.is-updating .docs-name b { color: var(--accent-solid); }
-.docs-note { display: block; margin: var(--sp-1) 0 0 16px; color: var(--faint); font-size: var(--fs-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.docs-state { color: var(--faint); }
 .doc-sec { margin: 0 0 var(--sp-5); }
 .doc-sec h3 {
   display: flex;
@@ -1330,8 +1350,8 @@ onUnmounted(() => { stopPoll() })
 .docs-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
 .docs-table col.docs-col-check { width: 36px; }
 .docs-table col.docs-col-when { width: 72px; }
-.docs-table--skills col.docs-col-state { width: 84px; }
-.docs-table--skills col.docs-col-switch { width: 52px; }
+.docs-table--skills col.docs-col-when { width: 90px; }
+.docs-table--skills col.docs-col-switch { width: 58px; }
 .docs-table th {
   text-align: left; font-weight: 400; color: var(--faint); font-size: var(--fs-caption);
   padding: 0 var(--sp-2); height: var(--h-row); border-bottom: 1px solid var(--stroke);
@@ -1347,7 +1367,26 @@ onUnmounted(() => { stopPoll() })
 .docs-table tr[data-skill]:hover td { background: var(--wash); }
 .docs-table tr.is-on td { background: var(--surface-hi); }
 .docs-table tr.is-on td:first-child { box-shadow: inset 2px 0 var(--accent-solid); }
-.docs-table--skills tr:has(.docs-note) td { height: 58px; }
+.docs-table--skills td { box-sizing: border-box; height: 60px; padding-block: var(--sp-2); border-bottom: 0; }
+.docs-table--skills .docs-when { color: var(--faint); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
+.docs-table--skills .docs-toggle { text-align: center; }
+.skill-title {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 1.5;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.skill-title:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--r-in); }
 .docs-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .docs-name b { overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-body); font-weight: 500; }
 .docs-table tr.is-picked td { background: var(--surface-hi); }
@@ -1390,6 +1429,19 @@ onUnmounted(() => { stopPoll() })
   white-space: pre-wrap; font-family: var(--mono);
 }
 .docs-empty { color: var(--empty-fg); font-size: var(--fs-small); padding: var(--sp-6) 0; }
+.skills-empty {
+  min-height: min(360px, 50vh);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6);
+  text-align: center;
+  color: var(--faint);
+}
+.skills-empty h3 { margin: 0; font-size: var(--fs-card); font-weight: 500; color: var(--text); }
+.skills-empty p { max-width: 34ch; margin: 0; font-size: var(--fs-small); line-height: 1.7; }
 .hint { font-size: var(--fs-caption); color: var(--faint); margin: 0 0 var(--sp-3); }
 /* 抽屉档：预览改上下堆叠 */
 @container documents (max-width: 720px) {
@@ -1404,8 +1456,10 @@ onUnmounted(() => { stopPoll() })
   .docs-roots button { max-width: 100%; }
 }
 @container document-list (max-width: 480px) {
-  .docs-table--skills col.docs-col-state, .docs-table--skills col.docs-col-when { display: none; }
-  .docs-table--skills th:nth-last-child(2), .docs-table--skills td:nth-last-child(2),
-  .docs-table--skills th:nth-last-child(3), .docs-table--skills td:nth-last-child(3) { display: none; }
+  .docs-table--skills col.docs-col-when,
+  .docs-table--skills .docs-when { display: none; }
+  .docs-table--skills col.docs-col-switch { width: 48px; }
+  .docs-table--skills .docs-name { flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); }
+  .docs-table--skills td { padding-inline: var(--sp-1); }
 }
 </style>

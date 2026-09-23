@@ -108,21 +108,14 @@ const filtered = computed(() => {
 const deletePresentAgents = computed(() =>
   (deleteItem.value?.agents ?? []).filter((a) => a.presence === 'present' && a.detected))
 
-const allAdapters = computed(() => data.value?.adapters ?? [])
-
-const showUndetectedAdapters = ref(false)
-// 检测到的排前面；sort 稳定，同组保持后端 DefaultAdapters() 的顺序
-const orderedAdapters = computed(() =>
-  [...allAdapters.value].sort((a, b) => Number(b.detected) - Number(a.detected)))
-const visibleAdapters = computed(() =>
-  showUndetectedAdapters.value
-    ? orderedAdapters.value
-    : orderedAdapters.value.filter((a) => a.detected))
-const undetectedAdapterCount = computed(
-  () => orderedAdapters.value.filter((a) => !a.detected).length)
+const detectedAdapters = computed(() => (data.value?.adapters ?? []).filter((a) => a.detected))
 
 function presentAgentIds(item: McpItem) {
   return item.agents.filter((a) => a.presence === 'present' && a.detected).map((a) => a.agentId)
+}
+
+function cardAgents(item: McpItem) {
+  return item.agents.filter((a) => a.detected)
 }
 
 function defaultEditTargets(item?: McpItem | null) {
@@ -525,9 +518,9 @@ onMounted(() => { void load() })
 
   <div class="mcp">
 
-    <div class="mcp-adapters" v-if="visibleAdapters.length">
+    <div class="mcp-adapters" v-if="detectedAdapters.length">
       <button
-        v-for="a in visibleAdapters"
+        v-for="a in detectedAdapters"
         :key="a.agentId"
         type="button"
         class="mcp-adapter"
@@ -537,15 +530,9 @@ onMounted(() => { void load() })
       >
         <AgentMark :id="a.agentId" />
         <b>{{ a.displayName }}</b>
-        <span class="mcp-adapter-file">{{ a.detected ? configFileName(a.configPath) : '未检测到' }}</span>
+        <span class="mcp-adapter-file">{{ configFileName(a.configPath) }}</span>
       </button>
     </div>
-
-    <p v-if="undetectedAdapterCount" class="mcp-hidden">
-      <button type="button" class="link-quiet" @click="showUndetectedAdapters = !showUndetectedAdapters">
-        {{ showUndetectedAdapters ? '收起未检测到的家' : `已隐藏 ${undetectedAdapterCount} 家未检测到，点开看` }}
-      </button>
-    </p>
 
     <div v-if="!filtered.length" class="docs-empty">暂无 MCP 项</div>
 
@@ -571,7 +558,7 @@ onMounted(() => { void load() })
       </p>
       <div class="mcp-agents">
         <div
-          v-for="a in item.agents"
+          v-for="a in cardAgents(item)"
           :key="a.agentId"
           class="mcp-agent"
           :class="presenceClass(a.presence)"
@@ -584,7 +571,7 @@ onMounted(() => { void load() })
             v-if="a.presence === 'present' || a.presence === 'missing'"
             size="small"
             :value="agentSwitchOn(a)"
-            :disabled="readonly || busyAgentKey === `${item.id}:${a.agentId}` || (a.presence === 'missing' && !a.detected)"
+            :disabled="readonly || busyAgentKey === `${item.id}:${a.agentId}`"
             @update:value="(v: boolean) => onAgentSwitch(item, a, v)"
           />
         </div>
@@ -617,10 +604,10 @@ onMounted(() => { void load() })
       <div class="mcp-form-row mcp-targets">
         <span class="mcp-targets-label">写入到</span>
         <n-checkbox
-          v-for="a in allAdapters"
+          v-for="a in detectedAdapters"
           :key="a.agentId"
           :checked="editTargets.includes(a.agentId)"
-          :disabled="readonly || !a.detected"
+          :disabled="readonly"
           @update:checked="(v: boolean) => toggleEditTarget(a.agentId, v)"
         >
           {{ a.displayName }}
@@ -683,13 +670,6 @@ onMounted(() => { void load() })
 .mcp-adapter:hover { color: var(--text); border-color: var(--stroke-strong); }
 .mcp-adapter b { font-weight: 500; color: var(--text); }
 .mcp-adapter-file { color: var(--faint); font-family: var(--mono); font-size: var(--fs-caption); }
-.mcp-hidden { margin: 0; font-size: var(--fs-caption); color: var(--faint); }
-.link-quiet {
-  padding: 0; border: 0; background: transparent;
-  color: var(--dim); font: inherit; cursor: pointer;
-  text-decoration: underline; text-underline-offset: 2px;
-}
-.link-quiet:hover { color: var(--text); }
 .mcp-card {
   border: 1px solid var(--stroke); border-radius: var(--r-card);
   padding: var(--sp-5); background: var(--surface); min-width: 0;

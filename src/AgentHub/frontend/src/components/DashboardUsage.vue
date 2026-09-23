@@ -28,7 +28,7 @@ const ranked = computed(() => props.usage.agents.flatMap((a) => a.models.map((m)
 // 高度预算来自独立的页面滚动容器，避免观察卡片自身高度导致行数反复切换。
 // 每行 44px，另留标题、表头、页脚 88px；不为填满高屏无限增加信息密度。
 const rowLimit = computed(() => Math.max(4, Math.min(7, Math.floor((stageHeight.value * 0.54 - 88) / 44))))
-const columns = computed(() => modelsWidth.value >= 740 && ranked.value.length > rowLimit.value ? 2 : 1)
+const columns = computed(() => modelsWidth.value >= 700 && ranked.value.length > rowLimit.value ? 2 : 1)
 const rowsPerColumn = computed(() => Math.min(rowLimit.value, Math.max(1, Math.ceil(ranked.value.length / columns.value))))
 const pageSize = computed(() => rowsPerColumn.value * columns.value)
 const pageCount = computed(() => Math.max(1, Math.ceil(ranked.value.length / pageSize.value)))
@@ -97,7 +97,7 @@ onUnmounted(() => observer?.disconnect())
         </div>
       </div>
       <p v-if="usage.error" class="usage-error" role="alert">{{ usage.error }}</p>
-      <div v-else class="usage-layout" :class="{ 'is-empty': !usage.agents.length }">
+      <div v-else class="usage-layout" :class="{ 'is-empty': !usage.agents.length, 'compact-models': ranked.length <= rowLimit }">
         <div class="overview" :class="{ 'many-agents': usage.agents.length > 5 }">
           <div class="ring-col">
             <div class="donut" role="img" :aria-label="`${rangeLabel}用量 ${total.val}${total.unit} Token`" :style="ring">
@@ -116,7 +116,7 @@ onUnmounted(() => observer?.disconnect())
           <ul v-if="usage.agents.length" class="legend" aria-label="来源用量图例">
             <li v-for="a in usage.agents" :key="a.id">
               <i class="dot" :style="{ background: a.color }" aria-hidden="true" />
-              <div><span class="agent-name">{{ a.name }}</span><span class="agent-detail num">{{ formatTokens(a.tokens) }} <span class="separator">·</span> {{ share(a.tokens) }}</span></div>
+              <div class="agent-summary"><span class="agent-name">{{ a.name }}</span><span class="agent-share num">{{ share(a.tokens) }}</span><span class="agent-detail num">{{ formatTokens(a.tokens) }}</span></div>
             </li>
           </ul>
           <p v-else class="hint">当前时间范围暂无用量记录</p>
@@ -166,8 +166,9 @@ h2, h3 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
 .usage-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); margin-bottom: var(--sp-5); }
 h3 { font-size: var(--fs-small); }
 .hint { color: var(--dim); font-size: var(--fs-caption); }
-.usage-layout { display: grid; grid-template-columns: clamp(380px, 32cqi, 440px) minmax(0, 1fr); gap: clamp(24px, 3cqi, 48px); align-items: center; }
-.overview { display: grid; grid-template-columns: var(--ring-size) minmax(120px, 1fr); gap: var(--sp-5); align-items: center; }
+.usage-layout { display: grid; grid-template-columns: minmax(380px, .85fr) minmax(0, 1.35fr); gap: clamp(24px, 3cqi, 48px); align-items: center; max-width: 1600px; margin-inline: auto; }
+.compact-models { grid-template-columns: minmax(380px, 1fr) minmax(0, 1.2fr); max-width: 1280px; }
+.overview { display: grid; grid-template-columns: var(--ring-size) minmax(120px, 200px); gap: clamp(20px, 2.4cqi, 40px); align-items: center; justify-content: center; }
 .ring-col { display: flex; flex-direction: column; align-items: center; gap: var(--sp-4); min-width: 0; }
 .donut { width: var(--ring-size); aspect-ratio: 1; border-radius: 50%; position: relative; }
 .donut-core { position: absolute; inset: 14px; background: var(--surface); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); }
@@ -175,19 +176,20 @@ h3 { font-size: var(--fs-small); }
 .hero small { margin-left: var(--sp-1); font-size: var(--fs-small); font-weight: 400; letter-spacing: 0; }
 .cost { display: flex; align-items: baseline; justify-content: center; gap: var(--sp-2); flex-wrap: wrap; }
 .cost-toggle { border: 0; padding: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-small); cursor: pointer; }
-.legend { list-style: none; margin: 0; padding: 0 0 var(--sp-7); display: grid; gap: var(--sp-4); min-width: 0; }
+.legend { list-style: none; margin: 0; padding: 0 0 var(--sp-7); display: grid; gap: var(--sp-5); min-width: 0; }
 .legend li { display: flex; gap: var(--sp-2); min-width: 0; align-items: flex-start; }
 .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; margin-top: 7px; }
+.agent-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--sp-3); flex: 1; min-width: 0; }
 .agent-name { display: block; font-size: var(--fs-body); font-weight: 500; overflow-wrap: anywhere; }
-.agent-detail { display: block; margin-top: 2px; color: var(--dim); font-size: var(--fs-caption); white-space: nowrap; }
-.separator { padding-inline: 2px; color: var(--faint); }
+.agent-share { color: var(--dim); font-size: var(--fs-small); align-self: center; }
+.agent-detail { grid-column: 1 / -1; display: block; margin-top: 2px; color: var(--faint); font-size: var(--fs-caption); white-space: nowrap; }
 .many-agents { grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
 .many-agents .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-bottom: 0; gap: var(--sp-3) var(--sp-5); }
-.models { min-width: 0; }
+.models { min-width: 0; border-left: 1px solid var(--stroke); padding-left: clamp(20px, 2.4cqi, 40px); }
 .models-heading { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
 .model-columns { display: grid; grid-template-columns: repeat(var(--model-columns), minmax(0, 1fr)); gap: var(--sp-6); min-height: calc(28px + var(--model-rows) * 44px); }
 .model-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
-.model-table th { height: 28px; font-weight: 400; color: var(--dim); text-align: left; }
+.model-table th { height: 28px; font-weight: 400; color: var(--faint); font-size: var(--fs-caption); text-align: left; }
 .model-table td { height: 44px; padding: 0; vertical-align: middle; }
 .model-table tbody tr { position: relative; }
 .model-table tbody tr:has(.model-name:focus-visible) { background: var(--wash); outline: 2px solid var(--accent-solid); outline-offset: -2px; }
@@ -220,7 +222,7 @@ h3 { font-size: var(--fs-small); }
   .usage-layout { grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); }
   .overview { grid-template-columns: var(--ring-size) minmax(0, 240px); justify-content: center; }
   .many-agents { grid-template-columns: var(--ring-size) minmax(0, 1fr); }
-  .models { border-top: 1px solid var(--stroke); padding-top: var(--sp-4); }
+  .models { border-left: 0; padding-left: 0; border-top: 1px solid var(--stroke); padding-top: var(--sp-4); }
 }
 @container usage (max-width: 450px) {
   .overview, .many-agents, .is-empty .overview { grid-template-columns: minmax(0, 1fr); }

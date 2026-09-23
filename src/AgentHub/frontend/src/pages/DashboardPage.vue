@@ -547,7 +547,7 @@ onUnmounted(() => {
             </n-popover>
           </div>
           <div class="q-corner">
-            <span v-if="q.plan" class="q-plan">{{ q.plan }}</span>
+            <span v-if="q.plan && (q.kind !== 'balance' || !['余额', '积分'].includes(q.plan))" class="q-plan">{{ q.plan }}</span>
             <n-popover
               v-if="q.kind === 'balance' && q.dueHint"
               trigger="click"
@@ -566,16 +566,16 @@ onUnmounted(() => {
           <template v-if="q.kind === 'balance'">
             <b class="q-metric num">{{ q.text }}</b>
           </template>
-          <template v-else>
+          <div v-else class="q-windows">
             <div v-for="w in q.windows" :key="w.name" class="qwin" :class="{ 'is-hot': w.hot }">
               <span class="qwin-name">{{ w.name }}</span>
               <span class="qbar" aria-hidden="true">
                 <i :style="{ width: w.remain + '%', background: remainColor(w.remain) }" />
               </span>
-              <b class="q-num num">{{ Math.round(w.remain) }}%</b>
+              <b class="q-num num" :aria-label="`剩余 ${Math.round(w.remain)}%`">{{ Math.round(w.remain) }}<small>%</small></b>
               <span class="qwin-period">{{ w.period }}</span>
             </div>
-          </template>
+          </div>
         </div>
         </template>
         </div>
@@ -638,26 +638,32 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   gap: var(--sp-6) var(--sp-7);
   align-items: start;
 }
-.quota-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--sp-6) var(--sp-7); align-items: start; min-width: 0; }
-.quota-section { min-width: 0; }
-.balance-tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr)); gap: var(--sp-4); }
-.balance-heading { border-top: 1px solid var(--stroke); padding-top: var(--sp-4); margin-bottom: var(--sp-4); color: var(--dim); font-size: var(--fs-caption); }
-@container quota (min-width: 1120px) {
-  .qtiles.has-groups { grid-template-columns: minmax(0, 3fr) minmax(220px, 1fr); }
-  .has-groups .balance-group { border-left: 1px solid var(--stroke); padding-left: var(--sp-6); }
-  .has-groups .balance-heading { border-top: 0; padding-top: var(--sp-4); }
+/* 分组不设定位，拖拽坐标统一相对 .qtiles。 */
+.quota-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); min-width: 0; }
+@container quota (min-width: 860px) {
+  .quota-group:not(.balance-tiles) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quota-group:has(> .qtile:only-child) { grid-template-columns: minmax(0, 1fr); }
 }
+.quota-section { min-width: 0; }
+.balance-group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3) var(--sp-6); }
+.has-groups .balance-group { border-top: 1px solid var(--stroke); padding-top: var(--sp-4); }
+.balance-tiles { display: flex; flex-wrap: wrap; gap: var(--sp-3) var(--sp-7); }
+.balance-heading { color: var(--dim); font-size: var(--fs-caption); }
 .qtile {
   position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: var(--sp-3);
-  padding: var(--sp-4) 0 0;
-  border-top: 1px solid var(--stroke);
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
   background: var(--surface);
 }
-.qtile.is-balance { border-top: 0; padding-top: 0; }
+.qtile.is-balance { flex-direction: row; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); border: 0; padding: 0; max-width: 100%; }
+.is-balance .q-header { margin: 0; }
+.is-balance .q-metric { font-size: var(--fs-title); }
+.q-windows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 112px), 1fr)); gap: var(--sp-4); }
 .qtile.can-sort {
   cursor: grab;
   touch-action: none;
@@ -705,7 +711,7 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
     transition: none;
   }
 }
-.q-header { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.q-header { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; margin-bottom: var(--sp-1); }
 .q-corner {
   display: flex;
   flex-shrink: 0;
@@ -739,13 +745,10 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   display: inline-flex;
   align-items: center;
   height: 18px;
-  padding: 0 var(--sp-2);
-  border-radius: var(--r-pill);
-  background: var(--accent-soft);
-  color: var(--accent-solid);
+  padding: 0;
+  color: var(--faint);
   font-size: var(--fs-caption);
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-weight: 400;
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -767,7 +770,8 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   font: inherit;
   text-align: left;
   cursor: pointer;
-  font-size: var(--fs-small);
+  font-size: var(--fs-body);
+  font-weight: 500;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -776,18 +780,23 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
 .q-name:hover { color: var(--accent-solid); }
 .q-full-name { display: block; max-width: min(320px, 75vw); overflow-wrap: anywhere; }
 .q-metric {
-  font-size: var(--fs-card);
+  font-size: var(--fs-metric);
   font-weight: 600;
   letter-spacing: -0.02em;
   line-height: 1.1;
 }
 .q-num {
-  font-size: var(--fs-small);
+  grid-column: 1;
+  grid-row: 2;
+  font-size: var(--fs-title);
   font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
 }
+.q-num small { margin-left: 2px; font-size: var(--fs-caption); font-weight: 400; color: var(--dim); }
 .qwin {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: var(--sp-2);
   min-height: 28px;
@@ -795,29 +804,33 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   color: var(--dim);
 }
 .qwin-name {
-  color: var(--text);
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--dim);
 }
 .qbar {
-  grid-column: 1 / -1;
-  grid-row: 2;
+  grid-column: 1;
+  grid-row: 3;
   height: 4px;
   border-radius: var(--r-pill);
-  background: var(--wash);
+  background: var(--stroke);
   overflow: hidden;
 }
 .qbar i {
   display: block;
   height: 100%;
 }
-.qwin.is-hot .q-num {
+.qwin.is-hot .q-num, .qwin.is-hot .q-num small {
   color: var(--danger);
 }
 .qwin.is-hot .qbar i {
   background: var(--danger);
 }
 .qwin-period {
+  grid-column: 1;
+  grid-row: 4;
   color: var(--faint);
-  text-align: right;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
