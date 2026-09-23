@@ -33,7 +33,12 @@ public static class PriceSyncService
         new() { Model = "cursor-grok-4.6-xhigh", InputPer1m = 2.0, OutputPer1m = 6.0, CacheReadPer1m = 0.5, Currency = "USD" },
         new() { Model = "grok-bot-default", InputPer1m = 2.0, OutputPer1m = 6.0, CacheReadPer1m = 0.5, Currency = "USD" },
         new() { Model = "cursor-grok-4.6-high", InputPer1m = 2.0, OutputPer1m = 6.0, CacheReadPer1m = 0.5, Currency = "USD" },
+        new() { Model = "cursor-grok-4.7-xhigh-fast", InputPer1m = 4.0, OutputPer1m = 12.0, CacheReadPer1m = 1.0, Currency = "USD" },
+        new() { Model = "cursor-grok-4.7-high-fast", InputPer1m = 4.0, OutputPer1m = 12.0, CacheReadPer1m = 1.0, Currency = "USD" },
+        new() { Model = "cursor-grok-4.7-xhigh", InputPer1m = 2.0, OutputPer1m = 6.0, CacheReadPer1m = 0.5, Currency = "USD" },
+        new() { Model = "cursor-grok-4.7-high", InputPer1m = 2.0, OutputPer1m = 6.0, CacheReadPer1m = 0.5, Currency = "USD" },
         new() { Model = "claude-opus-5-thinking-high", InputPer1m = 5.0, OutputPer1m = 25.0, CacheReadPer1m = 0.5, CacheWritePer1m = 6.25, Currency = "USD" },
+        new() { Model = "claude-opus-5-5-thinking-high", InputPer1m = 4.0, OutputPer1m = 20.0, CacheReadPer1m = 0.2, CacheWritePer1m = 5.0, Currency = "USD" },
         new() { Model = "gemini-3.7-flash-high", InputPer1m = 0.75, OutputPer1m = 3.5, CacheReadPer1m = 0.075, Currency = "USD" },
         new() { Model = "composer-2.5", InputPer1m = 0.5, OutputPer1m = 2.5, Currency = "USD" },
         new() { Model = "composer-2.5-fast", InputPer1m = 3.0, OutputPer1m = 15.0, Currency = "USD" },
@@ -70,6 +75,10 @@ public static class PriceSyncService
         new() { Model = "claude-sonnet-4-6", InputPer1m = 3.0, OutputPer1m = 15.0, CacheReadPer1m = 0.3, CacheWritePer1m = 3.75, Currency = "USD" },
         new() { Model = "gpt-5.5", InputPer1m = 5.0, OutputPer1m = 30.0, CacheReadPer1m = 0.5, Currency = "USD" },
         new() { Model = "gpt-6-astra", InputPer1m = 10.0, OutputPer1m = 50.0, CacheReadPer1m = 1.0, CacheWritePer1m = 12.5, Currency = "USD" },
+        new() { Model = "gpt-6-sol", InputPer1m = 2.0, OutputPer1m = 10.0, CacheReadPer1m = 0.2, CacheWritePer1m = 2.5, Currency = "USD" },
+        new() { Model = "gpt-6-sol-fast", InputPer1m = 4.0, OutputPer1m = 20.0, CacheReadPer1m = 0.4, CacheWritePer1m = 5.0, Currency = "USD" },
+        new() { Model = "gpt-6-luna", InputPer1m = 0.1, OutputPer1m = 0.5, CacheReadPer1m = 0.01, CacheWritePer1m = 0.125, Currency = "USD" },
+        new() { Model = "gpt-6-luna-fast", InputPer1m = 0.2, OutputPer1m = 1.0, CacheReadPer1m = 0.02, CacheWritePer1m = 0.25, Currency = "USD" },
         new() { Model = "gpt-5.4", InputPer1m = 2.5, OutputPer1m = 15.0, CacheReadPer1m = 0.25, Currency = "USD" },
     ];
 

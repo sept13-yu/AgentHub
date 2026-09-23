@@ -19,4 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\AgentHub.Runtime\AgentHub.Runtime.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\prices.json" Link="prices.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
