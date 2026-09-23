@@ -80,7 +80,7 @@ internal static class TraeUsage
     }
 
     private static async Task<(List<UsageRecord>? Records, int Total, string? Error)> PageAsync(
-        string session, string token, long start, long end, int page)
+        string? session, string token, long start, long end, int page)
     {
         var body = JsonSerializer.Serialize(new
         {

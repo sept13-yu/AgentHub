@@ -11,6 +11,8 @@ public sealed class TokenService
     private readonly AgentHubConfig _config;
     private readonly Action<string>? _log;
     private readonly object _scanGate = new();
+    private readonly object _schemaGate = new();
+    private int _schemaReady;
     private string? _cursorCsvError;
 
     private const string CursorCsvUrl = "https://cursor.com/api/dashboard/export-usage-events-csv?strategy=tokens";
@@ -41,8 +43,9 @@ public sealed class TokenService
 
             using (var conn = Open())
             {
-                InitSchema(conn);
+                EnsureSchema(conn);
                 using var tx = conn.BeginTransaction();
+                using var insert = CreateInsertCommand(conn, tx);
 
                 SourceScanStat Ingest(string tool, string file, Func<IEnumerable<UsageRecord>> parse)
                 {
@@ -50,7 +53,7 @@ public sealed class TokenService
                     {
                         var n = 0;
                         foreach (var rec in parse())
-                            n += InsertRecord(conn, tx, rec);
+                            n += InsertRecord(insert, rec);
                         return new SourceScanStat(1, n, 0);
                     }
                     catch (Exception ex)
@@ -114,8 +117,9 @@ public sealed class TokenService
             var n = 0;
             using (var conn = Open())
             {
-                InitSchema(conn);
+                EnsureSchema(conn);
                 using var tx = conn.BeginTransaction();
+                using var insert = CreateInsertCommand(conn, tx);
                 // CSV 当日全量替换：清掉同 day 旧主键（含历史 dateRaw 无 model 格式），避免双计
                 var days = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var rec in recs)
@@ -129,7 +133,7 @@ public sealed class TokenService
                     del.ExecuteNonQuery();
                 }
                 foreach (var rec in recs)
-                    n += InsertRecord(conn, tx, rec);
+                    n += InsertRecord(insert, rec);
                 tx.Commit();
             }
             return new SourceScanStat(1, n, 0);
@@ -153,10 +157,11 @@ public sealed class TokenService
             var n = 0;
             using (var conn = Open())
             {
-                InitSchema(conn);
+                EnsureSchema(conn);
                 using var tx = conn.BeginTransaction();
+                using var insert = CreateInsertCommand(conn, tx);
                 foreach (var rec in recs)
-                    n += InsertRecord(conn, tx, rec);
+                    n += InsertRecord(insert, rec);
                 tx.Commit();
             }
             return new SourceScanStat(1, n, 0);
@@ -183,9 +188,9 @@ public sealed class TokenService
         };
     }
 
-    private static int InsertRecord(SqliteConnection conn, SqliteTransaction tx, UsageRecord r)
+    private static SqliteCommand CreateInsertCommand(SqliteConnection conn, SqliteTransaction tx)
     {
-        using var cmd = conn.CreateCommand();
+        var cmd = conn.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
             INSERT INTO usage_records
@@ -209,20 +214,40 @@ public sealed class TokenService
                 WHEN excluded.model <> 'unknown' THEN excluded.model
                 ELSE usage_records.model END
             """;
-        cmd.Parameters.AddWithValue("$tool", r.Tool);
-        cmd.Parameters.AddWithValue("$sid", r.SessionId);
-        cmd.Parameters.AddWithValue("$rk", r.RequestKey);
-        cmd.Parameters.AddWithValue("$ts", r.TsUtcIso);
-        cmd.Parameters.AddWithValue("$ld", r.TsUtc.ToLocalTime().ToString("yyyy-MM-dd"));   // 本机时区自然日
-        cmd.Parameters.AddWithValue("$in", r.InputTokens);
-        cmd.Parameters.AddWithValue("$out", r.OutputTokens);
-        cmd.Parameters.AddWithValue("$cached", r.CachedInputTokens);
-        cmd.Parameters.AddWithValue("$cw", r.CacheWriteTokens);
-        cmd.Parameters.AddWithValue("$reason", r.ReasoningTokens);
-        cmd.Parameters.AddWithValue("$cost", (object?)r.ReportedCostUsd ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$sub", r.IsSubagent ? 1 : 0);
-        cmd.Parameters.AddWithValue("$model", r.Model);
-        cmd.Parameters.AddWithValue("$project", (object?)r.Project ?? DBNull.Value);
+        cmd.Parameters.Add("$tool", SqliteType.Text);
+        cmd.Parameters.Add("$sid", SqliteType.Text);
+        cmd.Parameters.Add("$rk", SqliteType.Text);
+        cmd.Parameters.Add("$ts", SqliteType.Text);
+        cmd.Parameters.Add("$ld", SqliteType.Text);
+        cmd.Parameters.Add("$in", SqliteType.Integer);
+        cmd.Parameters.Add("$out", SqliteType.Integer);
+        cmd.Parameters.Add("$cached", SqliteType.Integer);
+        cmd.Parameters.Add("$cw", SqliteType.Integer);
+        cmd.Parameters.Add("$reason", SqliteType.Integer);
+        cmd.Parameters.Add("$cost", SqliteType.Real);
+        cmd.Parameters.Add("$sub", SqliteType.Integer);
+        cmd.Parameters.Add("$model", SqliteType.Text);
+        cmd.Parameters.Add("$project", SqliteType.Text);
+        cmd.Prepare();
+        return cmd;
+    }
+
+    private static int InsertRecord(SqliteCommand cmd, UsageRecord r)
+    {
+        cmd.Parameters["$tool"].Value = r.Tool;
+        cmd.Parameters["$sid"].Value = r.SessionId;
+        cmd.Parameters["$rk"].Value = r.RequestKey;
+        cmd.Parameters["$ts"].Value = r.TsUtcIso;
+        cmd.Parameters["$ld"].Value = r.TsUtc.ToLocalTime().ToString("yyyy-MM-dd");   // 本机时区自然日
+        cmd.Parameters["$in"].Value = r.InputTokens;
+        cmd.Parameters["$out"].Value = r.OutputTokens;
+        cmd.Parameters["$cached"].Value = r.CachedInputTokens;
+        cmd.Parameters["$cw"].Value = r.CacheWriteTokens;
+        cmd.Parameters["$reason"].Value = r.ReasoningTokens;
+        cmd.Parameters["$cost"].Value = (object?)r.ReportedCostUsd ?? DBNull.Value;
+        cmd.Parameters["$sub"].Value = r.IsSubagent ? 1 : 0;
+        cmd.Parameters["$model"].Value = r.Model;
+        cmd.Parameters["$project"].Value = (object?)r.Project ?? DBNull.Value;
         return cmd.ExecuteNonQuery();
     }
 
@@ -238,7 +263,7 @@ public sealed class TokenService
         var (prevFrom, prevTo) = UsageRange.Previous(range, today);
 
         using var conn = Open();
-        InitSchema(conn);
+        EnsureSchema(conn);
 
         var rows = ReadModelRows(conn, from, to);
         var prices = PriceSyncService.Resolve(_config.Dashboard.PriceOverrides);
@@ -496,8 +521,11 @@ public sealed class TokenService
     // db
     // ------------------------------------------------------------------
 
-    private static SqliteConnection Open()
+    private SqliteConnection Open()
     {
+        // 用户运行中清理 tokens.db 后，下次打开应重新建表。
+        if (!File.Exists(AgentHubConfig.TokensDbPath))
+            Volatile.Write(ref _schemaReady, 0);
         var cs = new SqliteConnectionStringBuilder
         {
             DataSource = AgentHubConfig.TokensDbPath,
@@ -507,6 +535,17 @@ public sealed class TokenService
         var conn = new SqliteConnection(cs.ToString());
         conn.Open();
         return conn;
+    }
+
+    private void EnsureSchema(SqliteConnection conn)
+    {
+        if (Volatile.Read(ref _schemaReady) != 0) return;
+        lock (_schemaGate)
+        {
+            if (_schemaReady != 0) return;
+            InitSchema(conn);
+            Volatile.Write(ref _schemaReady, 1);
+        }
     }
 
     private static void InitSchema(SqliteConnection conn)

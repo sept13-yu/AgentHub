@@ -53,7 +53,7 @@ public sealed class AgentHubRuntime : IDisposable
 
         Web = new WebHostService(Sessions, Docs, Tokens, Quotas, Config, AgentRules, CodexConfig, Mcp)
         {
-            UsageScan = () => Scan.RunAsync(),
+            UsageScan = () => Scan.RunAsync(rescanIfBusy: true),
             PickFolder = options.PickFolder,
             Autostart = options.Autostart,
             AppUpdate = options.AppUpdate,
@@ -118,7 +118,7 @@ public sealed class AgentHubRuntime : IDisposable
 
     public Task SyncNowAsync() => Task.Run(async () =>
     {
-        try { await Scan.RunAsync(); }
+        try { await Scan.RunAsync(rescanIfBusy: true); }
         catch (Exception ex)
         {
             _log("[tokencore] 同步失败: " + ex.GetType().Name + ": " + ex.Message);

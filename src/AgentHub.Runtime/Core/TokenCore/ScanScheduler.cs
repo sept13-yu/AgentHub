@@ -13,6 +13,9 @@ public sealed class ScanScheduler : IDisposable
     private readonly Action _onCompleted;
     private readonly object _gate = new();
     private System.Threading.Timer? _timer;
+    private Task<ScanAllResult>? _activeLocal;
+    private TaskCompletionSource<ScanAllResult>? _queuedLocal;
+    private volatile bool _disposed;
 
     public ScanScheduler(
         TokenService tokens,
@@ -41,56 +44,105 @@ public sealed class ScanScheduler : IDisposable
         }
     }
 
-    /// <summary>分两阶段：本地源入库（亚秒级）后立即通知页面并返回——刷新按钮不等网络；
-    /// Cursor CSV、Trae 用量、会话索引转后台收尾，完成后再通知一次，前端经 agenthub-refresh 自动补数据。</summary>
-    public Task<ScanAllResult> RunAsync()
+    /// <summary>本地入库后返回，Cursor CSV、Trae 和会话索引在后台收尾；
+    /// 重叠的手动刷新只补扫一次，并在补扫本地阶段结束后返回。</summary>
+    public Task<ScanAllResult> RunAsync(bool rescanIfBusy = false)
     {
-        var result = _tokens.ScanAllLocal();
-        _log($"[tokencore] 本地扫描完成：{FormatSources(result)} 入库 {result.Inserted} 条（{result.Seconds:F1}s）");
-        _onCompleted();
-
-        System.Threading.Tasks.Task.Run(async () =>
+        TaskCompletionSource<ScanAllResult> completion;
+        lock (_gate)
         {
-            try
+            if (_disposed)
+                return Task.FromException<ScanAllResult>(new ObjectDisposedException(nameof(ScanScheduler)));
+            if (_activeLocal is not null)
             {
-                var cursor = _tokens.ScanCursorCsv();
-                if (cursor.Skipped == 0)
-                    _log($"[tokencore] cursor 入库 {cursor.Inserted} 条");
+                if (!rescanIfBusy) return _activeLocal;
+                _queuedLocal ??= new TaskCompletionSource<ScanAllResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+                return _queuedLocal.Task;
             }
-            catch (Exception ex)
+            completion = new TaskCompletionSource<ScanAllResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _activeLocal = completion.Task;
+        }
+        _ = Task.Run(() => RunCycleAsync(completion));
+        return completion.Task;
+    }
+
+    private async Task RunCycleAsync(TaskCompletionSource<ScanAllResult> completion)
+    {
+        try
+        {
+            var result = _tokens.ScanAllLocal();
+            _log($"[tokencore] 本地扫描完成：{FormatSources(result)} 入库 {result.Inserted} 条（{result.Seconds:F1}s）");
+            completion.TrySetResult(result);
+            if (!_disposed) _onCompleted();
+
+            if (!_disposed)
             {
-                _log($"[tokencore] cursor 收尾异常 {ex.GetType().Name}: {ex.Message}");
+                try
+                {
+                    var cursor = _tokens.ScanCursorCsv();
+                    if (cursor.Skipped == 0)
+                        _log($"[tokencore] cursor 入库 {cursor.Inserted} 条");
+                }
+                catch (Exception ex)
+                {
+                    _log($"[tokencore] cursor 收尾异常 {ex.GetType().Name}: {ex.Message}");
+                }
             }
-            try
+            if (!_disposed)
             {
-                var trae = _tokens.ScanTraeUsage();
-                if (trae.Files > 0 && trae.Skipped == 0)
-                    _log($"[tokencore] trae 入库 {trae.Inserted} 条");
+                try
+                {
+                    var trae = _tokens.ScanTraeUsage();
+                    if (trae.Files > 0 && trae.Skipped == 0)
+                        _log($"[tokencore] trae 入库 {trae.Inserted} 条");
+                }
+                catch (Exception ex)
+                {
+                    _log($"[tokencore] trae 收尾异常 {ex.GetType().Name}: {ex.Message}");
+                }
             }
-            catch (Exception ex)
+            if (!_disposed)
             {
-                _log($"[tokencore] trae 收尾异常 {ex.GetType().Name}: {ex.Message}");
+                try
+                {
+                    await _sessions.EnsureIndexAsync(force: true);
+                    _log($"[sessions] 索引已更新：{_sessions.IndexedCount} 条");
+                }
+                catch (Exception ex)
+                {
+                    _log($"[sessions] 索引更新失败 {ex.GetType().Name}: {ex.Message}");
+                }
             }
-            try
+            if (!_disposed) _onCompleted();
+        }
+        catch (Exception ex)
+        {
+            completion.TrySetException(ex);
+            _log($"[tokencore] 扫描异常 {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            TaskCompletionSource<ScanAllResult>? next;
+            lock (_gate)
             {
-                await _sessions.EnsureIndexAsync(force: true);
-                _log($"[sessions] 索引已更新：{_sessions.IndexedCount} 条");
+                next = _disposed ? null : _queuedLocal;
+                _queuedLocal = null;
+                _activeLocal = next?.Task;
             }
-            catch (Exception ex)
-            {
-                _log($"[sessions] 索引更新失败 {ex.GetType().Name}: {ex.Message}");
-            }
-            _onCompleted();
-        });
-        return System.Threading.Tasks.Task.FromResult(result);
+            if (next is not null)
+                _ = Task.Run(() => RunCycleAsync(next));
+        }
     }
 
     public void Dispose()
     {
         lock (_gate)
         {
+            _disposed = true;
             _timer?.Dispose();
             _timer = null;
+            _queuedLocal?.TrySetCanceled();
+            _queuedLocal = null;
         }
     }
 
