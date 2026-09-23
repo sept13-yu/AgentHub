@@ -6,16 +6,7 @@ import { FileCog, Lock } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import { get, post, put, WRITABLE } from '../api'
 import { usePageHotkeys } from '../hotkeys'
-import AgentMark from '../components/AgentMark.vue'
 import { invalidateDashCache } from '../dashCache'
-import {
-  normalizeAgentOrder,
-  SET_AGENTS,
-  SET_PAYGO,
-  type AgentId,
-  type AgentShowKey,
-  type PaygoShowKey,
-} from '../settingsModel'
 import { normalizeTokenUnit, setTokenUnit, tokenUnit, type TokenUnit } from '../tokenUnit'
 
 const message = useMessage()
@@ -40,27 +31,6 @@ interface SettingsPayload {
     priceSync?: PriceSyncInfo
     tokenUnit?: string
     scanIntervalMinutes: number
-    showQuotaDeepSeek: boolean
-    showQuotaCursor: boolean
-    showQuotaRelay: boolean
-    showQuotaWorkBuddy: boolean
-    showQuotaTrae: boolean
-    showQuotaZcode: boolean
-    showQuotaCodex: boolean
-    showQuotaQoder?: boolean
-    showQuotaQoderCn?: boolean
-    showAgentDsh?: boolean
-    showAgentMimocode?: boolean
-    showAgentGrok?: boolean
-    showAgentTrae?: boolean
-    showAgentWorkBuddy?: boolean
-    showAgentZcode?: boolean
-    showAgentCursor?: boolean
-    showAgentCodex?: boolean
-    showAgentQoder?: boolean
-    showAgentQoderCn?: boolean
-    agentOrder?: string[]
-    agentPresence?: Record<string, boolean>
   }
   credentials: {
     relayPanelBaseUrl: string
@@ -120,26 +90,6 @@ const f = reactive({
   costEstimate: false,
   tokenUnit: 'zh' as TokenUnit,
   scanIntervalMinutes: 15,
-  showQuotaDeepSeek: true,
-  showQuotaCursor: true,
-  showQuotaRelay: true,
-  showQuotaWorkBuddy: true,
-  showQuotaTrae: true,
-  showQuotaZcode: true,
-  showQuotaCodex: true,
-  showQuotaQoder: true,
-  showQuotaQoderCn: true,
-  showAgentDsh: true,
-  showAgentMimocode: true,
-  showAgentGrok: true,
-  showAgentTrae: true,
-  showAgentWorkBuddy: true,
-  showAgentZcode: true,
-  showAgentCursor: true,
-  showAgentCodex: true,
-  showAgentQoder: true,
-  showAgentQoderCn: true,
-  agentOrder: normalizeAgentOrder([]),
   deepseekKey: '',
   relayKey: '',
   workbuddySession: '',
@@ -190,12 +140,6 @@ const dirty = computed(() => {
   return snapOf() !== snapshot.value
 })
 
-// 本机装没装，由后端 AgentPresence 探。只用来排序和画灰态：
-// 没装的家在这页照样留着，否则用户装好后没地方把它捞回别的页。
-const presence = ref<Record<string, boolean>>({})
-const orderedAgents = computed(() =>
-  [...SET_AGENTS].sort((a, b) => Number(!!presence.value[b.id]) - Number(!!presence.value[a.id])))
-
 function applyLoaded(s: SettingsPayload) {
   f.relayPanelBaseUrl = s.credentials.relayPanelBaseUrl
   f.autostart = s.autostartActual
@@ -211,27 +155,6 @@ function applyLoaded(s: SettingsPayload) {
     f.tokenUnit = normalizeTokenUnit(tokenUnit.value)
   }
   f.scanIntervalMinutes = Math.max(0, Math.min(1440, Number(d.scanIntervalMinutes) || 0))
-  f.showQuotaDeepSeek = d.showQuotaDeepSeek !== false
-  f.showQuotaCursor = d.showQuotaCursor !== false
-  f.showQuotaRelay = d.showQuotaRelay !== false
-  f.showQuotaWorkBuddy = d.showQuotaWorkBuddy !== false
-  f.showQuotaTrae = d.showQuotaTrae !== false
-  f.showQuotaZcode = d.showQuotaZcode !== false
-  f.showQuotaCodex = d.showQuotaCodex !== false
-  f.showQuotaQoder = d.showQuotaQoder !== false
-  f.showQuotaQoderCn = d.showQuotaQoderCn !== false
-  f.showAgentDsh = d.showAgentDsh !== false
-  f.showAgentMimocode = d.showAgentMimocode !== false
-  f.showAgentGrok = d.showAgentGrok !== false
-  f.showAgentTrae = d.showAgentTrae !== false
-  f.showAgentWorkBuddy = d.showAgentWorkBuddy !== false
-  f.showAgentZcode = d.showAgentZcode !== false
-  f.showAgentCursor = d.showAgentCursor !== false
-  f.showAgentCodex = d.showAgentCodex !== false
-  f.showAgentQoder = d.showAgentQoder !== false
-  f.showAgentQoderCn = d.showAgentQoderCn !== false
-  f.agentOrder = normalizeAgentOrder(d.agentOrder)
-  presence.value = d.agentPresence ?? {}
   f.deepseekKey = ''
   f.relayKey = ''
   f.workbuddySession = ''
@@ -249,7 +172,7 @@ function applyLoaded(s: SettingsPayload) {
 
 function priceSyncHint(): string {
   const s = priceSync.value
-  if (!s) return '启动时自动拉仓库 prices.json（GitHub→Gitee）；失败则用本地副本/内置表。看板手动刷新用量时也会再拉；无定时轮询'
+  if (!s) return '价格表将在启动或刷新用量时同步'
   const src = (s.source || '').toLowerCase()
   if (src === 'github' || src === 'gitee' || src === 'remote') {
     const where = src === 'gitee' ? 'Gitee' : 'GitHub'
@@ -260,7 +183,7 @@ function priceSyncHint(): string {
       ? `用上次拉到的本地副本 · 上次拉取 ${s.lastFetchAt}`
       : '用上次拉到的本地副本'
   if (s.lastFetchOk === false)
-    return s.lastFetchError ? `用内置表 · 拉取失败：${s.lastFetchError}` : '用内置表 · 拉取失败'
+    return '使用内置价格表 · 同步失败'
   return '用内置表 · 尚未拉到远程（启动后会自动拉）'
 }
 
@@ -294,26 +217,6 @@ function bindSectionObserver() {
   document.querySelectorAll('[id^="settings-"]').forEach((el) => sectionObserver!.observe(el))
 }
 
-function paygoOn(key: PaygoShowKey): boolean {
-  return f[key]
-}
-
-function togglePaygo(key: PaygoShowKey) {
-  f[key] = !f[key]
-}
-
-function agentMeta(id: AgentId) {
-  return SET_AGENTS.find((a) => a.id === id)!
-}
-
-function agentOn(id: AgentId): boolean {
-  return f[agentMeta(id).show]
-}
-
-function setAgentOn(id: AgentId, on: boolean) {
-  f[agentMeta(id).show as AgentShowKey] = on
-}
-
 async function save() {
   if (readonly || saving.value) return
   saving.value = true
@@ -327,26 +230,6 @@ async function save() {
         costEstimate: !!f.costEstimate,
         tokenUnit: f.tokenUnit,
         scanIntervalMinutes: Math.max(0, Math.min(1440, Number(f.scanIntervalMinutes) || 0)),
-        showQuotaDeepSeek: !!f.showQuotaDeepSeek,
-        showQuotaCursor: !!f.showQuotaCursor,
-        showQuotaRelay: !!f.showQuotaRelay,
-        showQuotaWorkBuddy: !!f.showQuotaWorkBuddy,
-        showQuotaTrae: !!f.showQuotaTrae,
-        showQuotaZcode: !!f.showQuotaZcode,
-        showQuotaCodex: !!f.showQuotaCodex,
-        showQuotaQoder: !!f.showQuotaQoder,
-        showQuotaQoderCn: !!f.showQuotaQoderCn,
-        showAgentDsh: !!f.showAgentDsh,
-        showAgentMimocode: !!f.showAgentMimocode,
-        showAgentGrok: !!f.showAgentGrok,
-        showAgentTrae: !!f.showAgentTrae,
-        showAgentWorkBuddy: !!f.showAgentWorkBuddy,
-        showAgentZcode: !!f.showAgentZcode,
-        showAgentCursor: !!f.showAgentCursor,
-        showAgentCodex: !!f.showAgentCodex,
-        showAgentQoder: !!f.showAgentQoder,
-        showAgentQoderCn: !!f.showAgentQoderCn,
-        agentOrder: f.agentOrder,
       },
       credentials: secretsSupported.value
         ? {
@@ -582,7 +465,7 @@ onUnmounted(() => {
   <form v-else-if="loaded" class="settings" @submit.prevent="save">
     <section id="settings-general" class="card set-card">
       <div class="card-head">常规外观</div>
-      <div class="card-body">
+      <div class="card-body general-grid">
         <div v-if="autostartSupported" class="row">
           <div class="meta"><label class="lbl" for="s-autostart">开机自启</label></div>
           <div class="ctrl"><n-switch id="s-autostart" :disabled="readonly" v-model:value="f.autostart" /></div>
@@ -628,7 +511,7 @@ onUnmounted(() => {
         <span class="spacer" />
         <span class="hint">Key 留空不修改</span>
       </div>
-      <div class="card-body">
+      <div class="card-body credentials-grid">
         <p v-if="!secretsSupported" class="usage-error">当前平台尚未支持凭据加密存储</p>
         <div class="row row--fill">
           <div class="meta">
@@ -723,7 +606,14 @@ onUnmounted(() => {
         <div class="row">
           <div class="meta">
             <label class="lbl" for="s-cost">成本估算</label>
-            <span class="hint">净输入×输入 + cache读×cache读 + cache写×cache写 + (输出+推理)×输出（缺 cache 价回退输入价；Grok 优先用厂商回报 USD）。{{ priceSyncHint() }}</span>
+            <span class="hint">按模型价格估算用量成本，供参考。</span>
+            <span class="hint price-status">{{ priceSyncHint() }}</span>
+            <details class="cost-details">
+              <summary>查看计算规则</summary>
+              <p>净输入 × 输入价 + 缓存读取 × 缓存读取价 + 缓存写入 × 缓存写入价 +（输出 + 推理）× 输出价。缺少缓存价格时使用输入价；Grok 优先采用厂商返回的美元成本。</p>
+              <p>启动和手动刷新用量时同步价格表，依次尝试 GitHub、Gitee；失败时使用本地副本或内置价格表。</p>
+              <p v-if="priceSync?.lastFetchOk === false && priceSync.lastFetchError">同步失败：{{ priceSync.lastFetchError }}</p>
+            </details>
           </div>
           <div class="ctrl"><n-switch id="s-cost" :disabled="readonly" v-model:value="f.costEstimate" /></div>
         </div>
@@ -756,53 +646,6 @@ onUnmounted(() => {
               v-model:value="f.scanIntervalMinutes"
             />
           </div>
-        </div>
-        <div class="block">
-          <div class="meta">
-            <span class="lbl">余额</span>
-            <span class="hint">只控制首页砖。点一下开/关</span>
-          </div>
-          <div class="paygo" role="group" aria-label="余额">
-            <button
-              v-for="p in SET_PAYGO"
-              :key="p.id"
-              type="button"
-              :aria-pressed="paygoOn(p.show) ? 'true' : 'false'"
-              :disabled="readonly"
-              @click="togglePaygo(p.show)"
-            >
-              <AgentMark :id="p.id" />
-              {{ p.name }}
-              <span v-if="'tag' in p && p.tag" class="paygo-tag">{{ p.tag }}</span>
-            </button>
-          </div>
-        </div>
-        <div class="block">
-          <div class="meta">
-            <span class="lbl">Agent</span>
-            <span class="hint">只控制用量和会话，不管首页砖。本机检测到的排在前面，顺序在首页拖砖</span>
-          </div>
-          <ol class="order">
-            <li
-              v-for="a in orderedAgents"
-              :key="a.id"
-              class="order-row"
-              :class="{ 'is-off': !agentOn(a.id) }"
-            >
-              <span class="order-who">
-                <AgentMark :id="a.id" />
-                <span class="order-name">{{ a.name }}</span>
-                <span v-if="'tag' in a && a.tag" class="order-tag">{{ a.tag }}</span>
-                <span v-if="presence[a.id] === false" class="order-miss">未检测到</span>
-              </span>
-              <n-switch
-                :disabled="readonly"
-                :value="agentOn(a.id)"
-                :aria-label="a.name + ' 显示'"
-                @update:value="(on: boolean) => setAgentOn(a.id, on)"
-              />
-            </li>
-          </ol>
         </div>
       </div>
     </section>
@@ -887,9 +730,48 @@ onUnmounted(() => {
   gap: var(--sp-5);
   width: 100%;
   min-width: 0;
+  container: settings / inline-size;
 }
 .set-card { scroll-margin-top: var(--sp-3); }
 .set-card:hover { border-color: var(--stroke); }
+.general-grid,
+.credentials-grid {
+  display: grid;
+  gap: 0 var(--sp-6);
+}
+.credentials-grid > .usage-error { grid-column: 1 / -1; }
+.credentials-grid .row {
+  align-content: start;
+  box-shadow: none;
+  min-width: 0;
+}
+.credentials-grid .meta { min-height: 40px; }
+.credentials-grid .ctrl--secret {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.credentials-grid .ctrl--secret :deep(.n-input) { flex: 1 1 200px; width: 0; }
+.credentials-grid .ctrl--secret .lock { flex: none; }
+.price-status { overflow-wrap: anywhere; max-width: 78ch; }
+.cost-details {
+  margin-top: var(--sp-2);
+  max-width: 78ch;
+  font-size: var(--fs-caption);
+  color: var(--dim);
+}
+.cost-details summary { width: fit-content; cursor: pointer; }
+.cost-details summary:hover { color: var(--text); }
+.cost-details summary:focus-visible { outline: 2px solid var(--accent-solid); outline-offset: 3px; }
+.cost-details p { margin: var(--sp-2) 0 0; line-height: 1.7; }
+@container settings (min-width: 760px) {
+  .credentials-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container settings (min-width: 1000px) {
+  .general-grid { grid-template-columns: minmax(0, .7fr) minmax(0, 1fr) minmax(0, 1.3fr); }
+  .general-grid .row { grid-template-columns: 1fr; align-content: start; box-shadow: none; }
+  .general-grid .ctrl { justify-content: flex-start; }
+}
 
 .tabs {
   display: inline-flex;
@@ -939,8 +821,6 @@ onUnmounted(() => {
   justify-content: stretch;
   width: 100%;
 }
-.block { padding: var(--sp-4) 0 0; }
-.block .meta { margin-bottom: var(--sp-3); }
 .meta {
   display: flex;
   flex-direction: column;
@@ -1035,79 +915,7 @@ onUnmounted(() => {
   box-shadow: inset 0 -2px 0 var(--accent-line);
 }
 
-.paygo {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
-}
-.paygo button {
-  height: var(--h-control);
-  padding: 0 12px;
-  border: 1px solid var(--stroke);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--dim);
-  font: inherit;
-  font-size: var(--fs-small);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.paygo button:hover:not(:disabled) { color: var(--text); border-color: var(--stroke-strong); }
-.paygo button[aria-pressed='true'] {
-  color: var(--text);
-  font-weight: 500;
-  background: var(--accent-soft);
-  border-color: transparent;
-}
-.paygo button:disabled { cursor: not-allowed; color: var(--disabled-fg); }
-.paygo-tag {
-  font-size: var(--fs-caption);
-  color: var(--faint);
-  font-weight: 400;
-}
-.order {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  width: 100%;
-}
-.order-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  min-height: var(--h-row);
-  padding: var(--sp-2) 0;
-  box-shadow: var(--rule-hi);
-}
-.order-row:last-child { box-shadow: none; }
-.order-who {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-width: 0;
-}
-.order-name { font-size: var(--fs-body); font-weight: 500; }
-.order-tag {
-  flex: none;
-  font-size: var(--fs-caption);
-  color: var(--faint);
-  font-weight: 400;
-}
-.order-miss {
-  flex: none;
-  padding: 0 5px;
-  border-radius: var(--r-in);
-  background: var(--wash);
-  color: var(--faint);
-  font-size: var(--fs-caption);
-  font-weight: 400;
-}
-.order-row.is-off .order-name,
-.order-row.is-off .order-tag { color: var(--disabled-fg); font-weight: 400; }
-@media (max-width: 1279px) {
+@container settings (max-width: 640px) {
   .row { grid-template-columns: 1fr; }
   .ctrl { justify-content: flex-start; }
   .ctrl--secret { grid-template-columns: minmax(0, 1fr); }

@@ -87,28 +87,8 @@ public static class UsageEndpoints
                     config.Dashboard.CostEstimate,
                     tokenUnit = DashboardSettings.NormalizeTokenUnit(config.Dashboard.TokenUnit),
                     config.Dashboard.ScanIntervalMinutes,
-                    config.Dashboard.ShowQuotaDeepSeek,
-                    config.Dashboard.ShowQuotaRelay,
-                    config.Dashboard.ShowQuotaTrae,
-                    config.Dashboard.ShowQuotaWorkBuddy,
-                    config.Dashboard.ShowQuotaZcode,
-                    config.Dashboard.ShowQuotaCursor,
-                    config.Dashboard.ShowQuotaCodex,
-                    config.Dashboard.ShowQuotaQoder,
-                    config.Dashboard.ShowQuotaQoderCn,
-                    config.Dashboard.ShowAgentDsh,
-                    config.Dashboard.ShowAgentMimocode,
-                    config.Dashboard.ShowAgentGrok,
-                    config.Dashboard.ShowAgentTrae,
-                    config.Dashboard.ShowAgentWorkBuddy,
-                    config.Dashboard.ShowAgentZcode,
-                    config.Dashboard.ShowAgentCursor,
-                    config.Dashboard.ShowAgentCodex,
-                    config.Dashboard.ShowAgentQoder,
-                    config.Dashboard.ShowAgentQoderCn,
                     agentOrder = config.Dashboard.ResolvedAgentOrder(),
                     quotaOrder = config.Dashboard.ResolvedQuotaOrder(),
-                    agentPresence = AgentPresence.Snapshot(),
                     costCurrency = DashboardSettings.NormalizeCurrency(config.Dashboard.CostCurrency),
                     prices = PriceSyncService.Resolve(config.Dashboard.PriceOverrides),
                     priceSync = PriceSyncService.Status(),
@@ -241,29 +221,6 @@ public static class UsageEndpoints
                         config.Dashboard.TokenUnit = DashboardSettings.NormalizeTokenUnit(v));
                     ApplyInt(dash, "scanIntervalMinutes", v =>
                         config.Dashboard.ScanIntervalMinutes = Math.Clamp(v, 0, 1440));
-                    ApplyBool(dash, "showQuotaDeepSeek", v => config.Dashboard.ShowQuotaDeepSeek = v);
-                    ApplyBool(dash, "showQuotaCursor", v => config.Dashboard.ShowQuotaCursor = v);
-                    ApplyBool(dash, "showQuotaRelay", v => config.Dashboard.ShowQuotaRelay = v);
-                    ApplyBool(dash, "showQuotaWorkBuddy", v => config.Dashboard.ShowQuotaWorkBuddy = v);
-                    ApplyBool(dash, "showQuotaTrae", v => config.Dashboard.ShowQuotaTrae = v);
-                    ApplyBool(dash, "showQuotaZcode", v => config.Dashboard.ShowQuotaZcode = v);
-                    ApplyBool(dash, "showQuotaCodex", v => config.Dashboard.ShowQuotaCodex = v);
-                    ApplyBool(dash, "showQuotaQoder", v => config.Dashboard.ShowQuotaQoder = v);
-                    ApplyBool(dash, "showQuotaQoderCn", v => config.Dashboard.ShowQuotaQoderCn = v);
-                    ApplyBool(dash, "showAgentDsh", v => config.Dashboard.ShowAgentDsh = v);
-                    ApplyBool(dash, "showAgentMimocode", v => config.Dashboard.ShowAgentMimocode = v);
-                    ApplyBool(dash, "showAgentGrok", v => config.Dashboard.ShowAgentGrok = v);
-                    ApplyBool(dash, "showAgentTrae", v =>
-                    {
-                        config.Dashboard.ShowAgentTrae = v;
-                        config.Dashboard.TraeUsage = v;
-                    });
-                    ApplyBool(dash, "showAgentWorkBuddy", v => config.Dashboard.ShowAgentWorkBuddy = v);
-                    ApplyBool(dash, "showAgentZcode", v => config.Dashboard.ShowAgentZcode = v);
-                    ApplyBool(dash, "showAgentCursor", v => config.Dashboard.ShowAgentCursor = v);
-                    ApplyBool(dash, "showAgentCodex", v => config.Dashboard.ShowAgentCodex = v);
-                    ApplyBool(dash, "showAgentQoder", v => config.Dashboard.ShowAgentQoder = v);
-                    ApplyBool(dash, "showAgentQoderCn", v => config.Dashboard.ShowAgentQoderCn = v);
                     var wroteAgent = false;
                     if (dash.TryGetProperty("agentOrder", out var agentEl) && agentEl.ValueKind == JsonValueKind.Array)
                     {

@@ -893,7 +893,7 @@ onUnmounted(() => { stopPoll() })
             <p v-if="conflictSkills.length" class="hint">{{ conflictSkills.length }} 个 Skill 存在冲突，程序不会自动覆盖</p>
             <section class="doc-sec">
               <h3>
-                全部 <span class="n">{{ skills.length }}</span>
+                技能库 <span class="n">{{ skills.length }}</span>
                 <span class="doc-on-note">使用中 {{ onSkills.length }}</span>
                 <span v-if="updateRunning && progress" class="doc-on-note">{{ jobKind === 'install' ? '安装中' : '检查中' }} {{ progress.index }}/{{ progress.total }}</span>
                 <span v-if="!readonly" class="doc-pick">
@@ -919,7 +919,7 @@ onUnmounted(() => { stopPoll() })
               </h3>
               <table class="docs-table docs-table--skills">
                 <colgroup>
-                  <col v-if="selecting && !readonly" class="docs-col-check" /><col class="docs-col-name" /><col class="docs-col-note" /><col class="docs-col-state" /><col class="docs-col-when" /><col class="docs-col-switch" />
+                  <col v-if="selecting && !readonly" class="docs-col-check" /><col class="docs-col-name" /><col class="docs-col-state" /><col class="docs-col-when" /><col class="docs-col-switch" />
                 </colgroup>
                 <thead>
                   <tr>
@@ -932,7 +932,6 @@ onUnmounted(() => { stopPoll() })
                       />
                     </th>
                     <th>名称</th>
-                    <th>说明</th>
                     <th>状态</th>
                     <th>最近修改</th>
                     <th>启用</th>
@@ -966,8 +965,8 @@ onUnmounted(() => { stopPoll() })
                         <b>{{ skillTitle(s) }}</b>
                         <span v-if="skillCardTag(s.state)" class="doc-tag">{{ skillCardTag(s.state) }}</span>
                       </span>
+                      <span v-if="s.note" class="docs-note" :title="s.note">{{ s.note }}</span>
                     </td>
-                    <td class="docs-note">{{ s.note }}</td>
                     <td class="docs-state">{{ skillStateText(s.state) }}</td>
                     <td class="docs-when">{{ formatMonthDay(s.modifiedUtc) }}</td>
                     <td @click.stop>
@@ -992,7 +991,7 @@ onUnmounted(() => { stopPoll() })
             <p v-if="data?.libraryHint" class="hint">{{ data.libraryHint }}</p>
             <section class="doc-sec">
               <h3>
-                全部 <span class="n">{{ library.length }}</span>
+                项目资料 <span class="n">{{ library.length }}</span>
                 <span v-if="!readonly" class="doc-pick">
                   <n-checkbox
                     v-if="selecting"
@@ -1143,9 +1142,12 @@ onUnmounted(() => { stopPoll() })
       </div>
     </div>
     <div v-if="data" class="docs-roots">
-      <button type="button" :disabled="readonly" :title="data.skillsRoot" @click="openRoot('active')"><FolderOpen :size="14" />{{ data.skillsRoot }}</button>
-      <button type="button" :disabled="readonly" :title="data.skillsStore" @click="openRoot('store')"><FolderOpen :size="14" />{{ data.skillsStore }}</button>
-      <span>{{ data.skillsCli.message }}</span>
+      <template v-if="kind === 'skills'">
+        <button type="button" :disabled="readonly" :title="data.skillsRoot" @click="openRoot('active')"><FolderOpen :size="14" />启用目录</button>
+        <button type="button" :disabled="readonly" :title="data.skillsStore" @click="openRoot('store')"><FolderOpen :size="14" />技能仓库</button>
+        <span>{{ data.skillsCli.message }}</span>
+      </template>
+      <button v-else type="button" :disabled="readonly" :title="data.libraryRoot" @click="openRoot('library')"><FolderOpen :size="14" />资料目录</button>
     </div>
   </div>
   <AhConfirm
@@ -1207,6 +1209,7 @@ onUnmounted(() => { stopPoll() })
   font-size: var(--fs-small);
 }
 .docs.is-split {
+  container: documents / inline-size;
   overflow: hidden;
   flex: 1;
   min-height: 0;
@@ -1220,13 +1223,14 @@ onUnmounted(() => { stopPoll() })
   min-height: 0;
 }
 .docs-split.has-preview {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 36%);
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 1.15fr);
 }
 .docs-list {
+  container: document-list / inline-size;
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: var(--sp-4);
+  padding: var(--sp-5);
 }
 .docs-split.has-preview .docs-list {
   border-right: 1px solid var(--stroke);
@@ -1236,7 +1240,8 @@ onUnmounted(() => { stopPoll() })
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: var(--sp-4);
+  padding: var(--sp-6);
+  background: var(--surface-hi);
   flex-direction: column;
   gap: var(--sp-3);
 }
@@ -1307,7 +1312,7 @@ onUnmounted(() => { stopPoll() })
 .docs-table tr.is-off .doc-pip { background: var(--idle); }
 .docs-table tr.is-off .docs-name b { color: var(--faint); font-weight: 400; }
 .docs-table tr.is-updating .docs-name b { color: var(--accent-solid); }
-.docs-note { color: var(--dim); }
+.docs-note { display: block; margin: var(--sp-1) 0 0 16px; color: var(--faint); font-size: var(--fs-caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .docs-state { color: var(--faint); }
 .doc-sec { margin: 0 0 var(--sp-5); }
 .doc-sec h3 {
@@ -1315,16 +1320,16 @@ onUnmounted(() => { stopPoll() })
   align-items: center;
   flex-wrap: wrap;
   gap: 0 8px;
-  font-size: var(--fs-caption);
-  font-weight: 500;
-  color: var(--dim);
+  font-size: var(--fs-card);
+  font-weight: 600;
+  color: var(--text);
   margin: 0 0 var(--sp-3);
 }
-.doc-sec h3 .n { font-variant-numeric: tabular-nums; }
+.doc-sec h3 .n, .doc-gbtn .n { font-variant-numeric: tabular-nums; font-size: var(--fs-caption); font-weight: 400; background: var(--wash); color: var(--dim); padding: 1px 7px; border-radius: var(--r-in); }
+.doc-on-note { font-size: var(--fs-caption); }
 .docs-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
 .docs-table col.docs-col-check { width: 36px; }
 .docs-table col.docs-col-when { width: 72px; }
-.docs-table--skills col.docs-col-name { width: 30%; }
 .docs-table--skills col.docs-col-state { width: 84px; }
 .docs-table--skills col.docs-col-switch { width: 52px; }
 .docs-table th {
@@ -1332,7 +1337,7 @@ onUnmounted(() => { stopPoll() })
   padding: 0 var(--sp-2); height: var(--h-row); border-bottom: 1px solid var(--stroke);
 }
 .docs-table td {
-  padding: 0 var(--sp-2); height: var(--h-row);
+  padding: 0 var(--sp-2); height: 44px;
   border-bottom: 1px solid var(--stroke);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
@@ -1341,8 +1346,10 @@ onUnmounted(() => { stopPoll() })
 .docs-table tr[data-plan]:hover td,
 .docs-table tr[data-skill]:hover td { background: var(--wash); }
 .docs-table tr.is-on td { background: var(--surface-hi); }
+.docs-table tr.is-on td:first-child { box-shadow: inset 2px 0 var(--accent-solid); }
+.docs-table--skills tr:has(.docs-note) td { height: 58px; }
 .docs-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.docs-name b { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.docs-name b { overflow: hidden; text-overflow: ellipsis; font-size: var(--fs-body); font-weight: 500; }
 .docs-table tr.is-picked td { background: var(--surface-hi); }
 .doc-ghead td { padding: var(--sp-3) 0 0; border-bottom: 0; background: transparent; }
 .doc-ghead:first-child td { padding-top: 0; }
@@ -1350,15 +1357,15 @@ onUnmounted(() => { stopPoll() })
 .doc-gbtn {
   display: inline-flex; align-items: center; gap: 6px;
   height: var(--h-row); padding: 0; border: 0;
-  background: transparent; color: var(--faint);
-  font-size: var(--fs-caption); cursor: pointer;
+  background: transparent; color: var(--text);
+  font: inherit; font-size: var(--fs-small); font-weight: 600; cursor: pointer;
 }
 .doc-gbtn:hover { color: var(--text); }
 .docs-table tbody.is-fold .doc-gbtn .ico { transform: rotate(-90deg); }
 .docs-preview-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
 .docs-preview-head h3 {
   flex: 1; min-width: 0;
-  font-size: var(--fs-card); font-weight: 600; margin: 0;
+  font-size: var(--fs-title); font-weight: 600; margin: 0; overflow-wrap: anywhere; line-height: 1.5;
 }
 .docs-close {
   flex: none;
@@ -1376,23 +1383,29 @@ onUnmounted(() => { stopPoll() })
   font-size: var(--fs-small);
 }
 .docs-close:hover { color: var(--text); background: var(--wash); }
-.docs-meta { font-size: var(--fs-caption); color: var(--faint); display: flex; flex-direction: column; gap: 2px; }
+.docs-meta { font-size: var(--fs-caption); color: var(--faint); display: flex; flex-direction: column; gap: var(--sp-1); overflow-wrap: anywhere; }
 .docs-body {
-  font-size: var(--fs-small); color: var(--dim); line-height: 1.65;
+  font-size: var(--fs-body); color: var(--text); line-height: 1.75; overflow-wrap: anywhere;
   flex: 1; min-height: 0; overflow: auto; margin: 0;
   white-space: pre-wrap; font-family: var(--mono);
 }
 .docs-empty { color: var(--empty-fg); font-size: var(--fs-small); padding: var(--sp-6) 0; }
 .hint { font-size: var(--fs-caption); color: var(--faint); margin: 0 0 var(--sp-3); }
 /* 抽屉档：预览改上下堆叠 */
-@media (max-width: 899px) {
+@container documents (max-width: 720px) {
   .docs-split.has-preview { grid-template-columns: 1fr; }
+  .docs-split.has-preview { grid-template-rows: minmax(140px, 35%) minmax(0, 1fr); }
   .docs-split.has-preview .docs-list {
     border-right: 0;
     border-bottom: 1px solid var(--stroke);
   }
-  .docs-split.has-preview .docs-preview { padding-top: 0; }
+  .docs-preview { padding: var(--sp-4); }
   .docs-roots { flex-wrap: wrap; padding-block: var(--sp-2); }
-  .docs-roots button { max-width: 100%; width: 100%; }
+  .docs-roots button { max-width: 100%; }
+}
+@container document-list (max-width: 480px) {
+  .docs-table--skills col.docs-col-state, .docs-table--skills col.docs-col-when { display: none; }
+  .docs-table--skills th:nth-last-child(2), .docs-table--skills td:nth-last-child(2),
+  .docs-table--skills th:nth-last-child(3), .docs-table--skills td:nth-last-child(3) { display: none; }
 }
 </style>

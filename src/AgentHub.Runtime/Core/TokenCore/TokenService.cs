@@ -153,11 +153,9 @@ public sealed class TokenService
         }
     }
 
-    /// <summary>Trae 官网按会话用量入库。网络在锁外；开关关或本机/设置都没有登录态则跳过。</summary>
+    /// <summary>Trae 官网按会话用量入库。网络在锁外；没有登录态则跳过。</summary>
     public SourceScanStat ScanTraeUsage()
     {
-        if (!_config.Dashboard.ShowAgentTrae)
-            return new SourceScanStat(0, 0, 0);
         if (!TraeAuth.HasCredentials(_config))
             return new SourceScanStat(0, 0, 0);
 
@@ -259,8 +257,7 @@ public sealed class TokenService
         using var conn = Open();
         InitSchema(conn);
 
-        var filter = UsageToolFilter();
-        var rows = ReadModelRows(conn, from, to, filter);
+        var rows = ReadModelRows(conn, from, to);
         var prices = PriceSyncService.Resolve(_config.Dashboard.PriceOverrides);
         IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)>? priceTable = null;
         if (_config.Dashboard.CostEstimate)
@@ -270,7 +267,7 @@ public sealed class TokenService
         }
         var byAgent = BuildByAgent(rows, priceTable);
         var total = byAgent.Sum(a => (long)a["tokens"]!);
-        var prev = SumBilled(conn, prevFrom, prevTo, filter);
+        var prev = SumBilled(conn, prevFrom, prevTo);
         var fx = _config.Dashboard.FxFallbackRate;
         if (_config.Dashboard.CostEstimate)
         {
@@ -302,7 +299,7 @@ public sealed class TokenService
                 ["fxUsdToCny"] = cost is not null ? fx : null,
             },
             ["byAgent"] = byAgent,
-            ["days"] = ReadDailyDays(conn, HeatmapStart(today), today, filter),
+            ["days"] = ReadDailyDays(conn, HeatmapStart(today), today),
         };
     }
 
@@ -315,7 +312,7 @@ public sealed class TokenService
     }
 
     private static List<Dictionary<string, object?>> ReadDailyDays(
-        SqliteConnection conn, DateTime from, DateTime to, string filter)
+        SqliteConnection conn, DateTime from, DateTime to)
     {
         var days = new List<Dictionary<string, object?>>();
         using var cmd = conn.CreateCommand();
@@ -323,7 +320,7 @@ public sealed class TokenService
             SELECT local_date,
                    COALESCE(SUM({BilledExpr}), 0)
             FROM usage_records
-            WHERE local_date BETWEEN $from AND $to {filter}
+            WHERE local_date BETWEEN $from AND $to
             GROUP BY local_date
             HAVING SUM({BilledExpr}) > 0
             ORDER BY local_date
@@ -342,24 +339,6 @@ public sealed class TokenService
         return days;
     }
 
-    private string UsageToolFilter()
-    {
-        var dash = _config.Dashboard;
-        var hide = new List<string>();
-        if (!dash.ShowAgentDsh) hide.Add("dsh");
-        if (!dash.ShowAgentMimocode) hide.Add("mimocode");
-        if (!dash.ShowAgentGrok) hide.Add("grok");
-        if (!dash.ShowAgentQoder) hide.Add("qoder");
-        if (!dash.ShowAgentQoderCn) hide.Add("qoder-cn");
-        if (!dash.ShowAgentTrae) hide.Add("trae");
-        if (!dash.ShowAgentWorkBuddy) hide.Add("workbuddy");
-        if (!dash.ShowAgentZcode) hide.Add("zcode");
-        if (!dash.ShowAgentCursor) hide.Add("cursor");
-        if (!dash.ShowAgentCodex) hide.Add("codex");
-        if (hide.Count == 0) return "";
-        return "AND tool NOT IN (" + string.Join(", ", hide.Select(t => "'" + t + "'")) + ")";
-    }
-
     private sealed record ModelRow(
         string Tool, string Model, bool IsSub, long Input, long Output, long Cached, long CacheWrite,
         long Reasoning, double? ReportedUsd)
@@ -376,7 +355,7 @@ public sealed class TokenService
         }
     }
 
-    private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to, string filter)
+    private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to)
     {
         var rows = new List<ModelRow>();
         using var cmd = conn.CreateCommand();
@@ -386,7 +365,7 @@ public sealed class TokenService
                    SUM(cached_input_tokens), SUM(cache_write_tokens),
                    SUM(reasoning_tokens), SUM(reported_cost_usd)
             FROM usage_records
-            WHERE local_date BETWEEN $from AND $to {filter}
+            WHERE local_date BETWEEN $from AND $to
             GROUP BY tool, model, is_subagent
             """;
         cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd"));
@@ -407,13 +386,13 @@ public sealed class TokenService
         return rows;
     }
 
-    private static long SumBilled(SqliteConnection conn, DateTime from, DateTime to, string filter)
+    private static long SumBilled(SqliteConnection conn, DateTime from, DateTime to)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $"""
             SELECT COALESCE(SUM({BilledExpr}), 0)
             FROM usage_records
-            WHERE local_date BETWEEN $from AND $to {filter}
+            WHERE local_date BETWEEN $from AND $to
             """;
         cmd.Parameters.AddWithValue("$from", from.ToString("yyyy-MM-dd"));
         cmd.Parameters.AddWithValue("$to", to.ToString("yyyy-MM-dd"));

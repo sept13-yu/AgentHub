@@ -33,8 +33,8 @@ public sealed class QuotaService
     private string? _traeRejectedJwt;
     private long _traeJwtExp;
     private string[] _wbPackageCodes = [];
-    // 到期积分结果缓存：与额度同 TTL。只缓存成功结果——error 与「开关关闭」的空结果不缓存，
-    // 否则用户改完设置/凭据后点「!」还要等 TTL 过期。
+    // 到期积分结果缓存：与额度同 TTL。只缓存成功结果，
+    // 否则用户改完凭据后点「!」还要等 TTL 过期。
     private Dictionary<string, object?>? _expiryCache;
     private long _expiryCacheAt;
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
@@ -73,11 +73,6 @@ public sealed class QuotaService
     {
         if (ExpiryCacheFresh(id))
             return _expiryCache!;
-        if (id == "trae" && !_config.Dashboard.ShowQuotaTrae)
-            return ExpiryNone("trae");
-        if (id != "trae" && !_config.Dashboard.ShowQuotaWorkBuddy)
-            return ExpiryNone("workbuddy");
-
         await _fetchGate.WaitAsync();
         try
         {
@@ -88,14 +83,10 @@ public sealed class QuotaService
             Dictionary<string, object?> result;
             if (id == "trae")
             {
-                if (!_config.Dashboard.ShowQuotaTrae)
-                    return ExpiryNone("trae");   // 开关关闭不进缓存：设置里打开后立即可查
                 result = await TraeExpiryAsync();
             }
             else
             {
-                if (!_config.Dashboard.ShowQuotaWorkBuddy)
-                    return ExpiryNone("workbuddy");
                 result = await WorkBuddyExpiryAsync();
             }
             if (result.ContainsKey("error"))
@@ -148,15 +139,15 @@ public sealed class QuotaService
 
             var dash = _config.Dashboard;
             var jobs = new List<(string Id, Task<Dictionary<string, object?>> Task)>();
-            if (dash.ShowQuotaDeepSeek) jobs.Add(("deepseek", DeepSeekAsync()));
-            if (dash.ShowQuotaCursor) jobs.Add(("cursor", CursorAsync()));
-            if (dash.ShowQuotaCodex) jobs.Add(("codex", CodexAsync()));
-            if (dash.ShowQuotaRelay) jobs.Add(("relay", RelayAsync()));
-            if (dash.ShowQuotaWorkBuddy) jobs.Add(("workbuddy", WorkBuddyAsync()));
-            if (dash.ShowQuotaTrae) jobs.Add(("trae", TraeAsync()));
-            if (dash.ShowQuotaZcode) jobs.Add(("zcode", ZcodeAsync()));
-            if (dash.ShowQuotaQoder) jobs.Add(("qoder", QoderQuota.FetchInternationalAsync(_http, CancellationToken.None)));
-            if (dash.ShowQuotaQoderCn) jobs.Add(("qoder-cn", QoderQuota.FetchChinaAsync(_http, CancellationToken.None)));
+            jobs.Add(("deepseek", DeepSeekAsync()));
+            jobs.Add(("cursor", CursorAsync()));
+            jobs.Add(("codex", CodexAsync()));
+            jobs.Add(("relay", RelayAsync()));
+            jobs.Add(("workbuddy", WorkBuddyAsync()));
+            jobs.Add(("trae", TraeAsync()));
+            jobs.Add(("zcode", ZcodeAsync()));
+            jobs.Add(("qoder", QoderQuota.FetchInternationalAsync(_http, CancellationToken.None)));
+            jobs.Add(("qoder-cn", QoderQuota.FetchChinaAsync(_http, CancellationToken.None)));
             if (jobs.Count > 0)
                 await Task.WhenAll(jobs.Select(j => j.Task));
 
@@ -174,7 +165,8 @@ public sealed class QuotaService
             WriteDiskCache();
 
             // 预热放到闸门外：expiry 也进同一把闸，闸内再 Task.Run 会自己等自己
-            warmupExpiry = dash.ShowQuotaWorkBuddy && !ExpiryCacheFresh("workbuddy");
+            warmupExpiry = !ExpiryCacheFresh("workbuddy")
+                && sources["workbuddy"].GetValueOrDefault("status") is string status && status == "ok";
             result = _cache;
         }
         finally
@@ -235,7 +227,7 @@ public sealed class QuotaService
 
     // ------------------------------------------------------------------
     // Cursor：vscdb 只读取 accessToken → GET cursor.com/api/usage-summary
-    // 契约探针与失效信号区分（方案 §5.1 Cursor 开关约定）
+    // 契约探针与失效信号区分
     // ------------------------------------------------------------------
 
     private async Task<Dictionary<string, object?>> CursorAsync()

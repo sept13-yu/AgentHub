@@ -766,19 +766,21 @@ onMounted(() => { void load() })
                 <AgentMark :id="s.id" />{{ s.name }}
               </button>
             </div>
-            <n-input v-model:value="q" class="sess-search" placeholder="搜索标题 / 路径" clearable />
-            <n-button
-              v-if="residueVisible"
-              quaternary
-              :disabled="readonly || !residueCanRun"
-              @click="askCleanResidue"
-            >
-              <template #icon><n-icon><Eraser :size="16" :stroke-width="1.8" /></n-icon></template>
-              清理残留
-            </n-button>
+            <div class="sess-tools">
+              <n-input v-model:value="q" class="sess-search" placeholder="搜索标题 / 路径" clearable />
+              <n-button
+                v-if="residueVisible"
+                quaternary
+                :disabled="readonly || !residueCanRun"
+                @click="askCleanResidue"
+              >
+                <template #icon><n-icon><Eraser :size="16" :stroke-width="1.8" /></n-icon></template>
+                清理残留
+              </n-button>
+            </div>
           </div>
-                    <p v-if="cloudHint" class="hint cloud-hint">{{ cloudHint }}</p>
-<p v-if="residueSkipHint || hostRunning" class="hint">
+          <p v-if="cloudHint" class="hint cloud-hint">{{ cloudHint }}</p>
+          <p v-if="residueSkipHint || hostRunning" class="hint">
             <span v-if="residueSkipHint">{{ residueSkipHint }}</span>
             <span v-if="hostRunning"> 删会话仍要先退出要删的那一家（含托盘）。</span>
           </p>
@@ -830,7 +832,7 @@ onMounted(() => { void load() })
                 <td colspan="4">
                   <button type="button" class="sess-gbtn" :title="g.path" @click="toggleFold(g.key)">
                     <ChevronDown class="ico" :size="14" :stroke-width="1.8" />
-                    {{ g.name }} <span class="n">{{ g.items.length }}</span>
+                    <span class="sess-project-name">{{ g.name }}</span><span class="n">{{ g.items.length }}</span>
                   </button>
                 </td>
               </tr>
@@ -856,6 +858,7 @@ onMounted(() => { void load() })
                     <span v-if="row.orphanSub" class="sess-tag">子会话</span>
                     <span v-if="row.locked" class="sess-tag is-locked">已锁</span>
                   </span>
+                  <span class="sess-when-inline">{{ formatWhen(row.lastActivity) }}</span>
                 </td>
                 <td class="num">{{ formatWhen(row.lastActivity) }}</td>
                 <td class="sess-lock" @click.stop>
@@ -909,8 +912,10 @@ onMounted(() => { void load() })
             <p v-if="previewErr" class="sess-empty">{{ previewErr }}</p>
             <div v-else-if="detail?.messages.length" class="sess-msgs">
               <div v-for="(m, i) in detail.messages" :key="i" class="sess-msg">
-                <span class="role">{{ m.role }}</span>
-                <span class="when">{{ formatWhen(m.timestamp) }}</span>
+                <div class="sess-msg-head">
+                  <span class="role">{{ m.role }}</span>
+                  <span class="when">{{ formatWhen(m.timestamp) }}</span>
+                </div>
                 <p>{{ m.text }}</p>
               </div>
             </div>
@@ -938,11 +943,11 @@ onMounted(() => { void load() })
   margin-bottom: var(--sp-4);
 }
 .sess-src {
-  display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2);
+  display: flex; flex: 1 1 480px; flex-wrap: wrap; align-items: center; gap: 6px;
 }
 .sess-src button {
-  height: var(--h-control); padding: 0 12px;
-  border: 1px solid var(--stroke); border-radius: 999px;
+  height: var(--h-control); padding: 0 10px;
+  border: 1px solid transparent; border-radius: var(--r-in);
   background: var(--surface); color: var(--dim);
   font-size: var(--fs-small); cursor: pointer;
   display: inline-flex; align-items: center; gap: 6px;
@@ -952,7 +957,9 @@ onMounted(() => { void load() })
   color: var(--text); font-weight: 500;
   background: var(--accent-soft); border-color: transparent;
 }
-.sess-search { width: 220px; }
+.sess-tools { display: flex; flex: 1 1 300px; align-items: center; gap: var(--sp-2); max-width: 420px; min-width: 0; }
+.sess-search { flex: 1; min-width: 0; }
+.sess-tools > :last-child:not(.sess-search) { flex: none; }
 .vac { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-caption); color: var(--dim); }
 .hint { font-size: var(--fs-caption); color: var(--faint); }
 .sess.is-split {
@@ -974,7 +981,7 @@ onMounted(() => { void load() })
   min-height: 0;
 }
 .sess-split.has-preview {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 38%, 520px);
 }
 .sess-list {
   min-width: 0;
@@ -1012,8 +1019,8 @@ onMounted(() => { void load() })
   border-bottom: 1px solid var(--stroke);
 }
 .sess-table td {
-  padding: 0 var(--sp-2); height: var(--h-row);
-  border-bottom: 1px solid var(--stroke);
+  padding: 0 var(--sp-2); height: 42px;
+  border-bottom: 1px solid color-mix(in srgb, var(--stroke) 65%, transparent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1021,13 +1028,15 @@ onMounted(() => { void load() })
 }
 .sess-table th.num,
 .sess-table td.num { text-align: right; }
+.sess-table td.num { color: var(--dim); }
 .sess-table tr:not(.sess-ghead) { cursor: pointer; }
 .sess-table tr:not(.sess-ghead):hover td { background: var(--wash); }
 .sess-table tr.is-on td { background: var(--surface-hi); }
 .sess-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .sess-title b {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-body); font-weight: 400; min-width: 0;
 }
+.sess-when-inline { display: none; }
 .sess-tag { font-size: var(--fs-caption); color: var(--faint); flex: none; }
 .sess-tag.is-cloud {
   display: inline-grid;
@@ -1082,18 +1091,20 @@ onMounted(() => { void load() })
 .sess-table tbody.is-fold > tr:not(.sess-ghead) { display: none; }
 .sess-gbtn {
   display: inline-flex; align-items: center; gap: 6px;
-  height: var(--h-row); padding: 0; border: 0;
-  background: transparent; color: var(--faint);
-  font-size: var(--fs-caption); cursor: pointer;
+  max-width: 100%; height: var(--h-row); padding: 0 var(--sp-2); border: 0;
+  background: transparent; color: var(--text);
+  font-size: var(--fs-small); font-weight: 600; cursor: pointer;
 }
-.sess-gbtn:hover { color: var(--text); }
-.sess-gbtn .n { font-variant-numeric: tabular-nums; }
+.sess-gbtn:hover { color: var(--accent-solid); }
+.sess-gbtn .ico { flex: none; color: var(--dim); }
+.sess-project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sess-gbtn .n { flex: none; min-width: 22px; padding: 1px 6px; border-radius: var(--r-in); background: var(--wash); color: var(--dim); font-size: var(--fs-caption); font-weight: 400; font-variant-numeric: tabular-nums; }
 .sess-table tbody.is-fold .sess-gbtn .ico { transform: rotate(-90deg); }
 .sess-empty { color: var(--empty-fg); font-size: var(--fs-small); padding: var(--sp-6) 0; }
 .sess-preview-head { display: flex; align-items: flex-start; gap: var(--sp-2); }
 .sess-preview-head h3 {
   flex: 1; min-width: 0;
-  font-size: var(--fs-card); font-weight: 600; margin: 0;
+  font-size: var(--fs-card); font-weight: 600; margin: 0; line-height: 1.5; overflow-wrap: anywhere;
 }
 .sess-close {
   flex: none;
@@ -1111,16 +1122,18 @@ onMounted(() => { void load() })
   font-size: var(--fs-small);
 }
 .sess-close:hover { color: var(--text); background: var(--wash); }
-.sess-meta { font-size: var(--fs-caption); color: var(--faint); display: flex; flex-direction: column; gap: 2px; }
+.sess-meta { font-size: var(--fs-caption); color: var(--faint); display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
 .sess-acts { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .sess-msgs {
   display: flex; flex-direction: column; gap: var(--sp-3);
   flex: 1; min-height: 0; overflow: auto; padding-right: var(--sp-2);
 }
-.sess-msg { font-size: var(--fs-small); color: var(--dim); }
-.sess-msg .role { color: var(--text); font-weight: 500; margin-right: 6px; }
+.sess-msg { font-size: var(--fs-body); line-height: 1.65; color: var(--text); }
+.sess-msg + .sess-msg { padding-top: var(--sp-3); border-top: 1px solid var(--stroke); }
+.sess-msg-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px var(--sp-2); }
+.sess-msg .role { color: var(--dim); font-size: var(--fs-small); font-weight: 600; }
 .sess-msg .when { color: var(--faint); font-size: var(--fs-caption); }
-.sess-msg p { margin: 4px 0 0; white-space: pre-wrap; }
+.sess-msg p { margin: var(--sp-2) 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 1279px) {
   .sess-split.has-preview { grid-template-columns: 1fr; }
   .sess-split.has-preview .sess-list {
@@ -1128,5 +1141,18 @@ onMounted(() => { void load() })
     border-bottom: 1px solid var(--stroke);
   }
   .sess-split.has-preview .sess-preview { padding-left: 0; padding-top: var(--sp-4); }
+}
+@media (max-width: 600px) {
+  .sess-table col.c-when { width: 0; }
+  .sess-table th:nth-child(3),
+  .sess-table td:nth-child(3) { display: none; }
+  .sess-table tr:not(.sess-ghead) td { height: 56px; }
+  .sess-when-inline {
+    display: block;
+    margin: 3px 0 0 22px;
+    color: var(--faint);
+    font-size: var(--fs-caption);
+    font-variant-numeric: tabular-nums;
+  }
 }
 </style>

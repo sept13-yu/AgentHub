@@ -146,13 +146,13 @@ public sealed class SessionService
     public IReadOnlyList<(string Id, string Name, bool HasContent)> Sources()
     {
         var ok = new HashSet<string>(_index.OkAgents, StringComparer.OrdinalIgnoreCase);
-        if (ok.Count == 0)
+        if (ok.Count == 0 && !_scannedOnce)
         {
             foreach (var s in AllowedAgents()) ok.Add(s);
             if (Cursor.MissingReason is not null) ok.Remove("cursor");
         }
-        // 索引还没建时不能拿条数当依据，否则首屏筛选项会全空
-        var counts = _index.Count > 0 ? _index.CountsByAgent() : null;
+        // 只有首轮扫描未完成时才保留占位；扫完 0 条的来源不占筛选项。
+        var counts = _scannedOnce || _index.Count > 0 ? _index.CountsByAgent() : null;
         var scored = new List<(string Id, string Name, int Count)>();
         foreach (var id in _config.Dashboard.ResolvedAgentOrder())
         {
@@ -162,17 +162,15 @@ public sealed class SessionService
             if (id.Equals("cursor", StringComparison.OrdinalIgnoreCase))
             {
                 var localOk = ok.Contains("cursor")
-                    && Cursor.MissingReason is null
-                    && _config.Dashboard.SessionReadable("cursor");
+                    && Cursor.MissingReason is null;
                 var cloudOk = ok.Contains("cursor-cloud")
-                    && CursorCloud.MissingReason is null
-                    && _config.Dashboard.SessionReadable("cursor-cloud");
+                    && CursorCloud.MissingReason is null;
                 if (!localOk && !cloudOk) continue;
                 scored.Add(("cursor", DashboardSettings.AgentDisplayName("cursor"),
                     CountOf(counts, "cursor") + CountOf(counts, "cursor-cloud")));
                 continue;
             }
-            if (!ok.Contains(id) || !_config.Dashboard.SessionReadable(id)) continue;
+            if (!ok.Contains(id)) continue;
             scored.Add((id, DashboardSettings.AgentDisplayName(id), CountOf(counts, id)));
         }
         // 有内容的排前面；同条数保持 ResolvedAgentOrder 的相对顺序（OrderByDescending 稳定）。
@@ -230,7 +228,7 @@ public sealed class SessionService
         var list = new List<string>();
         foreach (var id in _config.Dashboard.ResolvedAgentOrder())
         {
-            if (!_config.Dashboard.SessionReadable(id)) continue;
+            if (!_providers.ContainsKey(id)) continue;
             if (id.Equals("cursor", StringComparison.OrdinalIgnoreCase) && Cursor.MissingReason is not null)
                 continue;
             if (id.Equals("cursor-cloud", StringComparison.OrdinalIgnoreCase) && CursorCloud.MissingReason is not null)

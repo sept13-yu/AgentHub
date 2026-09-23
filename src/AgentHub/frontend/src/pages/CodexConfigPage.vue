@@ -157,12 +157,6 @@ const currentLabel = computed(() => {
   return active.name || active.baseUrl || '中转'
 })
 
-const statusLine = computed(() => {
-  if (!status.value) return ''
-  const run = status.value.codexRunning ? '运行中' : '未运行'
-  return `Codex：${run} · 登录：${authLoginText.value} · 当前：${currentLabel.value}`
-})
-
 const rows = computed<ConfigRow[]>(() => {
   const out: ConfigRow[] = []
   const official = connections.value.find((c) => c.kind === 'official')
@@ -537,7 +531,17 @@ onMounted(() => load())
 
   <div v-if="status" class="page">
     <section class="card status-card">
-      <div class="card-body status-line">{{ statusLine }}</div>
+      <div class="card-body status-line">
+        <div class="status-main">
+          <span class="status-label">当前连接</span>
+          <strong>{{ currentLabel }}</strong>
+          <span class="status-auth">登录：{{ authLoginText }}</span>
+        </div>
+        <span class="runtime-status" :class="{ 'is-running': status.codexRunning }">
+          <span class="status-dot" aria-hidden="true" />
+          Codex {{ status.codexRunning ? '运行中' : '未运行' }}
+        </span>
+      </div>
     </section>
 
     <p v-if="status.configBroken" class="usage-error">config.toml 语法损坏，已阻止一切写入。请先在 Codex 中修复该文件。</p>
@@ -773,20 +777,29 @@ onMounted(() => load())
   min-height: 0;
 }
 .status-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
   font-size: var(--fs-body);
   color: var(--text);
   line-height: 1.5;
 }
+.status-main { display: grid; gap: var(--sp-1); min-width: 0; }
+.status-label,
+.status-auth { font-size: var(--fs-small); color: var(--dim); overflow-wrap: anywhere; }
+.status-main strong { font-size: var(--fs-title); font-weight: 600; overflow-wrap: anywhere; }
+.runtime-status { display: inline-flex; align-items: center; gap: var(--sp-2); flex: none; font-size: var(--fs-small); color: var(--dim); }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.runtime-status.is-running .status-dot { background: var(--ok); }
 .list-card {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
 }
 .list-card .card-body {
-  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
 }
 .empty {
   font-size: var(--fs-small);
@@ -957,6 +970,7 @@ onMounted(() => load())
   margin: 0 0 var(--sp-3);
 }
 @media (max-width: 720px) {
+  .status-line { align-items: flex-start; flex-direction: column; }
   .cfg-row { flex-wrap: wrap; }
   .drawer { width: 100vw; }
 }

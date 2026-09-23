@@ -568,8 +568,8 @@ onUnmounted(() => {
     <div class="stage">
       <section class="card hub-card">
         <div class="card-head">
-          这份规则
-          <span class="hint">共享正文注入各家；下面按 Agent 写差异。保存母本后，再点右侧「更新」。</span>
+          共用规则
+          <span class="hint">共享正文与各家差异</span>
         </div>
         <div class="card-body hub-body">
           <p class="file-path">{{ hubPath }}</p>
@@ -652,7 +652,7 @@ onUnmounted(() => {
       </section>
 
       <section class="card list-card">
-        <div class="card-head">各家规则 <span class="hint">先保存母本，再点更新才写入</span></div>
+        <div class="card-head">同步状态 <span class="hint">保存母本后，点「更新」同步</span></div>
         <div class="card-body">
           <div
             v-for="a in visibleAgents"
@@ -670,6 +670,7 @@ onUnmounted(() => {
               class="icon-quiet"
               :disabled="readonly || !canPreview(a)"
               :title="a.rulePath ? '用默认编辑器打开对照' : '还没有这家的规则文件'"
+              :aria-label="`打开 ${a.displayName} 规则`"
               @click="openAgent(a)"
             >
               <n-icon :size="16" :stroke-width="1.8"><ExternalLink /></n-icon>
@@ -756,7 +757,7 @@ onUnmounted(() => {
 }
 .stage {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr);
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 29%, 380px);
   gap: var(--sp-5);
   align-items: stretch;
   flex: 1 1 auto;
@@ -769,6 +770,9 @@ onUnmounted(() => {
   min-height: 0;
   height: 100%;
 }
+.list-card { height: auto; max-height: 100%; align-self: start; }
+.card-head { flex-wrap: wrap; }
+.card-head .hint { width: 100%; line-height: 1.5; }
 .list-card .card-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -783,6 +787,7 @@ onUnmounted(() => {
   overflow: auto;
 }
 .file-path {
+  overflow-wrap: anywhere;
   margin: 0;
   font-size: var(--fs-caption);
   color: var(--faint);
@@ -890,12 +895,15 @@ onUnmounted(() => {
 .hub-acts { display: flex; justify-content: flex-end; gap: var(--sp-2); flex-wrap: wrap; }
 .rule-line {
   display: grid;
-  grid-template-columns: 120px minmax(0, 1fr) var(--h-icon-btn) 64px;
-  gap: var(--sp-2);
+  grid-template-columns: minmax(0, 1fr) auto var(--h-icon-btn);
+  gap: var(--sp-1) var(--sp-2);
   align-items: center;
   min-height: var(--h-row);
   box-shadow: var(--rule-hi);
+  padding: var(--sp-3) 0;
 }
+.rule-line + .rule-line { border-top: 1px solid var(--stroke); }
+.rule-line .icon-quiet { grid-column: 3; grid-row: 1; }
 .icon-quiet {
   width: var(--h-icon-btn);
   height: var(--h-icon-btn);
@@ -913,6 +921,8 @@ onUnmounted(() => {
 .rule-line.is-muted { opacity: .55; }
 .rule-agent { display: inline-flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .rule-path {
+  grid-column: 1 / -1;
+  grid-row: 2;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -920,7 +930,7 @@ onUnmounted(() => {
   color: var(--faint);
   font-family: var(--mono);
 }
-.rule-state { justify-self: end; font-size: var(--fs-caption); color: var(--faint); }
+.rule-state { grid-column: 2; grid-row: 1; justify-self: end; font-size: var(--fs-caption); color: var(--faint); }
 .rule-state.is-current { color: var(--ok); }
 .rule-state.is-needsSync,
 .rule-state.is-missing,
@@ -943,7 +953,10 @@ onUnmounted(() => {
 }
 .link-quiet:hover { color: var(--text); }
 @media (max-width: 1279px) {
-  .stage { grid-template-columns: 1fr; }
+  .stage { grid-template-columns: 1fr; flex: none; }
+  .hub-card { height: auto; }
+  .shared-editor { min-height: 260px; }
+  .list-card { max-height: none; }
   .libbar { grid-template-columns: 1fr; }
 }
 </style>
