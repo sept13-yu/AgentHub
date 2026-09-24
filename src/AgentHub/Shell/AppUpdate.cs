@@ -1,478 +1,280 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Reflection;
-using System.Text.Json;
+using System.Security.Cryptography;
 using AgentHub.Core.Platform;
-using AgentHub.Core.ProxyCore;
-using Velopack;
-using Velopack.Logging;
-using Velopack.Sources;
+using Microsoft.Win32;
 
 namespace AgentHub.Shell;
 
-/// <summary>走 api.github.com 列 Release，再用 API 资源地址落到 release-assets.githubusercontent.com。</summary>
-public sealed class GithubApiUpdateSource : IUpdateSource
-{
-    public const string RepoUrl = ProjectLinks.RepoUrl;
-    const string ApiLatest = "https://api.github.com/repos/sept13-yu/AgentHub/releases/latest";
-    const string ApiReleases = "https://api.github.com/repos/sept13-yu/AgentHub/releases?per_page=10";
-
-    static readonly HttpClient Http = CreateClient();
-    readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
-    readonly object _gate = new();
-
-    public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger, string? appId, string channel,
-        Guid? stagingId = null, VelopackAsset? latestLocalRelease = null)
-    {
-        await RefreshIndexAsync(CancellationToken.None).ConfigureAwait(false);
-        var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
-        var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
-            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
-        var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), CancellationToken.None).ConfigureAwait(false);
-        return VelopackAssetFeed.FromJson(json);
-    }
-
-    public async Task DownloadReleaseEntry(IVelopackLogger logger, VelopackAsset releaseEntry, string localFile,
-        Action<int> progress, CancellationToken cancelToken)
-    {
-        if (string.IsNullOrWhiteSpace(releaseEntry.FileName))
-            throw new InvalidOperationException("更新包没有文件名。");
-        var url = FindUrl(releaseEntry.FileName);
-        if (url is null)
-        {
-            await RefreshIndexAsync(cancelToken).ConfigureAwait(false);
-            url = FindUrl(releaseEntry.FileName)
-                ?? throw new InvalidOperationException("更新源上找不到 " + releaseEntry.FileName + "。");
-        }
-
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-        using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancelToken)
-            .ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        var total = resp.Content.Headers.ContentLength;
-        await using var src = await resp.Content.ReadAsStreamAsync(cancelToken).ConfigureAwait(false);
-        await using var dst = File.Create(localFile);
-        var buf = new byte[81920];
-        long read = 0;
-        var last = -1;
-        int n;
-        while ((n = await src.ReadAsync(buf.AsMemory(0, buf.Length), cancelToken).ConfigureAwait(false)) > 0)
-        {
-            await dst.WriteAsync(buf.AsMemory(0, n), cancelToken).ConfigureAwait(false);
-            read += n;
-            if (total is > 0)
-            {
-                var pct = (int)(read * 100 / total.Value);
-                if (pct != last)
-                {
-                    last = pct;
-                    progress?.Invoke(pct);
-                }
-            }
-        }
-        progress?.Invoke(100);
-    }
-
-    static readonly string[] LatestManifests =
-    [
-        "https://raw.githubusercontent.com/sept13-yu/AgentHub/main/latest.json",
-        "https://cdn.jsdelivr.net/gh/sept13-yu/AgentHub@main/latest.json",
-    ];
-
-    public static async Task<string?> FetchLatestTagAsync(CancellationToken ct = default)
-    {
-        foreach (var url in LatestManifests)
-        {
-            try
-            {
-                var version = await ReadVersionManifestAsync(url, ct).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(version)) return version;
-            }
-            catch (Exception) { /* 下一个地址 */ }
-        }
-
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, ApiLatest);
-            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(15));
-            using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-            if (resp.IsSuccessStatusCode)
-            {
-                await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
-                var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
-                if (!string.IsNullOrWhiteSpace(tag))
-                    return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
-            }
-        }
-        catch (Exception) { /* 回落到 releases 列表按版本号取最大 */ }
-
-        using var listReq = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
-        listReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        using var listCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        listCts.CancelAfter(TimeSpan.FromSeconds(15));
-        using var listResp = await Http.SendAsync(listReq, listCts.Token).ConfigureAwait(false);
-        listResp.EnsureSuccessStatusCode();
-        await using var listStream = await listResp.Content.ReadAsStreamAsync(listCts.Token).ConfigureAwait(false);
-        using var listDoc = await JsonDocument.ParseAsync(listStream, cancellationToken: listCts.Token).ConfigureAwait(false);
-        string? best = null;
-        Version? bestVer = null;
-        foreach (var rel in listDoc.RootElement.EnumerateArray())
-        {
-            if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
-                continue;
-            var tag = rel.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
-            if (string.IsNullOrWhiteSpace(tag)) continue;
-            var norm = tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
-            var core = norm;
-            var cut = core.IndexOfAny(['-', '+']);
-            if (cut >= 0) core = core[..cut];
-            if (!Version.TryParse(core, out var ver)) continue;
-            if (bestVer is null || ver > bestVer)
-            {
-                bestVer = ver;
-                best = norm;
-            }
-        }
-        return best;
-    }
-
-    static async Task<string?> ReadVersionManifestAsync(string url, CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(12));
-        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
-        var version = doc.RootElement.TryGetProperty("version", out var v) ? v.GetString() : null;
-        if (string.IsNullOrWhiteSpace(version)) return null;
-        return version.StartsWith('v') || version.StartsWith('V') ? version[1..] : version;
-    }
-
-    public async Task<VelopackAssetFeed> FetchFeedAsync(string? channel, CancellationToken ct = default)
-    {
-        await RefreshIndexAsync(ct).ConfigureAwait(false);
-        var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
-        var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
-            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
-        var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
-        return VelopackAssetFeed.FromJson(json);
-    }
-
-    async Task RefreshIndexAsync(CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(15));
-        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
-        lock (_gate)
-        {
-            _files.Clear();
-            foreach (var rel in doc.RootElement.EnumerateArray())
-            {
-                if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
-                    continue;
-                if (!rel.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
-                    continue;
-                foreach (var a in assets.EnumerateArray())
-                {
-                    var name = a.TryGetProperty("name", out var n) ? n.GetString() : null;
-                    var url = a.TryGetProperty("url", out var u) ? u.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) continue;
-                    _files.TryAdd(name, url);
-                }
-            }
-        }
-    }
-
-    string? FindUrl(string name)
-    {
-        lock (_gate) return _files.TryGetValue(name, out var url) ? url : null;
-    }
-
-    static async Task<string> DownloadStringAsync(string apiUrl, TimeSpan timeout, CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, apiUrl);
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
-        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-    }
-
-    static HttpClient CreateClient()
-    {
-        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
-        {
-            Timeout = TimeSpan.FromMinutes(10),
-        };
-        http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "AgentHub");
-        return http;
-    }
-}
-
-/// <summary>
-/// 走 gitee.com/api/v5 列 Release；上传文件在 attach_files（assets 多为源码包）。
-/// 下载直接用 browser_download_url，不走 GitHub 式 assets API。
-/// </summary>
-public sealed class GiteeApiUpdateSource : IUpdateSource
-{
-    public const string RepoUrl = "https://gitee.com/sept13-yu/AgentHub";
-    const string ApiLatest = "https://gitee.com/api/v5/repos/sept13-yu/AgentHub/releases/latest";
-    const string ApiReleases = "https://gitee.com/api/v5/repos/sept13-yu/AgentHub/releases?per_page=20";
-    const string ApiAttachFilesFmt = "https://gitee.com/api/v5/repos/sept13-yu/AgentHub/releases/{0}/attach_files";
-
-    static readonly HttpClient Http = CreateClient();
-    readonly Dictionary<string, string> _files = new(StringComparer.OrdinalIgnoreCase);
-    readonly object _gate = new();
-
-    public async Task<VelopackAssetFeed> GetReleaseFeed(IVelopackLogger logger, string? appId, string channel,
-        Guid? stagingId = null, VelopackAsset? latestLocalRelease = null)
-    {
-        await RefreshIndexAsync(CancellationToken.None).ConfigureAwait(false);
-        var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
-        var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
-            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
-        var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), CancellationToken.None).ConfigureAwait(false);
-        return VelopackAssetFeed.FromJson(json);
-    }
-
-    public async Task DownloadReleaseEntry(IVelopackLogger logger, VelopackAsset releaseEntry, string localFile,
-        Action<int> progress, CancellationToken cancelToken)
-    {
-        if (string.IsNullOrWhiteSpace(releaseEntry.FileName))
-            throw new InvalidOperationException("更新包没有文件名。");
-        var url = FindUrl(releaseEntry.FileName);
-        if (url is null)
-        {
-            await RefreshIndexAsync(cancelToken).ConfigureAwait(false);
-            url = FindUrl(releaseEntry.FileName)
-                ?? throw new InvalidOperationException("更新源上找不到 " + releaseEntry.FileName + "。");
-        }
-
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-        using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancelToken)
-            .ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        var total = resp.Content.Headers.ContentLength;
-        await using var src = await resp.Content.ReadAsStreamAsync(cancelToken).ConfigureAwait(false);
-        await using var dst = File.Create(localFile);
-        var buf = new byte[81920];
-        long read = 0;
-        var last = -1;
-        int n;
-        while ((n = await src.ReadAsync(buf.AsMemory(0, buf.Length), cancelToken).ConfigureAwait(false)) > 0)
-        {
-            await dst.WriteAsync(buf.AsMemory(0, n), cancelToken).ConfigureAwait(false);
-            read += n;
-            if (total is > 0)
-            {
-                var pct = (int)(read * 100 / total.Value);
-                if (pct != last)
-                {
-                    last = pct;
-                    progress?.Invoke(pct);
-                }
-            }
-        }
-        progress?.Invoke(100);
-    }
-
-    public static async Task<string?> FetchLatestTagAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, ApiLatest);
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(15));
-            using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-            if (resp.IsSuccessStatusCode)
-            {
-                await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-                using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
-                var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
-                var normalized = NormalizeReleaseTag(tag);
-                if (normalized is not null) return normalized;
-            }
-        }
-        catch (Exception) { /* 回落到 releases 列表，按版本号取最大 */ }
-
-        using var listReq = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
-        using var listCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        listCts.CancelAfter(TimeSpan.FromSeconds(15));
-        using var listResp = await Http.SendAsync(listReq, listCts.Token).ConfigureAwait(false);
-        listResp.EnsureSuccessStatusCode();
-        await using var listStream = await listResp.Content.ReadAsStreamAsync(listCts.Token).ConfigureAwait(false);
-        using var listDoc = await JsonDocument.ParseAsync(listStream, cancellationToken: listCts.Token).ConfigureAwait(false);
-        // Gitee 列表不保证新到旧，不能取第一个。
-        return PickNewestReleaseTag(listDoc.RootElement);
-    }
-
-    static string? NormalizeReleaseTag(string? tag)
-    {
-        if (string.IsNullOrWhiteSpace(tag)) return null;
-        var t = tag.Trim();
-        if (t.StartsWith('v') || t.StartsWith('V')) t = t[1..];
-        return string.IsNullOrWhiteSpace(t) ? null : t;
-    }
-
-    /// <summary>从 releases JSON 数组里按 Version 取最大非预发布 tag（去掉 v 前缀）。</summary>
-    static string? PickNewestReleaseTag(JsonElement releases)
-    {
-        if (releases.ValueKind != JsonValueKind.Array) return null;
-        string? best = null;
-        Version? bestVer = null;
-        foreach (var rel in releases.EnumerateArray())
-        {
-            if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
-                continue;
-            var tag = NormalizeReleaseTag(rel.TryGetProperty("tag_name", out var t) ? t.GetString() : null);
-            if (tag is null) continue;
-            var core = tag;
-            var cut = core.IndexOfAny(['-', '+']);
-            if (cut >= 0) core = core[..cut];
-            if (!Version.TryParse(core, out var ver)) continue;
-            if (bestVer is null || ver > bestVer)
-            {
-                bestVer = ver;
-                best = tag;
-            }
-        }
-        return best;
-    }
-
-    public async Task<VelopackAssetFeed> FetchFeedAsync(string? channel, CancellationToken ct = default)
-    {
-        await RefreshIndexAsync(ct).ConfigureAwait(false);
-        var feedName = string.IsNullOrWhiteSpace(channel) ? "releases.win.json" : "releases." + channel + ".json";
-        var url = FindUrl(feedName) ?? FindUrl("releases.win.json")
-            ?? throw new InvalidOperationException("Release 里没有 releases.win.json。");
-        var json = await DownloadStringAsync(url, TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
-        return VelopackAssetFeed.FromJson(json);
-    }
-
-    async Task RefreshIndexAsync(CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, ApiReleases);
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(20));
-        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        await using var stream = await resp.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);
-
-        var next = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var rel in doc.RootElement.EnumerateArray())
-        {
-            if (rel.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True)
-                continue;
-            if (!rel.TryGetProperty("id", out var idEl)) continue;
-            var id = idEl.ValueKind == JsonValueKind.Number ? idEl.GetInt64().ToString() : idEl.GetString();
-            if (string.IsNullOrWhiteSpace(id)) continue;
-
-            // Gitee：用户上传文件在 attach_files；assets 常只有源码 zip/tar。优先 attach_files。
-            try
-            {
-                await IndexAttachFilesAsync(id, next, cts.Token).ConfigureAwait(false);
-            }
-            catch (Exception) { /* 单个 release 附件失败不阻断其它 */ }
-
-            if (rel.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var a in assets.EnumerateArray())
-                    TryAddAsset(a, next, preferOverwrite: false);
-            }
-        }
-
-        lock (_gate)
-        {
-            _files.Clear();
-            foreach (var kv in next) _files[kv.Key] = kv.Value;
-        }
-    }
-
-    static async Task IndexAttachFilesAsync(string releaseId, Dictionary<string, string> into, CancellationToken ct)
-    {
-        var url = string.Format(ApiAttachFilesFmt, releaseId);
-        using var req = new HttpRequestMessage(HttpMethod.Get, url);
-        using var resp = await Http.SendAsync(req, ct).ConfigureAwait(false);
-        if (!resp.IsSuccessStatusCode) return;
-        await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-        if (doc.RootElement.ValueKind != JsonValueKind.Array) return;
-        foreach (var a in doc.RootElement.EnumerateArray())
-            TryAddAsset(a, into, preferOverwrite: true);
-    }
-
-    static void TryAddAsset(JsonElement a, Dictionary<string, string> into, bool preferOverwrite)
-    {
-        var name = a.TryGetProperty("name", out var n) ? n.GetString() : null;
-        // 优先 browser_download_url；没有再退 url（源码包等）
-        string? url = null;
-        if (a.TryGetProperty("browser_download_url", out var b) && b.ValueKind == JsonValueKind.String)
-            url = b.GetString();
-        if (string.IsNullOrWhiteSpace(url) && a.TryGetProperty("url", out var u) && u.ValueKind == JsonValueKind.String)
-            url = u.GetString();
-        if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) return;
-        if (preferOverwrite)
-            into[name] = url;
-        else
-            into.TryAdd(name, url);
-    }
-
-    string? FindUrl(string name)
-    {
-        lock (_gate) return _files.TryGetValue(name, out var url) ? url : null;
-    }
-
-    static async Task<string> DownloadStringAsync(string downloadUrl, TimeSpan timeout, CancellationToken ct)
-    {
-        using var req = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
-        req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(timeout);
-        using var resp = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        return await resp.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
-    }
-
-    static HttpClient CreateClient()
-    {
-        var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = true })
-        {
-            Timeout = TimeSpan.FromMinutes(10),
-        };
-        http.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "AgentHub");
-        return http;
-    }
-}
-
-/// <summary>设置页的检查 / 下载更新。</summary>
+/// <summary>Windows Inno 安装版下载完整 Setup；便携版仅提示手动下载。</summary>
 public static class AppUpdate
 {
-    static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(25);
+    const string InstallRegistryKey = @"Software\AgentHub";
+    const string InstallRegistryValue = "InstallPath";
+
+    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromMinutes(15) };
     static readonly object ProgressGate = new();
     static int _busy;
+    static CancellationTokenSource? _downloadCancellation;
     static UpdateProgressSnapshot _progress = new();
+    static string? _readyPath;
+    static UpdateFeedAsset? _readyAsset;
+    static string? _readyVersion;
 
     public static bool Busy => Volatile.Read(ref _busy) != 0;
+    public static string CurrentVersion =>
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "";
 
     public static UpdateProgressSnapshot Progress
     {
         get { lock (ProgressGate) return _progress; }
     }
+
+    public static AppUpdateStatus Snapshot() => new()
+    {
+        installed = IsInnoInstalled(),
+        busy = Busy,
+        current = CurrentVersion,
+    };
+
+    public static async Task<AppUpdateStatus> CheckAsync()
+    {
+        if (!TryBegin()) return AlreadyBusy();
+        SetProgress(true, 0, "checking", "正在检查更新…");
+        try
+        {
+            var feed = await UpdateFeed.GetLatestAsync().ConfigureAwait(false);
+            SetProgress(false, 0, "done");
+            return Compose(feed);
+        }
+        catch (Exception ex)
+        {
+            SetProgress(false, 0, "error", ex.Message);
+            return Fail(ex.Message);
+        }
+        finally
+        {
+            End();
+        }
+    }
+
+    public static async Task<AppUpdateStatus> ApplyAsync()
+    {
+        if (!TryBegin()) return AlreadyBusy();
+        SetProgress(true, 0, "checking", "正在检查更新…");
+        using var cancellation = new CancellationTokenSource();
+        lock (ProgressGate) _downloadCancellation = cancellation;
+        string? partPath = null;
+        try
+        {
+            var feed = await UpdateFeed.GetLatestAsync(cancellation.Token).ConfigureAwait(false);
+            var status = Compose(feed);
+            if (!status.canApply)
+            {
+                SetProgress(false, 0, "done", status.message);
+                return status;
+            }
+
+            var asset = feed.assets.winX64;
+            var updateDir = Path.Combine(Path.GetTempPath(), "AgentHub.Updates", feed.version);
+            Directory.CreateDirectory(updateDir);
+            var finalPath = Path.Combine(updateDir, asset.fileName);
+            partPath = finalPath + ".part";
+            if (File.Exists(partPath)) File.Delete(partPath);
+            if (!await MatchesAsync(finalPath, asset, cancellation.Token).ConfigureAwait(false))
+            {
+                SetProgress(true, 0, "downloading", "正在下载安装包…");
+                await DownloadAsync(feed.DownloadUri(asset), partPath, asset, cancellation.Token)
+                    .ConfigureAwait(false);
+                File.Move(partPath, finalPath, overwrite: true);
+            }
+
+            lock (ProgressGate)
+            {
+                _readyPath = finalPath;
+                _readyAsset = asset;
+                _readyVersion = feed.version;
+            }
+            SetProgress(false, 100, "ready", "安装包已准备好。确认后将打开安装向导。");
+            return new AppUpdateStatus
+            {
+                installed = true,
+                canApply = true,
+                current = CurrentVersion,
+                latest = feed.version,
+                releaseUrl = feed.ReleasePage,
+                message = "安装包已准备好。",
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            SetProgress(false, 0, "error", "已取消下载。");
+            return Fail("已取消下载。");
+        }
+        catch (Exception ex)
+        {
+            SetProgress(false, 0, "error", ex.Message);
+            return Fail(ex.Message);
+        }
+        finally
+        {
+            if (partPath is not null)
+            {
+                try { File.Delete(partPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            lock (ProgressGate) _downloadCancellation = null;
+            End();
+        }
+    }
+
+    public static void Cancel()
+    {
+        lock (ProgressGate) _downloadCancellation?.Cancel();
+    }
+
+    public static async Task<AppUpdateStatus> LaunchAsync()
+    {
+        if (!TryBegin()) return AlreadyBusy();
+        try
+        {
+            string? path;
+            UpdateFeedAsset? asset;
+            string? version;
+            lock (ProgressGate)
+            {
+                path = _readyPath;
+                asset = _readyAsset;
+                version = _readyVersion;
+            }
+            if (!IsInnoInstalled() || path is null || asset is null || version is null)
+                return Fail("请先下载并校验安装包。");
+
+            SetProgress(true, 100, "verifying", "正在校验安装包…");
+            if (!await MatchesAsync(path, asset, CancellationToken.None).ConfigureAwait(false))
+            {
+                SetProgress(false, 0, "error", "安装包校验失败，请重新下载。");
+                return Fail("安装包校验失败，请重新下载。");
+            }
+
+            SetProgress(true, 100, "launching", "正在启动安装向导…");
+            var process = Process.Start(new ProcessStartInfo(path)
+            {
+                UseShellExecute = true,
+                WorkingDirectory = Path.GetDirectoryName(path)!,
+            });
+            if (process is null) throw new InvalidOperationException("安装向导启动失败。");
+            SetProgress(false, 100, "done", "安装向导已启动，AgentHub 即将退出。");
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(1500).ConfigureAwait(false);
+                var app = System.Windows.Application.Current;
+                if (app is not null)
+                    await app.Dispatcher.InvokeAsync(app.Shutdown);
+            });
+            return new AppUpdateStatus
+            {
+                installed = true,
+                current = CurrentVersion,
+                latest = version,
+                message = "安装向导已启动，AgentHub 即将退出。",
+            };
+        }
+        catch (Exception ex)
+        {
+            SetProgress(false, 0, "error", ex.Message);
+            return Fail("无法启动安装向导：" + ex.Message);
+        }
+        finally
+        {
+            End();
+        }
+    }
+
+    static async Task DownloadAsync(Uri url, string partPath, UpdateFeedAsset asset, CancellationToken ct)
+    {
+        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        await using var dest = new FileStream(partPath, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+            81920, useAsync: true);
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var buffer = new byte[81920];
+        long downloaded = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, ct).ConfigureAwait(false)) > 0)
+        {
+            downloaded += read;
+            if (downloaded > asset.size) throw new InvalidDataException("安装包大小与发布清单不符。");
+            hash.AppendData(buffer, 0, read);
+            await dest.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            var percent = (int)(downloaded * 100 / asset.size);
+            SetProgress(true, Math.Min(percent, 99), "downloading", $"正在下载安装包… {percent}%");
+        }
+        await dest.FlushAsync(ct).ConfigureAwait(false);
+        SetProgress(true, 100, "verifying", "正在校验安装包…");
+        var actualHash = Convert.ToHexStringLower(hash.GetHashAndReset());
+        if (downloaded != asset.size ||
+            !string.Equals(actualHash, asset.sha256, StringComparison.Ordinal))
+            throw new InvalidDataException("安装包校验失败，请重试。");
+    }
+
+    static async Task<bool> MatchesAsync(string path, UpdateFeedAsset asset, CancellationToken ct)
+    {
+        if (!File.Exists(path) || new FileInfo(path).Length != asset.size) return false;
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            81920, useAsync: true);
+        var digest = await SHA256.HashDataAsync(stream, ct).ConfigureAwait(false);
+        return string.Equals(Convert.ToHexStringLower(digest), asset.sha256, StringComparison.Ordinal);
+    }
+
+    static AppUpdateStatus Compose(UpdateFeedManifest feed)
+    {
+        var installed = IsInnoInstalled();
+        var newer = UpdateFeed.IsNewer(feed.version, CurrentVersion);
+        return new AppUpdateStatus
+        {
+            installed = installed,
+            canApply = installed && newer,
+            needsInstaller = !installed && newer,
+            current = CurrentVersion,
+            latest = feed.version,
+            releaseUrl = feed.ReleasePage,
+            message = newer ? "有最新版本 " + feed.version : "已是最新版本。",
+        };
+    }
+
+    static bool IsInnoInstalled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(InstallRegistryKey);
+        if (key?.GetValue(InstallRegistryValue) is not string path) return false;
+        var current = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(current)) return false;
+        var expected = Path.GetFullPath(Path.Combine(path, "AgentHub.exe"));
+        return string.Equals(Path.GetFullPath(current), expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    static AppUpdateStatus AlreadyBusy() => new()
+    {
+        installed = IsInnoInstalled(),
+        busy = true,
+        current = CurrentVersion,
+        message = "正在处理更新，请稍候。",
+    };
+
+    static AppUpdateStatus Fail(string error) => new()
+    {
+        installed = IsInnoInstalled(),
+        current = CurrentVersion,
+        error = error,
+    };
+
+    static bool TryBegin() => Interlocked.CompareExchange(ref _busy, 1, 0) == 0;
+    static void End() => Interlocked.Exchange(ref _busy, 0);
 
     static void SetProgress(bool running, int percent, string phase, string? message = null)
     {
@@ -485,254 +287,15 @@ public static class AppUpdate
                 message = message,
             };
     }
+}
 
-    public static string CurrentVersion
-    {
-        get
-        {
-            try
-            {
-                var v = CreateManager().CurrentVersion;
-                if (v is not null) return v.ToString();
-            }
-            catch (Exception) { /* 调试运行没有安装定位 */ }
-
-            return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "";
-        }
-    }
-
-    public static UpdateManager CreateManager() => new(new GiteeApiUpdateSource());
-
-    public static AppUpdateStatus Snapshot()
-    {
-        try
-        {
-            var mgr = CreateManager();
-            return new AppUpdateStatus
-            {
-                installed = mgr.IsInstalled,
-                busy = Busy,
-                current = mgr.CurrentVersion?.ToString() ?? CurrentVersion,
-            };
-        }
-        catch (Exception)
-        {
-            return new AppUpdateStatus { installed = false, busy = Busy, current = CurrentVersion };
-        }
-    }
-
-    public static async Task<AppUpdateStatus> CheckAsync()
-    {
-        if (!TryBegin()) return AlreadyBusy();
-        try
-        {
-            var snap = Snapshot();
-            var (latest, probeError) = await ProbeLatestAsync().ConfigureAwait(false);
-            if (latest is null)
-                return Fail(probeError ?? "没有查到可用版本。", snap.installed, snap.current);
-
-            return Compose(snap.installed, snap.current, latest);
-        }
-        catch (Exception ex)
-        {
-            var snap = Snapshot();
-            return Fail(Humanize(ex), snap.installed, snap.current);
-        }
-        finally
-        {
-            End();
-        }
-    }
-
-    public static async Task<AppUpdateStatus> ApplyAsync(Action<int>? progress = null, CancellationToken ct = default)
-    {
-        if (!TryBegin()) return AlreadyBusy();
-        SetProgress(true, 0, "checking", "正在检查更新…");
-        try
-        {
-            var mgr = CreateManager();
-            if (!mgr.IsInstalled)
-            {
-                var (found, probeError) = await ProbeLatestAsync().ConfigureAwait(false);
-                if (found is null)
-                {
-                    var err = probeError ?? "没有查到可用版本。";
-                    SetProgress(false, 0, "error", err);
-                    return Fail(err, installed: false, CurrentVersion);
-                }
-                SetProgress(false, 0, "done", "当前不是安装版，请手动下载。");
-                return Compose(installed: false, CurrentVersion, found);
-            }
-
-            var info = await AwaitTimeout(mgr.CheckForUpdatesAsync(), CheckTimeout).ConfigureAwait(false);
-            if (info is null)
-            {
-                SetProgress(false, 0, "done", "已是最新版本。");
-                return new AppUpdateStatus { installed = true, current = CurrentVersion, message = "已是最新版本。" };
-            }
-
-            var latest = info.TargetFullRelease.Version.ToString();
-            SetProgress(true, 0, "downloading", "正在下载更新…");
-
-            await mgr.DownloadUpdatesAsync(info, p =>
-            {
-                progress?.Invoke(p);
-                SetProgress(true, p, "downloading", $"正在下载更新… {p}%");
-            }, ct).ConfigureAwait(false);
-
-            SetProgress(true, 100, "applying", "正在应用更新…");
-            mgr.ApplyUpdatesAndRestart(info);
-            return new AppUpdateStatus
-            {
-                installed = true,
-                current = CurrentVersion,
-                latest = latest,
-                message = "正在重启以完成更新。",
-            };
-        }
-        catch (Exception ex)
-        {
-            var err = Humanize(ex);
-            SetProgress(false, 0, "error", err);
-            return Fail(err, installed: true, CurrentVersion);
-        }
-        finally
-        {
-            End();
-        }
-    }
-
-    public static bool IsReleasePage(string? url) => ProjectLinks.IsReleasePage(url);
-
-    static async Task<(string? latest, string? error)> ProbeLatestAsync()
-    {
-        // 每次检查都打远端：Gitee 优先，失败再弱回落 GitHub。不再写本地 latest 缓存。
-        try
-        {
-            var latest = await AwaitTimeout(GiteeApiUpdateSource.FetchLatestTagAsync(), CheckTimeout)
-                .ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(latest))
-                return (latest, null);
-        }
-        catch (Exception)
-        {
-            /* Gitee 失败时弱回落到 GitHub */
-        }
-
-        try
-        {
-            var latest = await AwaitTimeout(GithubApiUpdateSource.FetchLatestTagAsync(), CheckTimeout)
-                .ConfigureAwait(false);
-            if (string.IsNullOrWhiteSpace(latest))
-                return (null, "没有查到可用版本。");
-            return (latest, null);
-        }
-        catch (Exception ex)
-        {
-            return (null, Humanize(ex));
-        }
-    }
-
-    static AppUpdateStatus Compose(bool installed, string? current, string latest)
-    {
-        var newer = IsNewer(latest, current);
-        // 安装源固定 Gitee（CreateManager），发布页优先 Gitee，避免「有更新却打开 GitHub 404」
-        var page = GiteeApiUpdateSource.RepoUrl + "/releases/tag/v" + latest;
-        if (!installed)
-        {
-            // 便携/调试运行：只有真有更新才提示去下载安装包
-            if (!newer)
-                return new AppUpdateStatus
-                {
-                    installed = false,
-                    current = current,
-                    latest = latest,
-                    releaseUrl = page,
-                    message = "已是最新版本。",
-                };
-            return new AppUpdateStatus
-            {
-                installed = false,
-                needsInstaller = true,
-                current = current,
-                latest = latest,
-                releaseUrl = page,
-                message = "有最新版本 " + latest,
-            };
-        }
-
-        if (!newer)
-            return new AppUpdateStatus
-            {
-                installed = true,
-                current = current,
-                latest = latest,
-                releaseUrl = page,
-                message = "已是最新版本。",
-            };
-
-        return new AppUpdateStatus
-        {
-            installed = true,
-            canApply = true,
-            current = current,
-            latest = latest,
-            releaseUrl = page,
-            message = "有最新版本 " + latest,
-        };
-    }
-
-    static bool IsNewer(string latest, string? current)
-    {
-        if (string.IsNullOrWhiteSpace(current)) return true;
-        if (!Version.TryParse(TrimVersion(latest), out var l)) return true;
-        if (!Version.TryParse(TrimVersion(current), out var c)) return true;
-        return l > c;
-    }
-
-    static string TrimVersion(string value)
-    {
-        var core = value.Trim();
-        var cut = core.IndexOfAny(['-', '+']);
-        if (cut >= 0) core = core[..cut];
-        return core;
-    }
-
-    static AppUpdateStatus AlreadyBusy() => new()
-    {
-        installed = Snapshot().installed,
-        busy = true,
-        current = CurrentVersion,
-        message = "正在处理更新，请稍候。",
-    };
-
-    static AppUpdateStatus Fail(string error, bool installed, string? current) => new()
-    {
-        installed = installed,
-        current = current ?? CurrentVersion,
-        error = error,
-    };
-
-    static string Humanize(Exception ex)
-    {
-        if (ex is TimeoutException or TaskCanceledException or OperationCanceledException)
-            return "检查更新超时。请稍后重试。";
-        var msg = ex.Message;
-        if (string.IsNullOrWhiteSpace(msg)) return "更新失败。";
-        if (msg.Contains("403", StringComparison.Ordinal) &&
-            msg.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
-            return "更新源请求较频繁，请稍后再检查更新。";
-        return msg.Contains("更新失败", StringComparison.Ordinal) ? msg : "更新失败：" + msg;
-    }
-
-    static bool TryBegin() => Interlocked.CompareExchange(ref _busy, 1, 0) == 0;
-
-    static void End() => Interlocked.Exchange(ref _busy, 0);
-
-    static async Task<T> AwaitTimeout<T>(Task<T> task, TimeSpan timeout)
-    {
-        var finished = await Task.WhenAny(task, Task.Delay(timeout)).ConfigureAwait(false);
-        if (finished != task) throw new TimeoutException();
-        return await task.ConfigureAwait(false);
-    }
+public sealed class WindowsAppUpdateService : IAppUpdateService
+{
+    public bool IsSupported => true;
+    public UpdateProgressSnapshot Progress => AppUpdate.Progress;
+    public AppUpdateStatus Snapshot() => AppUpdate.Snapshot();
+    public Task<AppUpdateStatus> CheckAsync() => AppUpdate.CheckAsync();
+    public Task<AppUpdateStatus> ApplyAsync() => AppUpdate.ApplyAsync();
+    public Task<AppUpdateStatus> LaunchAsync() => AppUpdate.LaunchAsync();
+    public void Cancel() => AppUpdate.Cancel();
 }

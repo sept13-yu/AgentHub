@@ -2,11 +2,14 @@ name: release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+
 permissions:
   contents: write
 
 jobs:
-  build:
+  windows:
+    name: Windows Inno 安装包与便携包
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,95 +21,46 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: src/AgentHub/frontend/package-lock.json
-
-      - name: 校验 tag 与 props 版本一致
+      - name: 校验发版版本
         shell: pwsh
         run: |
-          $tag = "${env:GITHUB_REF_NAME}" -replace '^v',''
-          [xml]$p = Get-Content -Raw src/Directory.Build.props
-          $pg = $p.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1
-          $v = [string]$pg.Version
-          if ($tag -ne $v) { throw "tag v$tag 与 Directory.Build.props Version $v 不一致" }
+          if ($env:GITHUB_REF_TYPE -ne 'tag' -or $env:GITHUB_REF_NAME -notmatch '^v\d+\.\d+\.\d+$') { throw '只能从 vX.Y.Z tag 发版' }
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          [xml]$props = Get-Content -Raw src/Directory.Build.props
+          $version = [string]$props.Project.PropertyGroup.Version
           $latest = Get-Content -Raw latest.json | ConvertFrom-Json
-          if ([string]$latest.version -ne $v) { throw "latest.json $($latest.version) 与 props Version $v 不一致" }
-
-      - name: 发布 win-x64
-        shell: pwsh
-        run: pack/windows/pack.ps1 -PublishOnly
-
-      - name: 安装 vpk
-        shell: pwsh
-        run: dotnet tool install --global vpk --version 1.2.0
-
-      # 重发同版本时必须先删旧 Release，否则 download 会把本版当基线，旧 zip 也会留着。
-      - name: 清掉本 tag 的旧 Release
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: pwsh
-        run: gh release delete "${env:GITHUB_REF_NAME}" --yes
-
-      - name: 拉取上一版（给增量包用，首发允许失败）
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          vpk download github --repoUrl https://github.com/sept13-yu/AgentHub `
-            --token ${{ secrets.GITHUB_TOKEN }} -o dist/Releases
-
-      - name: vpk pack（full + 对基 delta）
-        shell: pwsh
-        run: |
-          $ver = "${env:GITHUB_REF_NAME}" -replace '^v',''
-          vpk pack -u AgentHub -v $ver --noPortable `
-            -p dist/win-x64 -e AgentHub.exe --icon src/AgentHub/assets/agenthub.ico -o dist/Releases
-          $setup = Join-Path dist/Releases 'AgentHub-win-Setup.exe'
-          if (-not (Test-Path -LiteralPath $setup)) { throw "vpk 没有打出安装包: $setup" }
-
+          if ($tag -ne $version -or $tag -ne [string]$latest.version) { throw "tag $tag、props $version、latest.json $($latest.version) 不一致" }
       - name: 安装 Inno Setup
         shell: pwsh
         run: choco install innosetup -y --no-progress
-
-      - name: 打带目录选择的安装包
+      - name: 构建安装包与便携 ZIP
         shell: pwsh
         run: |
-          $ver = "${env:GITHUB_REF_NAME}" -replace '^v',''
-          pack/windows/pack-bootstrap.ps1 `
-            -SetupExe dist/Releases/AgentHub-win-Setup.exe `
-            -Version $ver `
-            -OutputDir ((Resolve-Path dist).Path)
-          $upload = 'dist/github-assets'
-          New-Item -ItemType Directory -Force $upload | Out-Null
-          Copy-Item -LiteralPath (Join-Path dist "AgentHub-Setup-$ver-win-x64.exe") -Destination $upload
-          Get-ChildItem -LiteralPath dist/Releases -Filter "AgentHub-$ver-*.nupkg" |
-            Copy-Item -Destination $upload
-          foreach ($name in @('releases.win.json', 'assets.win.json', 'RELEASES')) {
-            $src = Join-Path dist/Releases $name
-            if (Test-Path -LiteralPath $src) { Copy-Item -LiteralPath $src -Destination $upload }
+          pack/windows/pack.ps1
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          foreach ($name in @("AgentHub-$version-win-x64.exe", "AgentHub-$version-win-x64.zip")) {
+            $file = Join-Path dist $name
+            if (-not (Test-Path -LiteralPath $file) -or (Get-Item -LiteralPath $file).Length -le 0) { throw "Windows 产物缺失或为空: $name" }
+            Write-Host "$name $((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash)"
           }
-          Get-ChildItem -LiteralPath $upload | ForEach-Object { Write-Host $_.Name }
-
-      # 用户只下带版本号的安装包。nupkg / json 给托盘增量更新，不是第二套安装包。
-      - name: 发布 Release
-        uses: softprops/action-gh-release@v2
+      - uses: actions/upload-artifact@v4
         with:
-          files: dist/github-assets/*
-          generate_release_notes: true
+          name: release-windows
+          path: |
+            dist/AgentHub-*-win-x64.exe
+            dist/AgentHub-*-win-x64.zip
+          if-no-files-found: error
+          compression-level: 0
 
-      # GitHub Release 成功后，由维护者在本机上传 Gitee Velopack 资源
-      # （pack/windows/sync-gitee-release.ps1）。Setup exe 只放 GitHub。
-
-  macos-dmg:
+  macos:
     name: macOS DMG（arm64 + x64）
     runs-on: macos-14
-    needs: build
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 10.0.x
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -114,14 +68,10 @@ jobs:
           cache-dependency-path: |
             src/AgentHub/frontend/package-lock.json
             src/AgentHub.Mac/package-lock.json
-
-      - name: 安装 Rust（含 x86_64 target）
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin
-
-      - name: 缓存 cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -129,30 +79,102 @@ jobs:
             src/AgentHub.Mac/src-tauri/target
           key: macos-cargo-${{ hashFiles('src/AgentHub.Mac/src-tauri/Cargo.lock') }}
           restore-keys: macos-cargo-
-
-      - name: 校验 tag 与 props 版本一致
-        run: |
-          set -euo pipefail
-          tag="${GITHUB_REF_NAME#v}"
-          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Directory.Build.props | head -1)"
-          if [ "$tag" != "$version" ]; then
-            echo "tag v$tag 与 Directory.Build.props Version $version 不一致"
-            exit 1
-          fi
-
-      - name: 打包双架构 DMG（runner 自带 CI=true，跳过 AppleScript）
+      - name: 构建双架构 DMG
         env:
           CI: 'true'
         run: |
           set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" != tag || ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo '只能从 vX.Y.Z tag 发版'
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          props_version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Directory.Build.props | head -1)"
+          latest_version="$(node -p "require('./latest.json').version")"
+          [[ "$version" == "$props_version" && "$version" == "$latest_version" ]]
           bash pack/macos/build.sh
           bash pack/macos/build.sh x64
-          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Directory.Build.props | head -1)"
-          test -f "dist/macos/dmg/AgentHub_${version}_aarch64.dmg"
-          test -f "dist/macos/dmg/AgentHub_${version}_x64.dmg"
-          ls -lh dist/macos/dmg
-
-      - name: 上传 DMG 到 Release
-        uses: softprops/action-gh-release@v2
+          test -s "dist/macos/dmg/AgentHub-${version}-mac-arm64.dmg"
+          test -s "dist/macos/dmg/AgentHub-${version}-mac-x64.dmg"
+          shasum -a 256 dist/macos/dmg/*.dmg
+      - uses: actions/upload-artifact@v4
         with:
-          files: dist/macos/dmg/*.dmg
+          name: release-macos
+          path: dist/macos/dmg/*.dmg
+          if-no-files-found: error
+          compression-level: 0
+
+  publish:
+    name: 发布完整 Release 与静态更新清单
+    runs-on: windows-latest
+    needs: [windows, macos]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-windows
+          path: dist/github-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-macos
+          path: dist/github-assets
+      - name: 校验资产并发布 GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:GITEE_TOKEN)) { throw '请先配置 GITEE_TOKEN Actions secret（projects 权限）' }
+          $tag = $env:GITHUB_REF_NAME
+          if ($env:GITHUB_REF_TYPE -ne 'tag' -or $tag -notmatch '^v\d+\.\d+\.\d+$') { throw '只能从 vX.Y.Z tag 发版' }
+          $version = $tag -replace '^v', ''
+          $names = @("AgentHub-$version-win-x64.exe", "AgentHub-$version-win-x64.zip", "AgentHub-$version-mac-arm64.dmg", "AgentHub-$version-mac-x64.dmg")
+          $assetsDir = (Resolve-Path dist/github-assets).Path
+          $files = foreach ($name in $names) {
+            $path = Join-Path $assetsDir $name
+            if (-not (Test-Path -LiteralPath $path) -or (Get-Item -LiteralPath $path).Length -le 0) { throw "发布资产缺失或为空: $name" }
+            Get-Item -LiteralPath $path
+          }
+          $extra = @(Get-ChildItem -LiteralPath $assetsDir -File | Where-Object { $_.Name -notin $names })
+          if ($extra.Count) { throw "出现意外发布资产: $($extra.Name -join ', ')" }
+
+          # 首次创建草稿；重跑时只允许补传草稿缺失的资产，不替换已公开资产。
+          gh release view $tag --repo sept13-yu/AgentHub --json isDraft 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            $migrationNotes = @'
+          ## 旧版 Windows 用户：请手动换装
+
+          旧版 Velopack 客户端无法在应用内升级到此版本。请先在 Windows「已安装的应用」中卸载旧版，再下载本页的 `AgentHub-{version}-win-x64.exe` 安装。不要直接把新版安装到仍有 `Update.exe` 和 `current` 的旧目录。
+
+          配置和用量库保存在 `%APPDATA%\AgentHub`，本机缓存保存在 `%LOCALAPPDATA%\AgentHub.Local`，与程序目录分开。卸载前可按需备份。便携版请下载 `AgentHub-{version}-win-x64.zip`，后续更新需手动替换文件。
+          '@
+            $migrationNotes = $migrationNotes.Replace('{version}', $version)
+            gh release create $tag --repo sept13-yu/AgentHub --title "AgentHub $version" --notes $migrationNotes --generate-notes --draft --verify-tag
+            if ($LASTEXITCODE -ne 0) { throw '创建 GitHub Release 草稿失败' }
+          }
+          $remote = gh api "repos/sept13-yu/AgentHub/releases/tags/$tag" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw '读取 GitHub Release 失败' }
+          foreach ($file in $files) {
+            $asset = @($remote.assets | Where-Object { $_.name -eq $file.Name })
+            if ($asset.Count -eq 0) {
+              if (-not $remote.draft) { throw "已发布的 Release 缺少资产: $($file.Name)" }
+              gh release upload $tag $file.FullName --repo sept13-yu/AgentHub
+              if ($LASTEXITCODE -ne 0) { throw "上传资产失败: $($file.Name)" }
+            }
+          }
+          $remote = gh api "repos/sept13-yu/AgentHub/releases/tags/$tag" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw '读取 GitHub Release 资产失败' }
+          if (@($remote.assets).Count -ne 4) { throw 'GitHub Release 资产数量不是 4' }
+          foreach ($file in $files) {
+            $asset = @($remote.assets | Where-Object { $_.name -eq $file.Name })
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($asset.Count -ne 1 -or [long]$asset[0].size -ne $file.Length -or $asset[0].digest -ne "sha256:$hash") {
+              throw "GitHub Release 资产大小或 SHA-256 不一致: $($file.Name)"
+            }
+          }
+          if ($remote.draft) {
+            gh release edit $tag --repo sept13-yu/AgentHub --draft=false
+            if ($LASTEXITCODE -ne 0) { throw '公开 GitHub Release 失败' }
+          }
+          & pack/publish-update-feed.ps1 -Tag $tag -AssetsDir $assetsDir -Publish

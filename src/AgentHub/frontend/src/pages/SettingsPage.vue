@@ -69,15 +69,22 @@ const configPath = ref('')
 const appVersion = ref('')
 const updateInstalled = ref(false)
 const updateLatest = ref('')
+const updateReleaseUrl = ref('')
 const updateHint = ref('')
 const updateBusy = ref(false)
 const updateCanApply = ref(false)
 const applyShow = ref(false)
+const readyShow = ref(false)
 const downloadShow = ref(false)
 const progressShow = ref(false)
 const progressPercent = ref(0)
 const progressText = ref('')
+const progressPhase = ref('')
+const updateReady = ref(false)
+const cancelBusy = ref(false)
+const cancelRequested = ref(false)
 let progressTimer: number | null = null
+let progressPolling = false
 const priceSync = ref<PriceSyncInfo | null>(null)
 const LATEST_RELEASE_URL = 'https://github.com/sept13-yu/AgentHub/releases/latest'
 const autostartSupported = ref(true)
@@ -272,9 +279,10 @@ function applyUpdateStatus(r: AppUpdateStatus) {
   if (r.current) appVersion.value = r.current
   if (r.installed != null) updateInstalled.value = r.installed
   updateLatest.value = r.latest || ''
+  if (r.releaseUrl != null) updateReleaseUrl.value = r.releaseUrl
   updateCanApply.value = !!r.canApply
   const text = r.error || r.message || ''
-  updateHint.value = r.error ? text : (appVersion.value ? `当前 ${appVersion.value}` : text)
+  updateHint.value = r.error ? text : [appVersion.value && `当前 ${appVersion.value}`, text].filter(Boolean).join(' · ')
   return text
 }
 
@@ -286,14 +294,26 @@ function clearProgressTimer() {
 }
 
 async function pollUpdateProgress() {
+  if (progressPolling) return
+  progressPolling = true
   try {
     const p = await get<{ running?: boolean; percent?: number; phase?: string; message?: string }>(
       '/api/update/progress',
     )
     if (typeof p.percent === 'number') progressPercent.value = p.percent
-    progressText.value = p.message || (p.phase === 'applying' ? '正在应用更新…' : '正在下载更新…')
+    if (p.phase) progressPhase.value = p.phase
+    progressText.value = cancelRequested.value ? '正在取消下载…' : p.message || {
+      checking: '正在检查更新…',
+      downloading: '正在下载安装包…',
+      verifying: '正在校验安装包…',
+      ready: '安装包已准备好',
+      launching: '正在打开安装向导…',
+      error: '更新失败',
+    }[p.phase || ''] || '正在准备更新…'
   } catch {
     /* 轮询失败不打断主请求 */
+  } finally {
+    progressPolling = false
   }
 }
 
@@ -301,6 +321,8 @@ async function checkUpdate() {
   if (updateBusy.value) return
   updateBusy.value = true
   updateHint.value = '正在检查…'
+  updateReady.value = false
+  updateReleaseUrl.value = ''
   try {
     const r = await get<AppUpdateStatus>('/api/update')
     const text = applyUpdateStatus(r)
@@ -329,7 +351,7 @@ async function checkUpdate() {
 
 async function openReleasePage() {
   downloadShow.value = false
-  const url = LATEST_RELEASE_URL
+  const url = updateReleaseUrl.value || LATEST_RELEASE_URL
   try {
     if (WRITABLE) await post('/api/settings/open-release', { url })
     else window.open(url, '_blank', 'noopener')
@@ -342,33 +364,87 @@ async function applyUpdate() {
   if (readonly || updateBusy.value) return
   applyShow.value = false
   updateBusy.value = true
-  updateHint.value = '正在下载…'
+  updateReady.value = false
+  cancelRequested.value = false
+  updateHint.value = '正在下载安装包…'
   progressShow.value = true
   progressPercent.value = 0
+  progressPhase.value = 'checking'
   progressText.value = '正在检查更新…'
   clearProgressTimer()
   progressTimer = window.setInterval(() => { void pollUpdateProgress() }, 500)
   try {
     const r = await post<AppUpdateStatus>('/api/settings/apply-update')
     clearProgressTimer()
-    progressShow.value = false
     const text = applyUpdateStatus(r)
     if (r.needsInstaller && r.latest) {
+      progressShow.value = false
       downloadShow.value = true
       return
     }
     if (r.error) {
-      message.error(text || '更新失败')
+      progressPhase.value = 'error'
+      progressText.value = text || '下载安装包失败'
       return
     }
-    message.success(text || '正在重启以完成更新')
-  } catch {
-    clearProgressTimer()
+    if (!r.canApply) {
+      progressShow.value = false
+      message.info(text || '当前没有可安装的更新')
+      return
+    }
+    updateReady.value = true
+    progressPhase.value = 'ready'
+    progressText.value = text || '安装包已准备好'
     progressShow.value = false
-    updateHint.value = '正在重启以完成更新'
-    message.success('正在重启以完成更新')
+    readyShow.value = true
+  } catch (e) {
+    clearProgressTimer()
+    const text = e instanceof Error ? e.message : '下载安装包失败'
+    progressPhase.value = 'error'
+    progressText.value = text
+    updateHint.value = text
   } finally {
     clearProgressTimer()
+    updateBusy.value = false
+    cancelRequested.value = false
+  }
+}
+
+async function cancelUpdate() {
+  if (!updateBusy.value || cancelBusy.value || cancelRequested.value || progressPhase.value !== 'downloading') return
+  cancelBusy.value = true
+  try {
+    await post('/api/settings/cancel-update')
+    cancelRequested.value = true
+    progressText.value = '正在取消下载…'
+  } catch (e) {
+    message.error(e instanceof Error ? e.message : '取消下载失败')
+  } finally {
+    cancelBusy.value = false
+  }
+}
+
+async function launchUpdate() {
+  if (readonly || updateBusy.value || !updateReady.value) return
+  readyShow.value = false
+  updateBusy.value = true
+  progressShow.value = true
+  progressPhase.value = 'launching'
+  progressText.value = '正在打开安装向导…'
+  try {
+    const r = await post<AppUpdateStatus>('/api/settings/launch-update')
+    if (r.error) throw new Error(r.error)
+    updateReady.value = false
+    progressShow.value = false
+    updateHint.value = r.message || '安装向导已启动'
+    message.success(updateHint.value)
+  } catch (e) {
+    const text = e instanceof Error ? e.message : '无法打开安装向导'
+    updateReady.value = false
+    progressPhase.value = 'error'
+    progressText.value = text
+    updateHint.value = text
+  } finally {
     updateBusy.value = false
   }
 }
@@ -496,6 +572,9 @@ onUnmounted(() => {
               检查更新
             </n-button>
             </template>
+            <n-button v-if="updateReady" type="primary" :disabled="updateBusy" @click="readyShow = true">
+              打开安装向导
+            </n-button>
             <n-button type="button" @click="openReleasePage">
               手动下载
             </n-button>
@@ -672,30 +751,47 @@ onUnmounted(() => {
   />
   <AhConfirm
     :show="applyShow"
-    :text="updateLatest ? `下载 ${updateLatest} 并重启？` : '下载新版本并重启？'"
-    ok-text="下载并重启"
+    :text="updateLatest ? `下载并校验 ${updateLatest} 的完整安装包？` : '下载并校验完整安装包？'"
+    ok-text="开始下载"
     @update:show="(on: boolean) => { applyShow = on }"
     @confirm="applyUpdate"
   />
   <AhConfirm
+    :show="readyShow"
+    text="安装包已校验。打开安装向导后，AgentHub 将退出；请在向导中完成安装。"
+    ok-text="打开安装向导"
+    @update:show="(on: boolean) => { readyShow = on }"
+    @confirm="launchUpdate"
+  />
+  <AhConfirm
     :show="downloadShow"
     :text="updateLatest
-      ? `当前不是安装版，无法在应用内更新。最新版本 ${updateLatest}，是否打开版本页下载？`
-      : '当前不是安装版，无法在应用内更新。是否打开版本页下载？'"
+      ? `发现新版本 ${updateLatest}。请前往发布页手动下载并安装。`
+      : '请前往发布页手动下载。'"
     ok-text="打开版本页"
     @update:show="(on: boolean) => { downloadShow = on }"
     @confirm="openReleasePage"
   />
   <n-modal :show="progressShow" :mask-closable="false" :close-on-esc="false">
     <div class="update-progress" role="dialog" aria-modal="true" aria-label="更新进度">
-      <p class="update-progress__title">正在更新</p>
-      <p class="update-progress__text">{{ progressText || '正在下载更新…' }}</p>
+      <p class="update-progress__title">{{ progressPhase === 'error' ? '更新未完成' : progressPhase === 'launching' ? '正在打开安装向导' : '准备安装包' }}</p>
+      <p class="update-progress__text" :class="{ 'update-progress__text--error': progressPhase === 'error' }">{{ progressText || '正在准备更新…' }}</p>
       <n-progress
+        v-if="progressPhase === 'downloading' || progressPhase === 'verifying'"
         type="line"
         :percentage="progressPercent"
         indicator-placement="inside"
-        processing
+        :processing="progressPhase === 'downloading'"
       />
+      <div v-if="progressPhase === 'error'" class="update-progress__actions">
+        <n-button type="button" @click="progressShow = false">关闭</n-button>
+        <n-button type="button" :disabled="updateBusy" @click="updateReady ? launchUpdate() : applyUpdate()">
+          {{ updateReady ? '重试打开' : '重新下载' }}
+        </n-button>
+      </div>
+      <div v-else-if="progressPhase === 'downloading' && !cancelRequested" class="update-progress__actions">
+        <n-button type="button" :loading="cancelBusy" :disabled="cancelBusy" @click="cancelUpdate">取消下载</n-button>
+      </div>
     </div>
   </n-modal>
 </template>
@@ -719,6 +815,13 @@ onUnmounted(() => {
   font-size: var(--fs-small);
   color: var(--dim);
   line-height: 1.5;
+}
+.update-progress__text--error { color: var(--danger); }
+.update-progress__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
 }
 .banner {
   margin: 0 0 var(--sp-4);

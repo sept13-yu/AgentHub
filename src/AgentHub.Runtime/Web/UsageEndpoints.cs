@@ -150,6 +150,21 @@ public static class UsageEndpoints
             return Results.Json(await appUpdate.ApplyAsync());
         });
 
+        app.MapPost("/api/settings/cancel-update", (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            appUpdate.Cancel();
+            return Results.Json(new { ok = true });
+        });
+
+        app.MapPost("/api/settings/launch-update", async (HttpContext ctx) =>
+        {
+            if (!writeAuth(ctx))
+                return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
+            return Results.Json(await appUpdate.LaunchAsync());
+        });
+
         app.MapPost("/api/settings/open-release", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx))

@@ -19,7 +19,7 @@ AppPublisher=AgentHub
 DefaultDirName={localappdata}\Programs\AgentHub
 DefaultGroupName=AgentHub
 OutputDir={#MyOutputDir}
-OutputBaseFilename=AgentHub-Setup-{#MyAppVersion}-win-x64
+OutputBaseFilename=AgentHub-{#MyAppVersion}-win-x64
 SetupIconFile={#MySourceDir}\assets\agenthub.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2
@@ -33,6 +33,8 @@ AppMutex=Local\AgentHub.SingleInstance
 CloseApplications=yes
 RestartApplications=no
 DisableProgramGroupPage=yes
+DisableDirPage=no
+AlwaysShowDirOnReadyPage=yes
 UsedUserAreasWarning=no
 
 [Files]
@@ -52,6 +54,7 @@ Filename: "{app}\{#MyAppExeName}"; Description: "启动 AgentHub"; Flags: nowait
 const
   WebView2ClientId = '{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
   RunKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  InstallKey = 'Software\AgentHub';
 
 function HasWebView2Pv(RootKey: Integer; KeyPath: String): Boolean;
 var
@@ -118,20 +121,39 @@ begin
   Result := CompareText(ExtractFileName(RunValueExe(Value)), '{#MyAppExeName}') = 0;
 end;
 
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  TargetDir: String;
+begin
+  Result := '';
+  TargetDir := ExpandConstant('{app}');
+  if FileExists(AddBackslash(TargetDir) + 'Update.exe') and
+     DirExists(AddBackslash(TargetDir) + 'current') and
+     FileExists(AddBackslash(TargetDir) + 'current\sq.version') then
+    Result := '该目录仍是旧版 AgentHub 的 Velopack 安装目录。请先卸载旧版，再重新安装新版；不要直接覆盖旧目录。';
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Current: String;
 begin
-  if (CurStep = ssPostInstall) and
-     RegQueryStringValue(HKCU, RunKey, 'AgentHub', Current) and
-     IsAgentHubRunValue(Current) then
-    RegWriteStringValue(HKCU, RunKey, 'AgentHub', AddQuotes(ExpandConstant('{app}\{#MyAppExeName}')));
+  if CurStep = ssPostInstall then
+  begin
+    RegWriteStringValue(HKCU, InstallKey, 'InstallPath', ExpandConstant('{app}'));
+    if RegQueryStringValue(HKCU, RunKey, 'AgentHub', Current) and
+       IsAgentHubRunValue(Current) then
+      RegWriteStringValue(HKCU, RunKey, 'AgentHub', AddQuotes(ExpandConstant('{app}\{#MyAppExeName}')));
+  end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Current: String;
 begin
+  if (CurUninstallStep = usUninstall) and
+     RegQueryStringValue(HKCU, InstallKey, 'InstallPath', Current) and
+     (CompareText(Current, ExpandConstant('{app}')) = 0) then
+    RegDeleteValue(HKCU, InstallKey, 'InstallPath');
   if (CurUninstallStep = usUninstall) and
      RegQueryStringValue(HKCU, RunKey, 'AgentHub', Current) and
      (CompareText(RunValueExe(Current), ExpandConstant('{app}\{#MyAppExeName}')) = 0) then

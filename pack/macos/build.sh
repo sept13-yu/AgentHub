@@ -4,8 +4,8 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 [[ "$(uname -m)" == "arm64" ]] || { echo "需要 Apple Silicon 终端（当前 $(uname -m)）"; exit 1; }
 target="${1:-arm64}"
 case "$target" in
-  arm64) rid=osx-arm64; rust_target=""; expect="arm64"; dmg_arch="aarch64" ;;
-  x64) rid=osx-x64; rust_target="x86_64-apple-darwin"; expect="x86_64"; dmg_arch="x64" ;;
+  arm64) rid=osx-arm64; rust_target=""; expect="arm64"; dmg_arch="aarch64"; release_arch="arm64" ;;
+  x64) rid=osx-x64; rust_target="x86_64-apple-darwin"; expect="x86_64"; dmg_arch="x64"; release_arch="x64" ;;
   *) echo "用法: $0 [arm64|x64]（默认 arm64）"; exit 1 ;;
 esac
 version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$root/src/Directory.Build.props" | head -1)"
@@ -38,6 +38,7 @@ dmg="$bundle/dmg/AgentHub_${version}_${dmg_arch}.dmg"
 test -f "$dmg"
 outdir="$root/dist/macos/dmg"
 mkdir -p "$outdir"
-cp "$dmg" "$outdir/"
+release_dmg="$outdir/AgentHub-${version}-mac-${release_arch}.dmg"
+cp "$dmg" "$release_dmg"
 echo "OK: $root/src/AgentHub.Mac/$app"
-echo "OK: $outdir/AgentHub_${version}_${dmg_arch}.dmg"
+echo "OK: $release_dmg"

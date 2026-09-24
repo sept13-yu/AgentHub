@@ -19,7 +19,7 @@ public sealed record UpdateProgressSnapshot
 {
     public bool running { get; init; }
     public int percent { get; init; }
-    /// <summary>checking | downloading | applying | done | error</summary>
+    /// <summary>checking | downloading | verifying | ready | launching | done | error</summary>
     public string phase { get; init; } = "";
     public string? message { get; init; }
 }
@@ -31,23 +31,54 @@ public interface IAppUpdateService
     AppUpdateStatus Snapshot();
     Task<AppUpdateStatus> CheckAsync();
     Task<AppUpdateStatus> ApplyAsync();
+    Task<AppUpdateStatus> LaunchAsync();
+    void Cancel();
 }
 
-/// <summary>无应用内更新的宿主（Backend / 未来非 Velopack 壳）。</summary>
+/// <summary>可检查新版本、由用户手动下载安装的宿主（Backend / Mac）。</summary>
 public sealed class ManualAppUpdateService : IAppUpdateService
 {
     private readonly string _version;
     public ManualAppUpdateService(string currentVersion) => _version = currentVersion;
-    public bool IsSupported => false;
+    public bool IsSupported => true;
     public UpdateProgressSnapshot Progress => new();
     public AppUpdateStatus Snapshot() => new() { installed = false, busy = false, current = _version };
-    public Task<AppUpdateStatus> CheckAsync() => Task.FromResult(new AppUpdateStatus
+    public async Task<AppUpdateStatus> CheckAsync()
     {
-        installed = false,
-        current = _version,
-        releaseUrl = ProjectLinks.LatestReleaseUrl,
-        message = "当前宿主不支持应用内更新，请前往发布页手动下载",
-    });
+        try
+        {
+            var feed = await UpdateFeed.GetLatestAsync().ConfigureAwait(false);
+            var asset = OperatingSystem.IsMacOS()
+                ? System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
+                {
+                    System.Runtime.InteropServices.Architecture.Arm64 => feed.assets.macArm64,
+                    System.Runtime.InteropServices.Architecture.X64 => feed.assets.macX64,
+                    _ => null,
+                }
+                : OperatingSystem.IsWindows() &&
+                  System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture ==
+                  System.Runtime.InteropServices.Architecture.X64
+                    ? feed.assets.winX64 : null;
+            if (asset is null)
+                return new AppUpdateStatus { installed = false, current = _version,
+                    error = "当前平台暂不支持检查更新。" };
+
+            var newer = UpdateFeed.IsNewer(feed.version, _version);
+            return new AppUpdateStatus
+            {
+                installed = false,
+                needsInstaller = newer,
+                current = _version,
+                latest = feed.version,
+                releaseUrl = feed.ReleasePage,
+                message = newer ? "有最新版本 " + feed.version : "已是最新版本。",
+            };
+        }
+        catch (Exception ex)
+        {
+            return new AppUpdateStatus { installed = false, current = _version, error = ex.Message };
+        }
+    }
     public Task<AppUpdateStatus> ApplyAsync() => Task.FromResult(new AppUpdateStatus
     {
         installed = false,
@@ -55,6 +86,8 @@ public sealed class ManualAppUpdateService : IAppUpdateService
         releaseUrl = ProjectLinks.LatestReleaseUrl,
         error = "当前宿主不支持应用内更新",
     });
+    public Task<AppUpdateStatus> LaunchAsync() => ApplyAsync();
+    public void Cancel() { }
 }
 
 /// <summary>项目链接与发布页判定。</summary>
@@ -67,11 +100,9 @@ public static class ProjectLinks
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return false;
         if (!string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)) return false;
-        if (string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
-            return uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub", StringComparison.OrdinalIgnoreCase);
-        if (string.Equals(uri.Host, "gitee.com", StringComparison.OrdinalIgnoreCase))
-            return uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub", StringComparison.OrdinalIgnoreCase);
-        return false;
+        if (!string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase)) return false;
+        return string.Equals(uri.AbsolutePath, "/sept13-yu/AgentHub/releases", StringComparison.OrdinalIgnoreCase)
+            || uri.AbsolutePath.StartsWith("/sept13-yu/AgentHub/releases/", StringComparison.OrdinalIgnoreCase);
     }
 }
 

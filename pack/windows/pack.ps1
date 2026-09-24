@@ -86,4 +86,4 @@ if (-not (Test-IsccAtLeast63 $iscc)) { throw "Inno Setup 6.3+ is required. ISCC:
 $iss = Join-Path $PSScriptRoot 'AgentHub.iss'
 & $iscc "/DMyAppVersion=$version" "/DMySourceDir=$publishPath" "/DMyOutputDir=$distPath" $iss
 if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compilation failed' }
-Write-Host "Installer: $(Join-Path $distPath "AgentHub-Setup-$version-win-x64.exe")"
+Write-Host "Installer: $(Join-Path $distPath "AgentHub-$version-win-x64.exe")"

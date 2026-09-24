@@ -66,7 +66,9 @@ dotnet run --project src/AgentHub.Backend
 
 ### 发版
 
-Windows 见 `pack/windows/pack.ps1` 与 tag `v*`。版本号需与 `src/Directory.Build.props` 的 Version、`latest.json` 一致。GitHub Release 成功后，由维护者在本机用 `pack/windows/sync-gitee-release.ps1` 上传 Velopack 资源到 Gitee（应用内更新源）。Setup 安装包只发 GitHub。
+Windows 运行 `pack/windows/pack.ps1` 会生成完整 Inno 安装包 `AgentHub-{version}-win-x64.exe` 和便携包 `AgentHub-{version}-win-x64.zip`。安装版可在应用内检查并下载新版安装包；便携版手动下载 ZIP 替换。安装向导允许选择程序目录。
+
+旧版 Velopack 用户需要先在 Windows「已安装的应用」中卸载旧版，再从 [GitHub Releases](https://github.com/sept13-yu/AgentHub/releases) 手动下载新版安装包。不要把新版安装到仍有 `Update.exe` 与 `current` 的旧目录。配置和用量库在 `%APPDATA%\AgentHub`，本机缓存位于 `%LOCALAPPDATA%\AgentHub.Local`，与程序目录分开；卸载前可按需备份这些目录。
 
 Mac 本机打包（Apple Silicon 机器；需 .NET 10 SDK、Rust/Tauri 工具链、Node 20+）：
 
@@ -75,9 +77,9 @@ bash pack/macos/build.sh        # Apple Silicon（aarch64）
 bash pack/macos/build.sh x64    # Intel（x86_64）
 ```
 
-两个 DMG 统一输出到 `dist/macos/dmg/`，文件名以 `aarch64` / `x64` 区分芯片。DMG 未做签名与公证，首次打开需右键 →「打开」。开发调试用 `pack/macos/dev.sh`。
+两个 DMG 统一输出到 `dist/macos/dmg/`，发布名分别为 `AgentHub-{version}-mac-arm64.dmg` 和 `AgentHub-{version}-mac-x64.dmg`。DMG 未做签名与公证，首次打开需右键 →「打开」。开发调试用 `pack/macos/dev.sh`。
 
-CI 发版（tag `v*`）：Release 工作流先产出 Windows 安装包，随后 macOS job 在 GitHub runner 上自动打包双架构 DMG，挂到同一个 GitHub Release。
+CI 发版使用 `vX.Y.Z` tag，且版本号须与 `src/Directory.Build.props`、`latest.json` 一致。Release 工作流并行构建 Windows 安装包、便携 ZIP 和双架构 DMG，核对四个资产的 SHA-256 后公开 GitHub Release，最后把包含版本、文件大小与 SHA-256 的 `update-feed.json` 写入 Gitee 和 GitHub 的 `update-feed` 分支。需要先在 GitHub Actions 配置有 Gitee 仓库 `projects` 权限的 `GITEE_TOKEN` secret。新客户端检查更新时先读 Gitee 静态清单，失败再读 jsDelivr / GitHub Raw 镜像；只有发现新版后才从 GitHub Release 下载安装包。旧版 Gitee Release 不再新增版本。
 
 ## 安全口径
 
