@@ -120,17 +120,79 @@ public partial class MainWindow : Window
                 }
             };
 
+            WireWebViewProcessFailed();
+
             Web.NavigationCompleted += OnFirstNavigationCompleted;
             Web.Source = new Uri(_web.BaseUri, "app/");
         }
         catch (Exception ex)
         {
+            AgentHub.Core.ProxyCore.HubLog.Write(
+                "[exit] webview-init-failed " + ex.GetBaseException().GetType().Name + ": " + ex.GetBaseException().Message);
             MessageBox.Show(
                 "初始化失败：" + ex.GetBaseException().Message
                 + "\n\n若提示端口被占用，请先在托盘退出已运行的 AgentHub 再打开。",
                 "AgentHub", MessageBoxButton.OK, MessageBoxImage.Error);
             ReallyExit = true;
-            (Application.Current as App)?.RequestExit();
+            (Application.Current as App)?.RequestExit("webview-init-failed");
+        }
+    }
+
+    private int _webviewReloads;
+    private bool _webviewRecovering;
+
+    /// <summary>渲染器退出可有限次 Reload；浏览器进程退出尝试重建控件；辅助进程仅记日志。不因 WebView 失败关闭整个应用。</summary>
+    private void WireWebViewProcessFailed()
+    {
+        Web.CoreWebView2.ProcessFailed += (_, args) =>
+        {
+            var kind = args.ProcessFailedKind.ToString();
+            AgentHub.Core.ProxyCore.HubLog.Write(
+                $"[webview] process-failed kind={kind} exit={args.ExitCode} reloads={_webviewReloads}");
+            Dispatcher.BeginInvoke(() => RecoverWebView(kind));
+        };
+    }
+
+    private void RecoverWebView(string kind)
+    {
+        if (_webviewRecovering || ReallyExit) return;
+
+        // Unresponsive / 辅助类：浏览器侧可能自行恢复，只记日志
+        if (kind.Contains("Unresponsive", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (kind.Contains("Browser", StringComparison.OrdinalIgnoreCase))
+        {
+            AgentHub.Core.ProxyCore.HubLog.Write("[webview] browser process failed; keep window for user retry");
+            LoadingOverlay.Visibility = Visibility.Visible;
+            Web.Visibility = Visibility.Collapsed;
+            LoadingSub.Text = "界面进程异常，请关闭后重新打开 AgentHub";
+            return;
+        }
+
+        // 主渲染器 / 子帧渲染器退出：有限次 Reload，不关闭整个应用
+        if (_webviewReloads >= 3)
+        {
+            AgentHub.Core.ProxyCore.HubLog.Write("[webview] renderer reload limit reached");
+            LoadingOverlay.Visibility = Visibility.Visible;
+            Web.Visibility = Visibility.Collapsed;
+            LoadingSub.Text = "页面多次崩溃，请关闭后重新打开 AgentHub";
+            return;
+        }
+
+        _webviewRecovering = true;
+        _webviewReloads++;
+        try
+        {
+            Web.Reload();
+        }
+        catch (Exception ex)
+        {
+            AgentHub.Core.ProxyCore.HubLog.Write("[webview] reload failed " + ex.GetType().Name + ": " + ex.Message);
+        }
+        finally
+        {
+            _webviewRecovering = false;
         }
     }
 

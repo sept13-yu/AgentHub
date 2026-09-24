@@ -21,11 +21,12 @@ public partial class App : Application
     private TrayIconService? _tray;
     private AgentHubRuntime? _rt;
     private int _exiting;
+    private string _exitReason = "unknown";
 
     protected override void OnStartup(StartupEventArgs e)
     {
         // codex-credential 认证子命令必须抢在单实例守卫之前（方案 §4.3）：
-        // 主实例常驻时 TryAcquire 会唤醒主窗甚至误杀实例，而 Codex auth.command 需要随时拉起本进程。
+        // 主实例常驻时 TryAcquire 会唤醒主窗，而 Codex auth.command 需要随时拉起本进程。
         if (CodexCredentialGate.IsCredentialRequest(e.Args))
         {
             CodexCredentialGate.Handle(e.Args);
@@ -43,6 +44,8 @@ public partial class App : Application
 
         if (!HasWebView2())
         {
+            _exitReason = "webview2-missing";
+            HubLog.Write("[exit] " + _exitReason);
             MessageBox.Show(
                 "AgentHub 需要 Microsoft Edge WebView2 Runtime。安装程序将打开官方下载页，安装完成后请重新运行本安装包。",
                 "AgentHub", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -58,10 +61,13 @@ public partial class App : Application
             return;
         }
 
-        // 未处理异常兜底：托盘常驻应用静默崩溃比弹窗更糟
+        // UI 线程未处理异常：先落盘再弹窗（托盘常驻静默崩溃比弹窗更糟）
         DispatcherUnhandledException += (_, ex) =>
         {
-            MessageBox.Show("未处理异常：" + ex.Exception.Message, "AgentHub",
+            HubLog.Write($"[exit] ui-unhandled {ex.Exception.GetType().Name}: {ex.Exception.Message}");
+            if (ex.Exception.StackTrace is { Length: > 0 } st)
+                HubLog.Write("[exit] stack " + st.ReplaceLineEndings(" | "));
+            MessageBox.Show("未处理异常：" + ex.Exception.Message, "AgentHub 错误",
                 MessageBoxButton.OK, MessageBoxImage.Error);
             ex.Handled = true;
         };
@@ -69,6 +75,8 @@ public partial class App : Application
         _guard = new SingleInstanceGuard();
         if (!_guard.TryAcquire())
         {
+            _exitReason = "single-instance-yield";
+            HubLog.Write("[exit] " + _exitReason);
             Shutdown();
             return;
         }
@@ -77,7 +85,7 @@ public partial class App : Application
         _rt = AgentHubRuntime.Create(new RuntimeHostOptions
         {
             Autostart = new RegistryAutostartService(),
-            AppUpdate = new VelopackAppUpdateService(),
+            AppUpdate = new WindowsAppUpdateService(),
             PickFolder = initial => Dispatcher.Invoke(() =>
             {
                 using var dialog = new System.Windows.Forms.FolderBrowserDialog
@@ -97,6 +105,7 @@ public partial class App : Application
         win.Show();
         _tray = new TrayIconService(BuildTrayActions(), IsLightTheme(_rt.Config.App.Theme));
         _rt.RunInitialScanInBackground();
+        HubLog.Write($"[exit] started pid={Environment.ProcessId}");
     }
 
     private TrayShellActions BuildTrayActions() => new()
@@ -137,7 +146,11 @@ public partial class App : Application
     }
 
     /// <summary>WebView 初始化失败时真正退出，避免空窗藏进托盘后互斥锁把二次启动静默吃掉。</summary>
-    internal void RequestExit() => ExitApp();
+    internal void RequestExit(string reason = "webview-init-failed")
+    {
+        _exitReason = reason;
+        ExitApp();
+    }
 
     private void ShowMainWindow()
     {
@@ -154,11 +167,14 @@ public partial class App : Application
     private void ExitApp()
     {
         if (Interlocked.Exchange(ref _exiting, 1) != 0) return;
+        if (_exitReason == "unknown") _exitReason = "user-exit";
+        HubLog.Write("[exit] " + _exitReason);
 
         // 先挂硬退出，再拆服务，避免 Close / Kestrel 堵住 UI 线程。
         _ = System.Threading.Tasks.Task.Run(() =>
         {
             Thread.Sleep(8000);
+            HubLog.Write("[exit] force-exit after timeout reason=" + _exitReason);
             Environment.Exit(0);
         });
 
@@ -169,10 +185,9 @@ public partial class App : Application
         Shutdown();
     }
 
-    private static void Log(string message) => HubLog.Write(message);
-
     protected override void OnExit(ExitEventArgs e)
     {
+        HubLog.Write("[exit] onexit reason=" + _exitReason);
         _guard?.Dispose();
         _guard = null;
         base.OnExit(e);

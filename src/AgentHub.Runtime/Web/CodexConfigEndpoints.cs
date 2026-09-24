@@ -50,6 +50,30 @@ public static class CodexConfigEndpoints
 
 
 
+        app.MapGet("/api/codex-config/snapshot", () =>
+
+        {
+
+            try
+
+            {
+
+                return Results.Json(service.GetSnapshot());
+
+            }
+
+            catch (Exception ex)
+
+            {
+
+                return Results.Json(new { error = ex.Message }, statusCode: 500);
+
+            }
+
+        });
+
+
+
         app.MapGet("/api/codex-config/connections", () =>
 
             Results.Json(new { connections = service.ListConnections() }));

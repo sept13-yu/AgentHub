@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, reactive, ref, type Ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, reactive, ref, type Ref } from 'vue'
 import { NButton, NIcon, NInput, NRadio, NRadioGroup, NSwitch, useMessage } from 'naive-ui'
-import { Archive, Plus, Trash2 } from 'lucide-vue-next'
+import { Archive, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
 import AhConfirm from '../components/AhConfirm.vue'
 import { del, get, post, put, WRITABLE } from '../api'
 import { usePageHotkeys } from '../hotkeys'
@@ -37,7 +37,6 @@ interface CodexStatus {
   codexRunning: boolean
   activeConnectionId: string | null
   credentialExePath: string
-  providerBuckets: Record<string, number>
 }
 
 interface CodexConnectionView {
@@ -225,33 +224,72 @@ const rows = computed<ConfigRow[]>(() => {
 
 const showArchiveSecondary = computed(() => !!profileLive.value?.importable)
 
-async function load() {
-  loadError.value = ''
-  if (pageLoading) pageLoading.value = true
+/** 读世代：写操作或新一轮读会作废在途响应，防旧轮询覆盖新状态 */
+let readGen = 0
+let pollTimer = 0
+const POLL_MS = 5000
+
+function bumpReadGen() {
+  readGen += 1
+  return readGen
+}
+
+interface Snapshot {
+  status: CodexStatus
+  connections: CodexConnectionView[]
+  profiles: { profiles: AuthProfileView[]; live: AuthProfileLive }
+}
+
+function applySnapshot(s: Snapshot) {
+  status.value = s.status
+  connections.value = s.connections
+  profiles.value = s.profiles.profiles
+  profileLive.value = s.profiles.live
+}
+
+async function load(opts?: { silent?: boolean; showLoading?: boolean }) {
+  const silent = opts?.silent ?? false
+  const showLoading = opts?.showLoading ?? !silent
+  const gen = bumpReadGen()
+  if (!silent) loadError.value = ''
+  if (showLoading && pageLoading) pageLoading.value = true
   try {
-    const [s, c] = await Promise.all([
-      get<CodexStatus>('/api/codex-config/status'),
-      get<{ connections: CodexConnectionView[] }>('/api/codex-config/connections'),
-    ])
-    status.value = s
-    connections.value = c.connections
-    await loadProfiles()
+    const snap = await get<Snapshot>('/api/codex-config/snapshot')
+    if (gen !== readGen) return
+    applySnapshot(snap)
+    profilesError.value = ''
   } catch (e) {
+    if (gen !== readGen) return
+    if (silent) return
     loadError.value = e instanceof Error ? e.message : String(e)
   } finally {
-    if (pageLoading) pageLoading.value = false
+    if (showLoading && pageLoading) pageLoading.value = false
   }
 }
 
-async function loadProfiles() {
-  try {
-    const r = await get<{ profiles: AuthProfileView[]; live: AuthProfileLive }>(
-      '/api/codex-config/auth-profiles')
-    profiles.value = r.profiles
-    profileLive.value = r.live
-    profilesError.value = ''
-  } catch (e) {
-    profilesError.value = e instanceof Error ? e.message : String(e)
+function anyModalOpen() {
+  return createOpen.value || editOpen.value || deleteShow.value || applyShow.value || archiveShow.value
+}
+
+async function refreshSilent() {
+  if (busy.value || anyModalOpen()) return
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+  await load({ silent: true })
+}
+
+function onWindowFocus() {
+  void refreshSilent()
+}
+
+function startPoll() {
+  stopPoll()
+  pollTimer = window.setInterval(() => { void refreshSilent() }, POLL_MS)
+}
+
+function stopPoll() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer)
+    pollTimer = 0
   }
 }
 
@@ -304,6 +342,7 @@ function relayPayload(f: typeof createForm) {
 async function saveCreate() {
   if (readonly || busy.value) return
   busy.value = true
+  bumpReadGen()
   if (pageLoading) pageLoading.value = true
   try {
     if (createType.value === 'official') {
@@ -348,6 +387,7 @@ async function saveCreate() {
 async function saveEdit() {
   if (readonly || busy.value || !editId.value) return
   busy.value = true
+  bumpReadGen()
   if (pageLoading) pageLoading.value = true
   try {
     if (!editForm.name.trim() || !editForm.baseUrl.trim()) {
@@ -375,13 +415,16 @@ function askApply(row: ConfigRow) {
 const applyConfirmText = computed(() => {
   const row = pendingApply.value
   if (!row) return ''
+  const runningHint = status.value?.codexRunning
+    ? '检测到 Codex 正在运行，请彻底退出后重启。'
+    : '若 Codex 正在运行，请彻底退出后重启。'
   if (row.rowKind === 'relay') {
-    return `将「${row.title}」写入 Codex 并设为当前中转。若 Codex 正在运行，需彻底退出后重启生效。`
+    return `将「${row.title}」写入 Codex 并设为当前中转。${runningHint}`
   }
   if (row.rowKind === 'official-account') {
     const lines = [`将档案「${row.title}」写回登录，并切到官方连接。`]
     if (liveUnarchived.value) lines.push('当前登录尚未归档，切换后该登录会丢失；建议先「归档当前登录」。')
-    lines.push('若 Codex 正在运行，请彻底退出后重启。')
+    lines.push(runningHint)
     return lines.join('\n')
   }
   if (row.rowKind === 'official-blank') {
@@ -399,6 +442,7 @@ async function doApply() {
   pendingApply.value = null
   if (!row || readonly) return
   busy.value = true
+  bumpReadGen()
   if (pageLoading) pageLoading.value = true
   try {
     if (row.rowKind === 'relay' && row.connectionId) {
@@ -412,6 +456,7 @@ async function doApply() {
         `/api/codex-config/auth-profiles/${row.profileId}/switch`)
       if (!sw.ok) {
         message.error('切换失败：' + (sw.error ?? '未知错误'))
+        await load()
         return
       }
       if (!officialActive.value && row.connectionId) {
@@ -419,6 +464,7 @@ async function doApply() {
           `/api/codex-config/connections/${row.connectionId}/apply`)
         if (!ap.ok) {
           message.error('已写回登录，但应用官方连接失败：' + (ap.error ?? '未知错误'))
+          await load()
           return
         }
         if (sw.restartRequired || ap.restartRequired) {
@@ -468,6 +514,7 @@ async function doDelete() {
   const row = pendingDelete.value
   pendingDelete.value = null
   if (!row) return
+  bumpReadGen()
   try {
     if (row.rowKind === 'relay' && row.connectionId) {
       await del(`/api/codex-config/connections/${row.connectionId}`)
@@ -492,6 +539,7 @@ async function doArchive() {
   archiveShow.value = false
   if (readonly) return
   busy.value = true
+  bumpReadGen()
   if (pageLoading) pageLoading.value = true
   try {
     const r = await post<{ id: string; updated?: boolean }>(
@@ -522,7 +570,18 @@ usePageHotkeys({
   refresh: () => { void load() },
 })
 
-onMounted(() => load())
+onMounted(() => {
+  void load()
+  startPoll()
+  window.addEventListener('focus', onWindowFocus)
+  document.addEventListener('visibilitychange', onWindowFocus)
+})
+onUnmounted(() => {
+  stopPoll()
+  window.removeEventListener('focus', onWindowFocus)
+  document.removeEventListener('visibilitychange', onWindowFocus)
+  bumpReadGen()
+})
 </script>
 
 <template>
@@ -553,6 +612,15 @@ onMounted(() => load())
       <div class="card-head">
         配置
         <span class="spacer" />
+        <n-button
+          quaternary
+          :disabled="readonly || busy"
+          title="刷新"
+          @click="() => load()"
+        >
+          <template #icon><n-icon :size="16"><RefreshCw :stroke-width="1.8" /></n-icon></template>
+          刷新
+        </n-button>
         <n-button
           v-if="showArchiveSecondary"
           quaternary

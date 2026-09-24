@@ -2,13 +2,13 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Shell;
 
-/// <summary>单实例互斥（方案 §3：Local\AgentHub.SingleInstance）。
-/// 二次启动先发命名事件、再按窗口标题唤醒主窗；若对方已无主窗（僵死占锁、托盘也不见），
-/// 杀掉残留进程并接管，避免双击 exe 静默退出。
-/// 拿到锁后也会清掉已放锁但未退出的残留 AgentHub.exe。</summary>
+/// <summary>单实例互斥（Local\AgentHub.SingleInstance）。
+/// 二次启动只唤醒已有主窗后退出；<b>不杀</b>同名进程，避免误杀凭据子进程或其它会话。
+/// 找不到窗且本机 API 也探活失败时记日志并让位，不接管、不 Kill。</summary>
 public sealed class SingleInstanceGuard : IDisposable
 {
     private const string MutexName = @"Local\AgentHub.SingleInstance";
@@ -23,46 +23,51 @@ public sealed class SingleInstanceGuard : IDisposable
     /// <summary>收到二次启动激活请求时触发（回调在线程池线程，订阅方自行切回 UI 线程）。</summary>
     public event Action? Activated;
 
-    /// <summary>true = 本进程成为首实例；false = 已把已有实例唤到前台，调用方应退出。</summary>
+    /// <summary>true = 本进程成为首实例；false = 已把已有实例唤到前台（或无法确认），调用方应退出。</summary>
     public bool TryAcquire()
     {
         if (TryOwnMutex())
         {
-            KillOtherInstances();
+            LogOtherInstances("first-instance");
             StartActivateWait();
+            HubLog.Write($"[single-instance] acquired pid={Environment.ProcessId}");
             return true;
         }
 
         SignalExistingInstance();
         if (TryActivateOtherMainWindow())
+        {
+            HubLog.Write("[single-instance] yield: activated existing window");
             return false;
+        }
 
-        // 主窗可能仍在 OnStartup/WebView 初始化：再等一拍，能唤醒就不杀
+        // 主窗可能仍在 OnStartup/WebView 初始化：再等一拍
         Thread.Sleep(1200);
         SignalExistingInstance();
         if (TryActivateOtherMainWindow())
-            return false;
-        if (IsLocalApiAlive())
-            return false;
-
-        KillOtherInstances();
-        Thread.Sleep(700);
-        ReleaseMutexHandle();
-
-        if (TryOwnMutex())
         {
-            StartActivateWait();
-            return true;
+            HubLog.Write("[single-instance] yield: activated existing window (retry)");
+            return false;
         }
+        if (IsLocalApiAlive())
+        {
+            HubLog.Write("[single-instance] yield: local api alive, no window yet");
+            return false;
+        }
+
+        // 不 Kill、不接管：残留占锁只能人工处理，误杀主实例代价更高
+        HubLog.Write("[single-instance] yield: no window and health failed; will not kill other AgentHub processes");
+        LogOtherInstances("yield-no-kill");
+        ReleaseMutexHandle();
         return false;
     }
 
-    /// <summary>本机 18780 仍在听，说明已有实例活着，不能 Kill。</summary>
+    /// <summary>本机 18780 仍在听，说明已有实例活着。</summary>
     private static bool IsLocalApiAlive()
     {
         try
         {
-            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(800) };
+            using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromMilliseconds(2000) };
             using var resp = http.GetAsync("http://127.0.0.1:18780/health").GetAwaiter().GetResult();
             return resp.IsSuccessStatusCode;
         }
@@ -110,26 +115,35 @@ public sealed class SingleInstanceGuard : IDisposable
     {
         foreach (var p in OtherAgentHubProcesses())
         {
-            var hwnd = FindMainWindow(p.Id);
-            if (hwnd == IntPtr.Zero) continue;
-            ShowWindow(hwnd, IsIconic(hwnd) ? SwRestore : SwShow);
-            AllowSetForegroundWindow(p.Id);
-            SetForegroundWindow(hwnd);
-            return true;
+            try
+            {
+                var hwnd = FindMainWindow(p.Id);
+                if (hwnd == IntPtr.Zero) continue;
+                ShowWindow(hwnd, IsIconic(hwnd) ? SwRestore : SwShow);
+                AllowSetForegroundWindow(p.Id);
+                SetForegroundWindow(hwnd);
+                return true;
+            }
+            finally
+            {
+                p.Dispose();
+            }
         }
         return false;
     }
 
-    private static void KillOtherInstances()
+    private static void LogOtherInstances(string phase)
     {
         foreach (var p in OtherAgentHubProcesses())
         {
             try
             {
-                p.Kill(entireProcessTree: true);
-                p.WaitForExit(3000);
+                HubLog.Write($"[single-instance] {phase}: other AgentHub pid={p.Id}");
             }
-            catch (Exception) { }
+            finally
+            {
+                p.Dispose();
+            }
         }
     }
 

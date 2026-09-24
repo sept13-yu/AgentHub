@@ -625,11 +625,21 @@ public sealed class CodexConfigService
 
             CredentialExePath = _exePath,
 
-            ProviderBuckets = CountProviderBuckets(),
+            // 不做历史桶扫描：GetStatus 会进周期刷新，CountProviderBuckets 最多读 5000 个 JSONL
+
+            ProviderBuckets = [],
 
         };
 
     }
+
+    /// <summary>周期刷新用：状态 + 连接 + 档案一次取齐，避免前端多阶段竞态。</summary>
+    public object GetSnapshot() => new
+    {
+        status = GetStatus(),
+        connections = ListConnections(),
+        profiles = ListAuthProfiles(),
+    };
 
 
 
@@ -1206,31 +1216,7 @@ public sealed class CodexConfigService
 
 
 
-    private static bool IsCodexRunning()
-
-    {
-
-        try
-
-        {
-
-            var list = Process.GetProcessesByName("codex");
-
-            foreach (var p in list) p.Dispose();
-
-            return list.Length > 0;
-
-        }
-
-        catch (Exception)
-
-        {
-
-            return false;
-
-        }
-
-    }
+    private static bool IsCodexRunning() => CodexProcess.IsRunning();
 
 
 
