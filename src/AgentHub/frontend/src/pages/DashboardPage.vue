@@ -663,7 +663,7 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
 .qtile.is-balance { flex-direction: row; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); border: 0; padding: 0; max-width: 100%; }
 .is-balance .q-header { margin: 0; }
 .is-balance .q-metric { font-size: var(--fs-title); }
-.q-windows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 112px), 1fr)); gap: var(--sp-4); }
+.q-windows { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
 .qtile.can-sort {
   cursor: grab;
   touch-action: none;
@@ -786,8 +786,9 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   line-height: 1.1;
 }
 .q-num {
-  grid-column: 1;
-  grid-row: 2;
+  grid-column: 2;
+  grid-row: 1;
+  text-align: right;
   font-size: var(--fs-title);
   font-weight: 600;
   line-height: 1.2;
@@ -796,7 +797,7 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
 .q-num small { margin-left: 2px; font-size: var(--fs-caption); font-weight: 400; color: var(--dim); }
 .qwin {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-2);
   min-height: 28px;
@@ -809,8 +810,8 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   color: var(--dim);
 }
 .qbar {
-  grid-column: 1;
-  grid-row: 3;
+  grid-column: 1 / -1;
+  grid-row: 2;
   height: 4px;
   border-radius: var(--r-pill);
   background: var(--stroke);
@@ -827,8 +828,8 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
   background: var(--danger);
 }
 .qwin-period {
-  grid-column: 1;
-  grid-row: 4;
+  grid-column: 1 / -1;
+  grid-row: 3;
   color: var(--faint);
   text-align: left;
   overflow: hidden;
