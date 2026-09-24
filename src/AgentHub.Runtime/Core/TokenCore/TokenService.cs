@@ -427,12 +427,14 @@ public sealed class TokenService
         {
             var tokens = list.Sum(x => x.Tokens);
             if (tokens <= 0) continue;
+            // 展示名相同则合并（mimo-x-pro-preview / mimo-v2.6-pro 等同映到 MiMo V2.6 Pro），避免同名多行。
             var models = list
-                .Select(x =>
+                .GroupBy(x => x.DisplayName, StringComparer.Ordinal)
+                .Select(g =>
                 {
-                    var m = new Dictionary<string, object?> { ["name"] = x.DisplayName, ["tokens"] = x.Tokens };
+                    var m = new Dictionary<string, object?> { ["name"] = g.Key, ["tokens"] = g.Sum(x => x.Tokens) };
                     // Cost estimate on + non-empty table: flag models missing from exact/alias lookup.
-                    if (priceTable is not null && x.ReportedUsd is null && !UsageCost.HasPrice(x.Model, priceTable))
+                    if (priceTable is not null && g.Any(x => x.ReportedUsd is null && !UsageCost.HasPrice(x.Model, priceTable)))
                         m["noPrice"] = true;
                     return m;
                 })

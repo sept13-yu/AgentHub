@@ -21,9 +21,47 @@ const cost = computed(() => {
 })
 const costHint = computed(() => costCurrency.value === 'CNY' ? '点击改为美元' : '点击改为人民币')
 const partial = computed(() => props.usage.cost?.kind === 'none' || props.usage.cost?.kind === 'amount' && props.usage.cost.partial)
-const ranked = computed(() => props.usage.agents.flatMap((a) => a.models.map((m) => ({
-  ...m, key: `${a.id}\0${m.name}`, agentId: a.id, agent: a.name,
-}))).sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name, 'zh') || a.agentId.localeCompare(b.agentId)))
+// 同名模型跨来源合并成一行；图标跟用量最大的来源，弹层列出全部来源。
+const ranked = computed(() => {
+  const map = new Map<string, {
+    key: string
+    name: string
+    tokens: number
+    noPrice?: boolean
+    agentId: string
+    agent: string
+    sources: { agentId: string; agent: string; tokens: number }[]
+  }>()
+  for (const a of props.usage.agents) {
+    for (const m of a.models) {
+      const source = { agentId: a.id, agent: a.name, tokens: m.tokens }
+      const prev = map.get(m.name)
+      if (!prev) {
+        map.set(m.name, {
+          key: m.name,
+          name: m.name,
+          tokens: m.tokens,
+          noPrice: m.noPrice,
+          agentId: a.id,
+          agent: a.name,
+          sources: [source],
+        })
+        continue
+      }
+      prev.tokens += m.tokens
+      if (m.noPrice) prev.noPrice = true
+      prev.sources.push(source)
+    }
+  }
+  const rows = [...map.values()]
+  for (const row of rows) {
+    row.sources.sort((x, y) => y.tokens - x.tokens || x.agentId.localeCompare(y.agentId))
+    const top = row.sources[0]
+    row.agentId = top.agentId
+    row.agent = top.agent
+  }
+  return rows.sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name, 'zh'))
+})
 
 // 高度预算来自独立的页面滚动容器，避免观察卡片自身高度导致行数反复切换。
 // 每行 44px，另留标题、表头、页脚 88px；不为填满高屏无限增加信息密度。
@@ -137,7 +175,11 @@ onUnmounted(() => observer?.disconnect())
                           <span v-if="m.noPrice" class="no-price" aria-hidden="true">*</span>
                         </button>
                       </template>
-                      <div class="model-detail"><strong>{{ m.name }}</strong><span>来源：{{ m.agent }}</span><span v-if="m.noPrice">暂无牌价，未计入完整成本估算</span></div>
+                      <div class="model-detail">
+                        <strong>{{ m.name }}</strong>
+                        <span v-for="s in m.sources" :key="s.agentId">来源：{{ s.agent }}<template v-if="m.sources.length > 1"> · {{ formatTokens(s.tokens) }}</template></span>
+                        <span v-if="m.noPrice">暂无牌价，未计入完整成本估算</span>
+                      </div>
                     </n-popover>
                   </td>
                   <td class="num">{{ formatTokens(m.tokens) }}</td><td class="num">{{ share(m.tokens) }}</td>
