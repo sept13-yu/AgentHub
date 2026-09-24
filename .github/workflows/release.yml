@@ -140,8 +140,14 @@ jobs:
           if ($extra.Count) { throw "出现意外发布资产: $($extra.Name -join ', ')" }
 
           # 首次创建草稿；重跑时只允许补传草稿缺失的资产，不替换已公开资产。
-          gh release view $tag --repo sept13-yu/AgentHub --json isDraft 2>$null | Out-Null
-          if ($LASTEXITCODE -ne 0) {
+          # 注意：draft 不会出现在 GET /releases/tags/{tag}，只能从列表接口按 tag_name 找。
+          function Get-Release {
+            $all = gh api "repos/sept13-yu/AgentHub/releases?per_page=30" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw '列出 GitHub Release 失败' }
+            return @($all | Where-Object { $_.tag_name -eq $tag }) | Select-Object -First 1
+          }
+          $remote = Get-Release
+          if (-not $remote) {
             $migrationNotes = @'
           ## 旧版 Windows 用户：请手动换装
 
@@ -152,9 +158,9 @@ jobs:
             $migrationNotes = $migrationNotes.Replace('{version}', $version)
             gh release create $tag --repo sept13-yu/AgentHub --title "AgentHub $version" --notes $migrationNotes --generate-notes --draft --verify-tag
             if ($LASTEXITCODE -ne 0) { throw '创建 GitHub Release 草稿失败' }
+            $remote = Get-Release
+            if (-not $remote) { throw '创建后仍找不到 GitHub Release 草稿' }
           }
-          $remote = gh api "repos/sept13-yu/AgentHub/releases/tags/$tag" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw '读取 GitHub Release 失败' }
           foreach ($file in $files) {
             $asset = @($remote.assets | Where-Object { $_.name -eq $file.Name })
             if ($asset.Count -eq 0) {
@@ -163,8 +169,8 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "上传资产失败: $($file.Name)" }
             }
           }
-          $remote = gh api "repos/sept13-yu/AgentHub/releases/tags/$tag" | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0) { throw '读取 GitHub Release 资产失败' }
+          $remote = Get-Release
+          if (-not $remote) { throw '读取 GitHub Release 资产失败' }
           if (@($remote.assets).Count -ne 4) { throw 'GitHub Release 资产数量不是 4' }
           foreach ($file in $files) {
             $asset = @($remote.assets | Where-Object { $_.name -eq $file.Name })
