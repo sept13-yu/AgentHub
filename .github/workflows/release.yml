@@ -142,9 +142,15 @@ jobs:
           # 首次创建草稿；重跑时只允许补传草稿缺失的资产，不替换已公开资产。
           # 注意：draft 不会出现在 GET /releases/tags/{tag}，只能从列表接口按 tag_name 找。
           function Get-Release {
-            $all = gh api "repos/sept13-yu/AgentHub/releases?per_page=30" | ConvertFrom-Json
-            if ($LASTEXITCODE -ne 0) { throw '列出 GitHub Release 失败' }
-            return @($all | Where-Object { $_.tag_name -eq $tag }) | Select-Object -First 1
+            # 创建 draft 后列表接口偶发延迟；短重试避免「创建后仍找不到」
+            for ($attempt = 1; $attempt -le 8; $attempt++) {
+              $all = gh api "repos/sept13-yu/AgentHub/releases?per_page=30" | ConvertFrom-Json
+              if ($LASTEXITCODE -ne 0) { throw '列出 GitHub Release 失败' }
+              $hit = @($all | Where-Object { $_.tag_name -eq $tag }) | Select-Object -First 1
+              if ($hit) { return $hit }
+              Start-Sleep -Seconds ([Math]::Min(2 * $attempt, 8))
+            }
+            return $null
           }
           $remote = Get-Release
           if (-not $remote) {

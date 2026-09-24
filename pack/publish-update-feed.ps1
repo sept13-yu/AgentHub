@@ -85,7 +85,10 @@ function Invoke-Api([string]$method, [string]$uri, [hashtable]$headers, $body = 
 
 function Assert-CurrentFeed($response, [string]$source) {
     if ($response.Status -eq 404) { return $null }
-    if (-not $response.Data.sha -or -not $response.Data.content) { throw "$source 清单缺少 sha/content" }
+    # Gitee：文件不存在时经常返回 200 + 空数组 []，而不是 404
+    if ($null -eq $response.Data -or @($response.Data).Count -eq 0) { return $null }
+    if (-not $response.Data.sha) { return $null }
+    if (-not $response.Data.content) { throw "$source 清单缺少 content" }
     $oldText = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(
         ([string]$response.Data.content -replace '\s', '')))
     $old = $oldText | ConvertFrom-Json
