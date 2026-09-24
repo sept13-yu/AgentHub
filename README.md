@@ -68,7 +68,16 @@ dotnet run --project src/AgentHub.Backend
 
 Windows 见 `pack/windows/pack.ps1` 与 tag `v*`。版本号需与 `src/Directory.Build.props` 的 Version、`latest.json` 一致。GitHub Release 成功后，由维护者在本机用 `pack/windows/sync-gitee-release.ps1` 上传 Velopack 资源到 Gitee（应用内更新源）。Setup 安装包只发 GitHub。
 
-Mac 打包脚本在 `pack/macos/`。
+Mac 本机打包（Apple Silicon 机器；需 .NET 10 SDK、Rust/Tauri 工具链、Node 20+）：
+
+```bash
+bash pack/macos/build.sh        # Apple Silicon（aarch64）
+bash pack/macos/build.sh x64    # Intel（x86_64）
+```
+
+两个 DMG 统一输出到 `dist/macos/dmg/`，文件名以 `aarch64` / `x64` 区分芯片。DMG 未做签名与公证，首次打开需右键 →「打开」。开发调试用 `pack/macos/dev.sh`。
+
+CI 发版（tag `v*`）：Release 工作流先产出 Windows 安装包，随后 macOS job 在 GitHub runner 上自动打包双架构 DMG，挂到同一个 GitHub Release。
 
 ## 安全口径
 

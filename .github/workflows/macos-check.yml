@@ -134,5 +134,6 @@ jobs:
           path: |
             dist/macos/backend/AgentHub.Backend
             src/AgentHub.Mac/src-tauri/target/release/bundle/macos/
+            src/AgentHub.Mac/src-tauri/target/release/bundle/dmg/
           if-no-files-found: ignore
           retention-days: 7

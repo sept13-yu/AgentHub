@@ -94,3 +94,65 @@ jobs:
 
       # GitHub Release 成功后，由维护者在本机上传 Gitee Velopack 资源
       # （pack/windows/sync-gitee-release.ps1）。Setup exe 只放 GitHub。
+
+  macos-dmg:
+    name: macOS DMG（arm64 + x64）
+    runs-on: macos-14
+    needs: build
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            src/AgentHub/frontend/package-lock.json
+            src/AgentHub.Mac/package-lock.json
+
+      - name: 安装 Rust（含 x86_64 target）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src/AgentHub.Mac/src-tauri/target
+          key: macos-cargo-${{ hashFiles('src/AgentHub.Mac/src-tauri/Cargo.lock') }}
+          restore-keys: macos-cargo-
+
+      - name: 校验 tag 与 props 版本一致
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Directory.Build.props | head -1)"
+          if [ "$tag" != "$version" ]; then
+            echo "tag v$tag 与 Directory.Build.props Version $version 不一致"
+            exit 1
+          fi
+
+      - name: 打包双架构 DMG（runner 自带 CI=true，跳过 AppleScript）
+        env:
+          CI: 'true'
+        run: |
+          set -euo pipefail
+          bash pack/macos/build.sh
+          bash pack/macos/build.sh x64
+          version="$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' src/Directory.Build.props | head -1)"
+          test -f "dist/macos/dmg/AgentHub_${version}_aarch64.dmg"
+          test -f "dist/macos/dmg/AgentHub_${version}_x64.dmg"
+          ls -lh dist/macos/dmg
+
+      - name: 上传 DMG 到 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/macos/dmg/*.dmg

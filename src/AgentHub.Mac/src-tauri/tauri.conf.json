@@ -11,7 +11,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": ["app", "dmg"],
     "icon": ["icons/icon.icns"],
     "resources": { "../../../dist/macos/backend/": "backend/" },
     "macOS": { "minimumSystemVersion": "14.0" }
