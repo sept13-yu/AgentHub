@@ -641,7 +641,7 @@ h2 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
 /* 分组不设定位，拖拽坐标统一相对 .qtiles。 */
 .quota-group { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); min-width: 0; }
 @container quota (min-width: 860px) {
-  .quota-group:not(.balance-tiles) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .quota-group:not(.balance-tiles) { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; }
   .quota-group:has(> .qtile:only-child) { grid-template-columns: minmax(0, 1fr); }
 }
 .quota-section { min-width: 0; }
