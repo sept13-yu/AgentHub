@@ -1,19 +1,24 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { NPopover } from 'naive-ui'
-import { ArrowDownRight, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import AgentMark from './AgentMark.vue'
+import { computed, ref, watch } from 'vue'
+import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, Info } from 'lucide-vue-next'
+import UsageBreakdownList from './UsageBreakdownList.vue'
 import { costCurrency, toggleCostCurrency } from '../costCurrency'
-import { displayCostText, formatTokens, RANGES, splitTokens, type RangeKey, type UsageView } from '../usageView'
+import { displayCostText, RANGES, splitTokens, type RangeKey, type UsageView } from '../usageView'
+import { agentRows, modelRows, usageSegments, type UsageDimension } from '../usageBreakdown'
 
 const props = defineProps<{ usage: UsageView; range: RangeKey }>()
-const card = ref<HTMLElement | null>(null)
-const models = ref<HTMLElement | null>(null)
-const stageHeight = ref(600)
-const modelsWidth = ref(0)
-let observer: ResizeObserver | undefined
-const page = ref(0)
-const rangeLabel = computed(() => RANGES.find((r) => r.key === props.range)?.label ?? '')
+function storedDimension(): UsageDimension {
+  try { return localStorage.getItem('agenthub-usage-dimension') === 'model' ? 'model' : 'agent' }
+  catch { return 'agent' }
+}
+const dimension = ref<UsageDimension>(storedDimension())
+const ranking = ref<HTMLElement | null>(null)
+const selectedKey = ref<string | null>(null)
+const highlightedKey = ref<string | null>(null)
+const hoveredSegment = ref<string | null>(null)
+const showAll = ref(false)
+const showAllDetails = ref(false)
+const rangeLabel = computed(() => RANGES.find(r => r.key === props.range)?.label ?? '')
 const total = computed(() => splitTokens(props.usage.totalTokens))
 const cost = computed(() => {
   const value = props.usage.cost
@@ -21,183 +26,132 @@ const cost = computed(() => {
 })
 const costHint = computed(() => costCurrency.value === 'CNY' ? '点击改为美元' : '点击改为人民币')
 const partial = computed(() => props.usage.cost?.kind === 'none' || props.usage.cost?.kind === 'amount' && props.usage.cost.partial)
-// 同名模型跨来源合并成一行；图标跟用量最大的来源，弹层列出全部来源。
-const ranked = computed(() => {
-  const map = new Map<string, {
-    key: string
-    name: string
-    tokens: number
-    noPrice?: boolean
-    agentId: string
-    agent: string
-    sources: { agentId: string; agent: string; tokens: number }[]
-  }>()
-  for (const a of props.usage.agents) {
-    for (const m of a.models) {
-      const source = { agentId: a.id, agent: a.name, tokens: m.tokens }
-      const prev = map.get(m.name)
-      if (!prev) {
-        map.set(m.name, {
-          key: m.name,
-          name: m.name,
-          tokens: m.tokens,
-          noPrice: m.noPrice,
-          agentId: a.id,
-          agent: a.name,
-          sources: [source],
-        })
-        continue
-      }
-      prev.tokens += m.tokens
-      if (m.noPrice) prev.noPrice = true
-      prev.sources.push(source)
-    }
-  }
-  const rows = [...map.values()]
-  for (const row of rows) {
-    row.sources.sort((x, y) => y.tokens - x.tokens || x.agentId.localeCompare(y.agentId))
-    const top = row.sources[0]
-    row.agentId = top.agentId
-    row.agent = top.agent
-  }
-  return rows.sort((a, b) => b.tokens - a.tokens || a.name.localeCompare(b.name, 'zh'))
+const rows = computed(() => dimension.value === 'agent' ? agentRows(props.usage.agents) : modelRows(props.usage.agents))
+const visibleRows = computed(() => dimension.value === 'model' && !showAll.value ? rows.value.slice(0, 5) : rows.value)
+const selected = computed(() => rows.value.find(row => row.key === selectedKey.value))
+const details = computed(() => selected.value?.children ?? [])
+const visibleDetails = computed(() => showAllDetails.value ? details.value : details.value.slice(0, 5))
+const segments = computed(() => {
+  const values = usageSegments(rows.value, dimension.value, props.usage.totalTokens)
+  const sum = values.reduce((n, row) => n + row.tokens, 0)
+  let offset = 0
+  return values.map(row => {
+    const length = sum ? row.tokens / sum * 100 : 0
+    const segment = { ...row, length, offset }
+    offset += length
+    return segment
+  })
 })
-
-// 高度预算来自独立的页面滚动容器，避免观察卡片自身高度导致行数反复切换。
-// 每行 44px，另留标题、表头、页脚 88px；不为填满高屏无限增加信息密度。
-const rowLimit = computed(() => Math.max(4, Math.min(7, Math.floor((stageHeight.value * 0.54 - 88) / 44))))
-const columns = computed(() => modelsWidth.value >= 700 && ranked.value.length > rowLimit.value ? 2 : 1)
-const rowsPerColumn = computed(() => Math.min(rowLimit.value, Math.max(1, Math.ceil(ranked.value.length / columns.value))))
-const pageSize = computed(() => rowsPerColumn.value * columns.value)
-const pageCount = computed(() => Math.max(1, Math.ceil(ranked.value.length / pageSize.value)))
-const pageRows = computed(() => ranked.value.slice(page.value * pageSize.value, (page.value + 1) * pageSize.value))
-const groups = computed(() => Array.from({ length: columns.value }, (_, i) =>
-  pageRows.value.slice(i * rowsPerColumn.value, (i + 1) * rowsPerColumn.value)))
-const pageLabel = computed(() => `${page.value * pageSize.value + 1}–${Math.min((page.value + 1) * pageSize.value, ranked.value.length)} / 共 ${ranked.value.length} 个`)
-const layoutStyle = computed(() => ({
-  '--ring-size': `${180 + (rowLimit.value - 4) * 20}px`,
-  '--model-rows': rowsPerColumn.value,
-  '--model-columns': columns.value,
-}))
-
-watch(pageSize, (next, previous) => {
-  page.value = Math.min(pageCount.value - 1, Math.floor(page.value * previous / next))
+const activeSegment = computed(() => hoveredSegment.value ?? segments.value.find(s => s.rowKeys.includes(highlightedKey.value ?? selectedKey.value ?? ''))?.key)
+const ringHint = computed(() => {
+  const row = rows.value.find(r => r.key === (highlightedKey.value ?? selectedKey.value))
+  const segment = segments.value.find(s => s.key === activeSegment.value)
+  const target = hoveredSegment.value ? segment : row ?? segment
+  return target ? `${target.name} · ${share(target.tokens)}` : dimension.value === 'model' && rows.value.length > 5 ? '前 5 名 + 其他' : 'Token'
 })
-watch(pageCount, (count) => { page.value = Math.min(page.value, count - 1) })
-watch(() => props.range, () => { page.value = 0 })
 
 function share(tokens: number) {
   const value = props.usage.totalTokens > 0 ? tokens / props.usage.totalTokens * 100 : 0
   return value > 0 && value < 1 ? '<1%' : `${Math.round(value)}%`
 }
-const ring = computed(() => {
-  const agents = props.usage.agents.filter((a) => a.tokens > 0)
-  const sum = agents.reduce((n, a) => n + a.tokens, 0)
-  let end = 0
-  const stops = agents.map((a) => {
-    const start = end
-    end += a.tokens / sum * 100
-    return `${a.color} ${start}% ${end}%`
-  })
-  return { background: stops.length ? `conic-gradient(from -90deg, ${stops.join(',')})` : 'var(--wash)' }
+function selectRow(key: string) {
+  selectedKey.value = selectedKey.value === key ? null : key
+  showAllDetails.value = false
+}
+function closeDetails() {
+  const trigger = ranking.value?.querySelector<HTMLButtonElement>('[aria-expanded="true"]')
+  selectedKey.value = null
+  trigger?.focus()
+}
+function toggleModels() {
+  showAll.value = !showAll.value
+  if (!showAll.value && !rows.value.slice(0, 5).some(row => row.key === selectedKey.value)) selectedKey.value = null
+}
+function resetDetails() {
+  selectedKey.value = null
+  highlightedKey.value = null
+  hoveredSegment.value = null
+  showAllDetails.value = false
+  showAll.value = false
+}
+watch(dimension, value => {
+  resetDetails()
+  try { localStorage.setItem('agenthub-usage-dimension', value) } catch { /* 隐私模式 */ }
 })
-
-onMounted(() => {
-  const stage = card.value?.closest('.stage')
-  observer = new ResizeObserver(() => {
-    stageHeight.value = stage?.clientHeight || window.innerHeight
-    modelsWidth.value = models.value?.clientWidth || 0
-  })
-  if (stage) observer.observe(stage)
-  if (card.value) observer.observe(card.value)
-  if (models.value) observer.observe(models.value)
+watch(() => props.range, resetDetails)
+watch(rows, value => {
+  if (!value.some(row => row.key === selectedKey.value)) selectedKey.value = null
+  if (!value.some(row => row.key === highlightedKey.value)) highlightedKey.value = null
 })
-// 空态 / 请求失败恢复后 models 节点会替换，重新观察真实可用宽度。
-watch(models, (next, previous) => {
-  if (previous) observer?.unobserve(previous)
-  if (next) {
-    observer?.observe(next)
-    modelsWidth.value = next.clientWidth
-  }
-}, { flush: 'post' })
-onUnmounted(() => observer?.disconnect())
 </script>
 
 <template>
-  <section ref="card" class="card usage-card" aria-labelledby="usage-title" :style="layoutStyle">
+  <section class="card usage-card" aria-labelledby="usage-title">
     <div class="card-body">
       <div class="usage-heading">
-        <h2 id="usage-title">用量分布</h2>
-        <div v-if="!usage.error && usage.delta" class="delta" :class="usage.delta.kind">
-          <span class="hint">{{ usage.delta.vs }}</span>
-          <ArrowUpRight v-if="usage.delta.kind === 'up'" :size="14" aria-hidden="true" /><ArrowDownRight v-else-if="usage.delta.kind === 'down'" :size="14" aria-hidden="true" />
-          <span class="num">{{ usage.delta.text }}</span>
+        <div class="heading-label">
+          <h2 id="usage-title">用量分布</h2>
+          <div v-if="!usage.error && usage.delta" class="delta" :class="usage.delta.kind">
+            <span class="hint">{{ usage.delta.vs }}</span>
+            <ArrowUpRight v-if="usage.delta.kind === 'up'" :size="14" aria-hidden="true" />
+            <ArrowDownRight v-else-if="usage.delta.kind === 'down'" :size="14" aria-hidden="true" />
+            <span class="num">{{ usage.delta.text }}</span>
+          </div>
+        </div>
+        <div class="dimension-switch" role="group" aria-label="用量统计维度">
+          <button type="button" :aria-pressed="dimension === 'agent'" @click="dimension = 'agent'">按 Agent</button>
+          <button type="button" :aria-pressed="dimension === 'model'" @click="dimension = 'model'">按模型</button>
         </div>
       </div>
       <p v-if="usage.error" class="usage-error" role="alert">{{ usage.error }}</p>
-      <div v-else class="usage-layout" :class="{ 'is-empty': !usage.agents.length, 'compact-models': ranked.length <= rowLimit }">
-        <div class="overview" :class="{ 'many-agents': usage.agents.length > 5 }">
+      <template v-else>
+        <div class="usage-layout" :class="{ 'all-models': dimension === 'model' && showAll }">
           <div class="ring-col">
-            <div class="donut" role="img" :aria-label="`${rangeLabel}用量 ${total.val}${total.unit} Token`" :style="ring">
+            <div class="donut">
+              <svg viewBox="0 0 100 100" role="img" :aria-label="`${rangeLabel}用量 ${total.val}${total.unit} Token，${dimension === 'agent' ? '按 Agent' : '按模型'}分布`">
+                <circle class="ring-track" cx="50" cy="50" r="43" />
+                <circle v-for="segment in segments" :key="segment.key" cx="50" cy="50" r="43" pathLength="100"
+                  class="ring-segment" :class="{ muted: activeSegment && activeSegment !== segment.key }"
+                  :style="{ stroke: segment.color }" :stroke-dasharray="`${segment.length} ${100 - segment.length}`"
+                  :stroke-dashoffset="-segment.offset" transform="rotate(-90 50 50)"
+                  @mouseenter="hoveredSegment = segment.key" @mouseleave="hoveredSegment = null">
+                  <title>{{ segment.name }} · {{ share(segment.tokens) }}</title>
+                </circle>
+              </svg>
               <div class="donut-core">
                 <span class="hint">{{ rangeLabel }}用量</span>
                 <strong class="hero num">{{ total.val }}<small>{{ total.unit }}</small></strong>
-                <span class="hint">Token</span>
               </div>
             </div>
+            <div class="ring-hint hint" :title="ringHint">{{ ringHint }}</div>
             <div v-if="usage.cost" class="cost">
-              <span class="hint">总估算成本</span>
+              <span class="hint">估算费用</span>
               <button v-if="usage.cost.kind === 'amount'" type="button" :aria-label="costHint" :title="costHint" class="cost-toggle num" @click="toggleCostCurrency">{{ cost }}</button>
               <span v-else class="hint">{{ cost }}</span>
+              <span v-if="partial" tabindex="0" role="img" aria-label="部分模型暂无报价，费用估算不完整" title="部分模型暂无报价，费用估算不完整"><Info :size="14" aria-hidden="true" /></span>
             </div>
           </div>
-          <ul v-if="usage.agents.length" class="legend" aria-label="来源用量图例">
-            <li v-for="a in usage.agents" :key="a.id">
-              <i class="dot" :style="{ background: a.color }" aria-hidden="true" />
-              <div class="agent-summary"><span class="agent-name">{{ a.name }}</span><span class="agent-share num">{{ share(a.tokens) }}</span><span class="agent-detail num">{{ formatTokens(a.tokens) }}</span></div>
-            </li>
-          </ul>
-          <p v-else class="hint">当前时间范围暂无用量记录</p>
+          <div ref="ranking" class="ranking">
+            <UsageBreakdownList v-if="rows.length" :rows="visibleRows" :total="usage.totalTokens" :selected="selectedKey" expandable @select="selectRow" @highlight="highlightedKey = $event" />
+            <p v-else class="hint">{{ usage.totalTokens > 0 ? '暂无模型明细' : '当前时间范围暂无用量记录' }}</p>
+            <button v-if="dimension === 'model' && rows.length > 5" type="button" class="text-button show-all" :aria-expanded="showAll" @click="toggleModels">
+              {{ showAll ? '收起模型列表' : `查看全部 ${rows.length} 个模型` }}<ChevronUp v-if="showAll" :size="14" /><ChevronDown v-else :size="14" />
+            </button>
+          </div>
         </div>
-        <section v-if="usage.agents.length" ref="models" class="models" aria-labelledby="models-title">
-          <div class="models-heading"><h3 id="models-title">模型用量</h3><span class="hint">占总用量</span></div>
-          <div v-if="ranked.length" class="model-columns">
-            <div v-for="(group, index) in groups" :key="index" class="model-column">
-              <table v-if="group.length" class="model-table" :aria-label="columns === 2 ? `模型用量第 ${index + 1} 栏` : '模型用量'">
-                <thead><tr><th scope="col">模型</th><th scope="col">Token</th><th scope="col">占比</th></tr></thead>
-                <tbody><tr v-for="m in group" :key="m.key">
-                  <td>
-                    <n-popover trigger="click" placement="bottom-start">
-                      <template #trigger>
-                        <button type="button" class="model-name" :aria-label="`${m.agent}：${m.name}${m.noPrice ? '，暂无牌价' : ''}，查看详情`">
-                          <AgentMark :id="m.agentId" />
-                          <span class="model-label">{{ m.name }}</span>
-                          <span v-if="m.noPrice" class="no-price" aria-hidden="true">*</span>
-                        </button>
-                      </template>
-                      <div class="model-detail">
-                        <strong>{{ m.name }}</strong>
-                        <span v-for="s in m.sources" :key="s.agentId">来源：{{ s.agent }}<template v-if="m.sources.length > 1"> · {{ formatTokens(s.tokens) }}</template></span>
-                        <span v-if="m.noPrice">暂无牌价，未计入完整成本估算</span>
-                      </div>
-                    </n-popover>
-                  </td>
-                  <td class="num">{{ formatTokens(m.tokens) }}</td><td class="num">{{ share(m.tokens) }}</td>
-                </tr></tbody>
-              </table>
-            </div>
+        <section v-if="selected" id="usage-detail" class="usage-detail" aria-labelledby="detail-title">
+          <div class="detail-heading">
+            <h3 id="detail-title">{{ selected.name }}<span class="hint">{{ dimension === 'agent' ? '模型细分' : '来源分布' }}</span></h3>
+            <button type="button" class="text-button" @click="closeDetails">收起<ChevronUp :size="14" /></button>
           </div>
-          <p v-else class="hint model-empty">暂无模型明细</p>
-          <nav v-if="ranked.length" class="model-pager" aria-label="模型分页">
-            <span class="num" aria-live="polite">{{ pageCount === 1 ? `共 ${ranked.length} 个模型` : pageLabel }}</span>
-            <template v-if="pageCount > 1">
-              <button type="button" aria-label="上一页模型" :disabled="page === 0" @click="page--"><ChevronLeft :size="16" /></button>
-              <button type="button" aria-label="下一页模型" :disabled="page >= pageCount - 1" @click="page++"><ChevronRight :size="16" /></button>
-            </template>
-          </nav>
+          <p v-if="selected.noPrice" class="hint">部分用量暂无报价，未计入完整费用估算</p>
+          <UsageBreakdownList v-if="details.length" :rows="visibleDetails" :total="selected.tokens" />
+          <p v-else class="hint">暂无模型明细</p>
+          <button v-if="details.length > 5" type="button" class="text-button show-all" :aria-expanded="showAllDetails" @click="showAllDetails = !showAllDetails">
+            {{ showAllDetails ? '收起明细列表' : `查看全部 ${details.length} 项` }}<ChevronUp v-if="showAllDetails" :size="14" /><ChevronDown v-else :size="14" />
+          </button>
         </section>
-      </div>
-      <p v-if="!usage.error && partial" class="price-note hint">部分模型暂无报价</p>
+      </template>
     </div>
   </section>
 </template>
@@ -205,73 +159,48 @@ onUnmounted(() => observer?.disconnect())
 <style scoped>
 .usage-card { container: usage / inline-size; }
 h2, h3 { margin: 0; font-size: var(--fs-card); font-weight: 600; }
-.usage-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); margin-bottom: var(--sp-5); }
-h3 { font-size: var(--fs-small); }
+.usage-heading, .heading-label, .detail-heading { display: flex; align-items: center; gap: var(--sp-3); }
+.usage-heading { justify-content: space-between; flex-wrap: wrap; margin-bottom: var(--sp-4); }
+.heading-label { flex-wrap: wrap; }
 .hint { color: var(--dim); font-size: var(--fs-caption); }
-.usage-layout { display: grid; grid-template-columns: minmax(380px, .85fr) minmax(0, 1.35fr); gap: clamp(24px, 3cqi, 48px); align-items: center; max-width: 1600px; margin-inline: auto; }
-.compact-models { grid-template-columns: minmax(380px, 1fr) minmax(0, 1.2fr); max-width: 1280px; }
-.overview { display: grid; grid-template-columns: var(--ring-size) minmax(120px, 200px); gap: clamp(20px, 2.4cqi, 40px); align-items: center; justify-content: center; }
-.ring-col { display: flex; flex-direction: column; align-items: center; gap: var(--sp-4); min-width: 0; }
-.donut { width: var(--ring-size); aspect-ratio: 1; border-radius: 50%; position: relative; }
-.donut-core { position: absolute; inset: 14px; background: var(--surface); border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); }
-.hero { font-size: var(--fs-hero); font-weight: 600; line-height: 1.1; letter-spacing: -0.03em; }
+.dimension-switch { display: flex; padding: 3px; border: 1px solid var(--stroke); border-radius: var(--r-in); }
+.dimension-switch button { min-height: 28px; padding: var(--sp-1) var(--sp-3); border: 0; border-radius: var(--r-in); background: transparent; color: var(--dim); font: inherit; font-size: var(--fs-small); cursor: pointer; }
+.dimension-switch button[aria-pressed='true'] { background: var(--accent-soft); color: var(--accent-solid); }
+button:focus-visible, .cost span:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.usage-layout { display: grid; grid-template-columns: minmax(240px, .65fr) minmax(0, 1.35fr); align-items: center; gap: clamp(24px, 4cqi, 64px); max-width: 1160px; margin-inline: auto; }
+.all-models { align-items: start; }
+.ring-col { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); min-width: 0; }
+.donut { width: 220px; height: 220px; position: relative; }
+.donut svg { width: 100%; height: 100%; overflow: visible; }
+.ring-track, .ring-segment { fill: none; stroke-width: 8; }
+.ring-track { stroke: var(--wash); }
+.ring-segment { transition: opacity var(--dur); }
+.ring-segment.muted { opacity: .24; }
+.donut-core { position: absolute; inset: 30px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2); pointer-events: none; }
+.hero { font-size: var(--fs-hero); font-weight: 600; line-height: 1.1; letter-spacing: -.03em; }
 .hero small { margin-left: var(--sp-1); font-size: var(--fs-small); font-weight: 400; letter-spacing: 0; }
-.cost { display: flex; align-items: baseline; justify-content: center; gap: var(--sp-2); flex-wrap: wrap; }
+.ring-hint { max-width: 100%; min-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cost { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: var(--sp-2); }
+.cost span[role='img'] { display: flex; color: var(--dim); }
 .cost-toggle { border: 0; padding: 0; background: transparent; color: var(--text); font: inherit; font-size: var(--fs-small); cursor: pointer; }
-.legend { list-style: none; margin: 0; padding: 0 0 var(--sp-7); display: grid; gap: var(--sp-5); min-width: 0; }
-.legend li { display: flex; gap: var(--sp-2); min-width: 0; align-items: flex-start; }
-.dot { width: 7px; height: 7px; border-radius: 50%; flex: none; margin-top: 7px; }
-.agent-summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--sp-3); flex: 1; min-width: 0; }
-.agent-name { display: block; font-size: var(--fs-body); font-weight: 500; overflow-wrap: anywhere; }
-.agent-share { color: var(--dim); font-size: var(--fs-small); align-self: center; }
-.agent-detail { grid-column: 1 / -1; display: block; margin-top: 2px; color: var(--faint); font-size: var(--fs-caption); white-space: nowrap; }
-.many-agents { grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
-.many-agents .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-bottom: 0; gap: var(--sp-3) var(--sp-5); }
-.models { min-width: 0; border-left: 1px solid var(--stroke); padding-left: clamp(20px, 2.4cqi, 40px); }
-.models-heading { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-2); }
-.model-columns { display: grid; grid-template-columns: repeat(var(--model-columns), minmax(0, 1fr)); gap: var(--sp-6); min-height: calc(28px + var(--model-rows) * 44px); }
-.model-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--fs-small); }
-.model-table th { height: 28px; font-weight: 400; color: var(--faint); font-size: var(--fs-caption); text-align: left; }
-.model-table td { height: 44px; padding: 0; vertical-align: middle; }
-.model-table tbody tr { position: relative; }
-.model-table tbody tr:has(.model-name:focus-visible) { background: var(--wash); outline: 2px solid var(--accent-solid); outline-offset: -2px; }
-@media (hover: hover) { .model-table tbody tr:hover { background: var(--wash); } }
-.model-table th:nth-child(2), .model-table td:nth-child(2) { width: 84px; text-align: right; white-space: nowrap; }
-.model-table th:last-child, .model-table td:last-child { width: 48px; text-align: right; white-space: nowrap; color: var(--dim); }
-.model-table td:nth-child(2) { font-size: var(--fs-body); font-weight: 500; }
-.model-name { display: flex; align-items: center; gap: var(--sp-2); width: 100%; border: 0; padding: 0 var(--sp-2) 0 0; background: transparent; text-align: left; color: var(--text); font: inherit; cursor: pointer; }
-.model-name { min-height: 40px; font-size: var(--fs-body); border-radius: var(--r-in); }
-/* 扩展原生按钮的命中区域到整行，数字区域同样支持点击，键盘仍只有一个焦点。 */
-.model-name::after { content: ''; position: absolute; inset: 0; }
-.model-name:focus-visible { outline: none; }
-.model-name:hover .model-label, .model-name:focus-visible .model-label { color: var(--accent-solid); }
-.model-label { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 18px; }
-.no-price { color: var(--danger); flex: none; }
-.model-detail { display: flex; flex-direction: column; gap: var(--sp-2); max-width: min(320px, 75vw); overflow-wrap: anywhere; font-size: var(--fs-small); }
-.model-pager { display: flex; justify-content: flex-end; align-items: center; gap: var(--sp-2); min-height: 28px; margin-top: var(--sp-3); font-size: var(--fs-caption); color: var(--dim); }
-.model-pager button { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: var(--r-in); background: transparent; color: var(--text); cursor: pointer; }
-.model-pager button:hover:not(:disabled) { background: var(--wash); }
-.model-pager button:disabled { color: var(--faint); opacity: 0.5; cursor: default; }
-.price-note { margin: var(--sp-3) 0 0; text-align: right; }
+.ranking { min-width: 0; }
+.text-button { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-1); border: 0; background: transparent; color: var(--dim); font: inherit; font-size: var(--fs-caption); min-height: 32px; cursor: pointer; border-radius: var(--r-in); padding: var(--sp-1) var(--sp-2); }
+.text-button:hover { color: var(--accent-solid); background: var(--wash); }
+.show-all { display: flex; margin: var(--sp-2) 0 0 auto; }
+.usage-detail { margin-top: var(--sp-5); border-top: 1px solid var(--stroke); padding-top: var(--sp-3); }
+.detail-heading { justify-content: space-between; margin-bottom: var(--sp-2); }
+.detail-heading h3 { min-width: 0; overflow-wrap: anywhere; }
+.detail-heading h3 .hint { margin-left: var(--sp-2); font-weight: 400; }
+.detail-heading button { flex: none; }
 .delta { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--fs-caption); }
 .delta.up { color: var(--warn); }
 .delta.down { color: var(--ok); }
 .delta.flat { color: var(--dim); }
 .usage-error { margin: 0; padding: var(--sp-3); background: var(--error-soft); color: var(--error-fg); border-radius: var(--r-in); }
-.is-empty { grid-template-columns: 1fr; }
-.is-empty .overview { grid-template-columns: var(--ring-size) minmax(0, 1fr); }
-@container usage (max-width: 860px) {
-  .usage-layout { grid-template-columns: minmax(0, 1fr); gap: var(--sp-6); }
-  .overview { grid-template-columns: var(--ring-size) minmax(0, 240px); justify-content: center; }
-  .many-agents { grid-template-columns: var(--ring-size) minmax(0, 1fr); }
-  .models { border-left: 0; padding-left: 0; border-top: 1px solid var(--stroke); padding-top: var(--sp-4); }
+@container usage (max-width: 560px) {
+  .usage-layout { grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
+  .donut { width: 190px; height: 190px; }
 }
-@container usage (max-width: 450px) {
-  .overview, .many-agents, .is-empty .overview { grid-template-columns: minmax(0, 1fr); }
-  .legend, .many-agents .legend { grid-template-columns: repeat(auto-fit, minmax(116px, 1fr)); padding: 0; gap: var(--sp-4); }
-  .donut { width: 180px; }
-  .model-table th:nth-child(2), .model-table td:nth-child(2) { width: 70px; }
-  .model-table th:last-child, .model-table td:last-child { width: 42px; }
-}
-@media (pointer: coarse) { .model-pager button { width: 44px; height: 44px; } }
+@media (pointer: coarse) { .dimension-switch button, .text-button { min-height: 44px; } }
+@media (prefers-reduced-motion: reduce) { .ring-segment { transition: none; } }
 </style>

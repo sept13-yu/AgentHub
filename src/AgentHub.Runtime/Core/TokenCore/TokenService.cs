@@ -267,13 +267,8 @@ public sealed class TokenService
 
         var rows = ReadModelRows(conn, from, to);
         var prices = PriceSyncService.Resolve(_config.Dashboard.PriceOverrides);
-        IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)>? priceTable = null;
-        if (_config.Dashboard.CostEstimate)
-        {
-            var built = UsageCost.BuildPriceTable(prices, _config.Dashboard.CostCurrency);
-            if (built.Count > 0) priceTable = built;
-        }
-        var byAgent = BuildByAgent(rows, priceTable);
+        var catalog = PriceSyncService.Capture(_config.Dashboard.PriceOverrides, _config.Dashboard.CostCurrency);
+        var byAgent = BuildByAgent(rows, catalog, _config.Dashboard.CostEstimate);
         var total = byAgent.Sum(a => (long)a["tokens"]!);
         var prev = SumBilled(conn, prevFrom, prevTo);
         var fx = _config.Dashboard.FxFallbackRate;
@@ -283,8 +278,8 @@ public sealed class TokenService
             if (fx <= 0) fx = _config.Dashboard.FxFallbackRate > 0 ? _config.Dashboard.FxFallbackRate : 7;
         }
         var (cost, partial, currency) = UsageCost.Estimate(
-            rows.Select(r => (r.Model, r.Input, r.Output, r.Cached, r.CacheWrite, r.Reasoning, r.ReportedUsd)),
-            prices,
+            rows.Select(r => (r.Tool, r.Model, r.Input, r.Output, r.Cached, r.CacheWrite, r.Reasoning, r.ReportedUsd)),
+            catalog,
             _config.Dashboard.CostEstimate,
             _config.Dashboard.CostCurrency,
             fx);
@@ -352,15 +347,6 @@ public sealed class TokenService
         long Reasoning, double? ReportedUsd)
     {
         public long Tokens => Input + Output + Cached + CacheWrite + Reasoning;
-        public string DisplayName
-        {
-            get
-            {
-                // 旧库里可能仍是 qoder-custom-.../workbuddy/model；展示时剥路径
-                var label = QoderLocal.ResolveChinaModelDisplay(Model);
-                return IsSub ? label + " · 子代理" : label;
-            }
-        }
     }
 
     private static List<ModelRow> ReadModelRows(SqliteConnection conn, DateTime from, DateTime to)
@@ -409,7 +395,8 @@ public sealed class TokenService
 
     private static List<Dictionary<string, object?>> BuildByAgent(
         List<ModelRow> rows,
-        IReadOnlyDictionary<string, (double Input, double Output, double? CacheRead, double? CacheWrite, bool IsCny)>? priceTable)
+        ModelCatalogSnapshot catalog,
+        bool costEstimate)
     {
         var byTool = new Dictionary<string, List<ModelRow>>(StringComparer.Ordinal);
         foreach (var row in rows)
@@ -427,14 +414,19 @@ public sealed class TokenService
         {
             var tokens = list.Sum(x => x.Tokens);
             if (tokens <= 0) continue;
-            // 展示名相同则合并（mimo-x-pro-preview / mimo-v2.6-pro 等同映到 MiMo V2.6 Pro），避免同名多行。
+            // 按 modelId 合并；name 用目录 display。
             var models = list
-                .GroupBy(x => x.DisplayName, StringComparer.Ordinal)
+                .GroupBy(x => catalog.Resolve(tool, x.Model).ModelId, StringComparer.Ordinal)
                 .Select(g =>
                 {
-                    var m = new Dictionary<string, object?> { ["name"] = g.Key, ["tokens"] = g.Sum(x => x.Tokens) };
-                    // Cost estimate on + non-empty table: flag models missing from exact/alias lookup.
-                    if (priceTable is not null && g.Any(x => x.ReportedUsd is null && !UsageCost.HasPrice(x.Model, priceTable)))
+                    var resolved = catalog.Resolve(tool, g.First().Model);
+                    var m = new Dictionary<string, object?>
+                    {
+                        ["id"] = resolved.ModelId,
+                        ["name"] = resolved.Display,
+                        ["tokens"] = g.Sum(x => x.Tokens),
+                    };
+                    if (costEstimate && g.Any(x => x.ReportedUsd is null && !UsageCost.HasPrice(tool, x.Model, catalog)))
                         m["noPrice"] = true;
                     return m;
                 })

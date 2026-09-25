@@ -208,6 +208,9 @@ public static class PriceAliases
 
 
             ["DeepSeek-V4-Flash 正式版"] = "deepseek-v4.1-flash",
+            ["DeepSeek-V4-Flash"] = "deepseek-v4.1-flash",
+            ["DeepSeek-V4-Pro 正式版"] = "deepseek-v4-pro",
+            ["DeepSeek-V4-Pro"] = "deepseek-v4-pro",
 
             ["qwen3.8-flash"] = "Qwen3.8-Flash",
 

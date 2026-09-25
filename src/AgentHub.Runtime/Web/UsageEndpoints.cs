@@ -42,10 +42,7 @@ public static class UsageEndpoints
                 return Results.Json(new { error = "forbidden：写操作仅限 AgentHub 壳内" }, statusCode: 403);
             try
             {
-                quotas.InvalidateCache();
-                if (usageScan is not null) await usageScan();
-                else tokens.ScanAll();
-                PriceSyncService.RefreshInBackground();
+                await ManualScan.RunAsync(tokens, quotas, config, usageScan);
                 return Results.Json(new { ok = true });
             }
             catch (Exception ex)
@@ -69,6 +66,16 @@ public static class UsageEndpoints
         app.MapGet("/api/settings", () =>
         {
             var update = appUpdate.Snapshot();
+            // 先检查本地补丁（第 5.1 节）：只打开设置页也能发现自己手改的目录/坏文件。
+            // 只读元数据检查，不等待远程；坏文件沿用上次有效快照并记入状态。
+            try
+            {
+                PriceSyncService.Capture(config.Dashboard.PriceOverrides, config.Dashboard.CostCurrency);
+            }
+            catch (Exception)
+            {
+                // 目录不可用不阻断设置页；错误已记入 priceSync 状态
+            }
             // 明文凭据不回传：设置页只吃 *Set 标志，密钥仅经 PUT 写入
             return Results.Json(new
             {
@@ -90,7 +97,7 @@ public static class UsageEndpoints
                     agentOrder = config.Dashboard.ResolvedAgentOrder(),
                     quotaOrder = config.Dashboard.ResolvedQuotaOrder(),
                     costCurrency = DashboardSettings.NormalizeCurrency(config.Dashboard.CostCurrency),
-                    prices = PriceSyncService.Resolve(config.Dashboard.PriceOverrides),
+                    prices = PriceSyncService.CatalogPriceRows(),
                     priceSync = PriceSyncService.Status(),
                 },
                 credentials = new

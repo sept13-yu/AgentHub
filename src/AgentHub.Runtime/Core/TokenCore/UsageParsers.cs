@@ -320,7 +320,8 @@ public static class UsageParsers
                 {
                     var header = GetObj(GetObj(root, "data"), "header");
                     var config = GetObj(header, "config");
-                    currentModel = StripModelPath(GetStr(config, "model")) ?? currentModel;
+                    // 保留原始 model，展示归一在查询端做
+                    currentModel = GetStr(config, "model") ?? currentModel;
                     continue;
                 }
 
@@ -342,7 +343,7 @@ public static class UsageParsers
 
                     long turn = GetNum(dataEl, "turn"), step = GetNum(dataEl, "step");
                     var key = seq > 0 ? seq.ToString() : $"{turn}:{step}";
-                    var model = StripModelPath(GetStr(dataEl, "model") ?? GetStr(chunk, "model") ?? currentModel);
+                    var model = GetStr(dataEl, "model") ?? GetStr(chunk, "model") ?? currentModel;
                     lastByKey[key] = (
                         GetInt(usage, "inputTokens") + GetInt(usage, "input_tokens"),
                         GetInt(usage, "outputTokens") + GetInt(usage, "output_tokens"),
@@ -362,8 +363,7 @@ public static class UsageParsers
 
                     var msg = GetObj(dataEl, "message");
                     var source = GetObj(msg, "source");
-                    var model = StripModelPath(
-                        GetStr(source, "model") ?? GetStr(dataEl, "model") ?? currentModel);
+                    var model = GetStr(source, "model") ?? GetStr(dataEl, "model") ?? currentModel;
 
                     long turn = GetNum(dataEl, "turn"), step = GetNum(dataEl, "step");
                     var key = seq > 0 ? seq.ToString()

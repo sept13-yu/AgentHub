@@ -1,0 +1,1460 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-24",
+  "note": "模型目录：modelId 稳定身份，display 仅展示；Fast 独立，思考等级合并；跨版本借价不进身份别名。",
+  "models": [
+    {
+      "modelId": "deepseek-v4-flash",
+      "display": "DeepSeek-V4-Flash",
+      "aliases": [
+        {
+          "name": "deepseek-v4-flash"
+        },
+        {
+          "name": "deepseek-v4.1-flash"
+        },
+        {
+          "name": "deepseek-flash"
+        },
+        {
+          "name": "deepseek-flash--max"
+        },
+        {
+          "name": "deepseek-v4-flash-vision-exp"
+        },
+        {
+          "name": "deepseek-v4.1-flash-expires-on-0910"
+        },
+        {
+          "name": "DeepSeek-V4-Flash"
+        },
+        {
+          "name": "DeepSeek-V4-Flash 正式版"
+        },
+        {
+          "name": "dfmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        },
+        {
+          "name": "cn:deepseek-v4-flash",
+          "agents": [
+            "zcode"
+          ]
+        },
+        {
+          "name": "workbuddy/deepseek-v4.1-flash",
+          "agents": [
+            "mimocode"
+          ]
+        },
+        {
+          "name": "qodercn/deepseek-flash",
+          "agents": [
+            "mimocode"
+          ]
+        }
+      ],
+      "liteLlmKey": "deepseek-v4-flash",
+      "legacyPriceKeys": [
+        "deepseek-v4.1-flash",
+        "deepseek-flash",
+        "deepseek-v4.1-flash-expires-on-0910",
+        "deepseek-v4-flash",
+        "deepseek-v4-flash-vision-exp",
+        "DeepSeek-V4-Flash 正式版"
+      ],
+      "price": {
+        "inputPer1m": 2.0,
+        "outputPer1m": 8.0,
+        "cacheReadPer1m": 0.04,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "deepseek-v4-pro",
+      "display": "DeepSeek-V4-Pro",
+      "aliases": [
+        {
+          "name": "deepseek-v4-pro"
+        },
+        {
+          "name": "DeepSeek-V4-Pro"
+        },
+        {
+          "name": "DeepSeek-V4-Pro 正式版"
+        },
+        {
+          "name": "dmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        }
+      ],
+      "liteLlmKey": "deepseek-v4-pro",
+      "legacyPriceKeys": [
+        "deepseek-v4-pro",
+        "DeepSeek-V4-Pro 正式版"
+      ],
+      "price": {
+        "inputPer1m": 9.0,
+        "outputPer1m": 27.0,
+        "cacheReadPer1m": 0.299997,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "grok-4.6",
+      "display": "Grok 4.6",
+      "aliases": [
+        {
+          "name": "cursor-grok-4.6-high"
+        },
+        {
+          "name": "cursor-grok-4.6-xhigh"
+        },
+        {
+          "name": "grok-4.6-high"
+        },
+        {
+          "name": "grok-4.6-xhigh"
+        }
+      ],
+      "liteLlmKey": "xai/grok-4.6",
+      "legacyPriceKeys": [
+        "cursor-grok-4.6-high",
+        "cursor-grok-4.6-xhigh"
+      ],
+      "price": {
+        "inputPer1m": 2.0,
+        "outputPer1m": 6.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "grok-4.6-fast",
+      "display": "Grok 4.6 Fast",
+      "aliases": [
+        {
+          "name": "cursor-grok-4.6-high-fast"
+        },
+        {
+          "name": "cursor-grok-4.6-xhigh-fast"
+        },
+        {
+          "name": "grok-4.6-high-fast"
+        },
+        {
+          "name": "grok-4.6-xhigh-fast"
+        }
+      ],
+      "liteLlmKey": "xai/grok-4.6",
+      "legacyPriceKeys": [
+        "cursor-grok-4.6-high-fast",
+        "cursor-grok-4.6-xhigh-fast"
+      ],
+      "price": {
+        "inputPer1m": 4.0,
+        "outputPer1m": 12.0,
+        "cacheReadPer1m": 1.0,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "grok-4.7",
+      "display": "Grok 4.7",
+      "aliases": [
+        {
+          "name": "cursor-grok-4.7-high"
+        },
+        {
+          "name": "cursor-grok-4.7-xhigh"
+        },
+        {
+          "name": "cursor-grok-4.7-low"
+        },
+        {
+          "name": "cursor-grok-4.7-medium"
+        },
+        {
+          "name": "cursor-grok-4.7-max"
+        },
+        {
+          "name": "grok-4.7"
+        },
+        {
+          "name": "xai/grok-4.7"
+        },
+        {
+          "name": "grok-4.7-high"
+        },
+        {
+          "name": "grok-4.7-xhigh"
+        },
+        {
+          "name": "grok-4.7-low"
+        },
+        {
+          "name": "grok-4.7-medium"
+        },
+        {
+          "name": "grok-4.7-max"
+        }
+      ],
+      "liteLlmKey": "xai/grok-4.7",
+      "legacyPriceKeys": [
+        "cursor-grok-4.7-high",
+        "cursor-grok-4.7-xhigh"
+      ],
+      "price": {
+        "inputPer1m": 2.0,
+        "outputPer1m": 6.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "grok-4.7-fast",
+      "display": "Grok 4.7 Fast",
+      "aliases": [
+        {
+          "name": "cursor-grok-4.7-high-fast"
+        },
+        {
+          "name": "cursor-grok-4.7-xhigh-fast"
+        },
+        {
+          "name": "cursor-grok-4.7-low-fast"
+        },
+        {
+          "name": "cursor-grok-4.7-medium-fast"
+        },
+        {
+          "name": "grok-4.7-high-fast"
+        },
+        {
+          "name": "grok-4.7-xhigh-fast"
+        },
+        {
+          "name": "grok-4.7-low-fast"
+        },
+        {
+          "name": "grok-4.7-medium-fast"
+        }
+      ],
+      "liteLlmKey": "xai/grok-4.7",
+      "legacyPriceKeys": [
+        "cursor-grok-4.7-high-fast",
+        "cursor-grok-4.7-xhigh-fast"
+      ],
+      "price": {
+        "inputPer1m": 4.0,
+        "outputPer1m": 12.0,
+        "cacheReadPer1m": 1.0,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "grok-4.5",
+      "display": "Grok 4.5",
+      "aliases": [
+        {
+          "name": "cursor-grok-4.5-high"
+        },
+        {
+          "name": "grok-4.5-high"
+        },
+        {
+          "name": "grok-4.5-xhigh"
+        },
+        {
+          "name": "cursor-grok-4.5-xhigh"
+        }
+      ],
+      "liteLlmKey": "xai/grok-4.6",
+      "legacyPriceKeys": [
+        "cursor-grok-4.5-high"
+      ],
+      "price": {
+        "inputPer1m": 2.0,
+        "outputPer1m": 6.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "grok-4.5-fast",
+      "display": "Grok 4.5 Fast",
+      "aliases": [
+        {
+          "name": "cursor-grok-4.5-high-fast"
+        },
+        {
+          "name": "grok-4.5-high-fast"
+        },
+        {
+          "name": "cursor-grok-4.5-xhigh-fast"
+        }
+      ],
+      "liteLlmKey": "xai/grok-4.6",
+      "legacyPriceKeys": [
+        "cursor-grok-4.5-high-fast"
+      ],
+      "price": {
+        "inputPer1m": 4.0,
+        "outputPer1m": 12.0,
+        "cacheReadPer1m": 1.0,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "grok-bot-default",
+      "display": "Grok Bot Default",
+      "aliases": [
+        {
+          "name": "grok-bot-default"
+        },
+        {
+          "name": "grok-bot-automation"
+        },
+        {
+          "name": "grok-bot-cua"
+        }
+      ],
+      "liteLlmKey": "xai/grok-4.6",
+      "legacyPriceKeys": [
+        "grok-bot-default"
+      ],
+      "price": {
+        "inputPer1m": 2.0,
+        "outputPer1m": 6.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "glm-5.3",
+      "display": "GLM-5.3",
+      "aliases": [
+        {
+          "name": "glm-5.3"
+        },
+        {
+          "name": "GLM-5.3"
+        },
+        {
+          "name": "gmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        },
+        {
+          "name": "traework/glm-5.3"
+        }
+      ],
+      "liteLlmKey": "zai/glm-5.3",
+      "legacyPriceKeys": [
+        "GLM-5.3"
+      ],
+      "price": {
+        "inputPer1m": 8.0,
+        "outputPer1m": 28.0,
+        "cacheReadPer1m": 1.485712,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "glm-5.3-flash",
+      "display": "GLM-5.3-Flash",
+      "aliases": [
+        {
+          "name": "glm-5.3-flash"
+        },
+        {
+          "name": "GLM-5.3-Flash"
+        },
+        {
+          "name": "gfmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        },
+        {
+          "name": "stealth/ox-alpha"
+        }
+      ],
+      "liteLlmKey": "zai/glm-5.3-flash",
+      "legacyPriceKeys": [
+        "GLM-5.3-Flash"
+      ],
+      "price": {
+        "inputPer1m": 0.8,
+        "outputPer1m": 2.8,
+        "cacheReadPer1m": 0.16,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "glm-5.2",
+      "display": "GLM-5.2",
+      "aliases": [
+        {
+          "name": "glm-5.2"
+        },
+        {
+          "name": "glm-5.2-high"
+        },
+        {
+          "name": "glm-5.2-max"
+        }
+      ],
+      "liteLlmKey": "zai/glm-5.3",
+      "legacyPriceKeys": [
+        "glm-5.2",
+        "glm-5.2-high",
+        "glm-5.2-max"
+      ],
+      "price": {
+        "inputPer1m": 8.0,
+        "outputPer1m": 28.0,
+        "cacheReadPer1m": 1.485712,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "kimi-k3",
+      "display": "Kimi-K3",
+      "aliases": [
+        {
+          "name": "kimi-k3"
+        },
+        {
+          "name": "kimi-k3-1"
+        },
+        {
+          "name": "kimi-k3-high"
+        },
+        {
+          "name": "kimi-k3-max"
+        },
+        {
+          "name": "Kimi-K3"
+        },
+        {
+          "name": "kmodel_latest",
+          "agents": [
+            "qoder-cn"
+          ]
+        }
+      ],
+      "liteLlmKey": "azure_ai/kimi-k2.6",
+      "legacyPriceKeys": [
+        "kimi-k3"
+      ],
+      "price": {
+        "inputPer1m": 20.0,
+        "outputPer1m": 100.0,
+        "cacheReadPer1m": 3.36842,
+        "cacheWritePer1m": null,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "kimi-k2.7-code",
+      "display": "Kimi-K2.7-Code",
+      "aliases": [
+        {
+          "name": "kmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        }
+      ],
+      "legacyPriceKeys": [
+        "kmodel"
+      ],
+      "price": null
+    },
+    {
+      "modelId": "qwen3.8-max",
+      "display": "Qwen3.8-Max",
+      "aliases": [
+        {
+          "name": "qwen3.8-max"
+        },
+        {
+          "name": "Qwen3.8-Max"
+        },
+        {
+          "name": "qmodel_38max",
+          "agents": [
+            "qoder-cn",
+            "qoder"
+          ]
+        }
+      ],
+      "liteLlmKey": "dashscope/qwen3.8-max",
+      "legacyPriceKeys": [
+        "Qwen3.8-Max"
+      ],
+      "price": {
+        "inputPer1m": 12.0,
+        "outputPer1m": 36.0,
+        "cacheReadPer1m": 1.5,
+        "cacheWritePer1m": null,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "qwen3.8-flash",
+      "display": "Qwen3.8-Flash",
+      "aliases": [
+        {
+          "name": "qwen3.8-flash"
+        },
+        {
+          "name": "Qwen3.8-Flash"
+        },
+        {
+          "name": "qfmodel",
+          "agents": [
+            "qoder-cn",
+            "qoder"
+          ]
+        },
+        {
+          "name": "qoder/qwen3.8-flash"
+        },
+        {
+          "name": "qodercn/qwen3.8-flash"
+        }
+      ],
+      "liteLlmKey": "dashscope/qwen3.8-flash",
+      "legacyPriceKeys": [
+        "Qwen3.8-Flash"
+      ],
+      "price": {
+        "inputPer1m": 0.8,
+        "outputPer1m": 2.7,
+        "cacheReadPer1m": 0.08,
+        "cacheWritePer1m": null,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "qwen3.7-max",
+      "display": "Qwen3.7-Max",
+      "aliases": [
+        {
+          "name": "qmodel_latest",
+          "agents": [
+            "qoder-cn"
+          ]
+        }
+      ],
+      "price": null
+    },
+    {
+      "modelId": "qwen3.7-plus",
+      "display": "Qwen3.7-Plus",
+      "aliases": [
+        {
+          "name": "qmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        }
+      ],
+      "price": null
+    },
+    {
+      "modelId": "mimo-v2.6-flash",
+      "display": "MiMo V2.6 Flash",
+      "aliases": [
+        {
+          "name": "mimo-v2.6-flash"
+        },
+        {
+          "name": "mimo-x-flash-preview"
+        },
+        {
+          "name": "mimo-x-flash"
+        },
+        {
+          "name": "mimo-x-flash preview"
+        },
+        {
+          "name": "mimo x flash preview"
+        },
+        {
+          "name": "X-Flash Preview"
+        },
+        {
+          "name": "X Flash Preview"
+        },
+        {
+          "name": "mimo-v2.6-flash-preview"
+        },
+        {
+          "name": "MiMo V2.6 Flash"
+        }
+      ],
+      "legacyPriceKeys": [
+        "mimo-v2.6-flash"
+      ],
+      "price": {
+        "inputPer1m": 1.0,
+        "outputPer1m": 2.0,
+        "cacheReadPer1m": 0.02,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "mimo-v2.6-pro",
+      "display": "MiMo V2.6 Pro",
+      "aliases": [
+        {
+          "name": "mimo-v2.6-pro"
+        },
+        {
+          "name": "mimo-x-pro-preview"
+        },
+        {
+          "name": "mimo-x-pro"
+        },
+        {
+          "name": "mimo-x-pro preview"
+        },
+        {
+          "name": "mimo x pro preview"
+        },
+        {
+          "name": "X-Pro Preview"
+        },
+        {
+          "name": "X Pro Preview"
+        },
+        {
+          "name": "mimo-v2.6-pro-preview"
+        },
+        {
+          "name": "MiMo V2.6 Pro"
+        }
+      ],
+      "legacyPriceKeys": [
+        "mimo-v2.6-pro"
+      ],
+      "price": {
+        "inputPer1m": 3.0,
+        "outputPer1m": 6.0,
+        "cacheReadPer1m": 0.025,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "mimo-v2.6-pro-ultraspeed",
+      "display": "MiMo V2.6 Pro Ultraspeed",
+      "aliases": [
+        {
+          "name": "mimo-v2.6-pro-ultraspeed"
+        },
+        {
+          "name": "mimo-x-pro-ultraspeed-preview"
+        },
+        {
+          "name": "mimo-x-pro-ultraspeed"
+        },
+        {
+          "name": "mimo-x-pro-ultra-speed-preview"
+        },
+        {
+          "name": "mimo-v2.6-pro-ultra-speed"
+        },
+        {
+          "name": "mimo-v2.6-ultraspeed"
+        },
+        {
+          "name": "X-Pro Ultraspeed Preview"
+        },
+        {
+          "name": "X-Pro UltraSpeed Preview"
+        },
+        {
+          "name": "MiMo V2.6 Pro Ultraspeed"
+        }
+      ],
+      "legacyPriceKeys": [
+        "mimo-v2.6-pro-ultraspeed"
+      ],
+      "price": {
+        "inputPer1m": 30.0,
+        "outputPer1m": 60.0,
+        "cacheReadPer1m": 0.25,
+        "cacheWritePer1m": 0.0,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "gpt-6-sol",
+      "display": "GPT-6 Sol",
+      "aliases": [
+        {
+          "name": "gpt-6-sol"
+        },
+        {
+          "name": "gpt-6-sol-high"
+        },
+        {
+          "name": "gpt-6-sol-medium"
+        },
+        {
+          "name": "gpt-6-sol-low"
+        },
+        {
+          "name": "gpt-6-sol-xhigh"
+        },
+        {
+          "name": "gpt-6-sol-max"
+        },
+        {
+          "name": "openai/gpt-6-sol"
+        }
+      ],
+      "liteLlmKey": "gpt-6-sol",
+      "legacyPriceKeys": [
+        "gpt-6-sol"
+      ],
+      "price": {
+        "inputPer1m": 2.0,
+        "outputPer1m": 10.0,
+        "cacheReadPer1m": 0.2,
+        "cacheWritePer1m": 2.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6-sol-fast",
+      "display": "GPT-6 Sol Fast",
+      "aliases": [
+        {
+          "name": "gpt-6-sol-fast"
+        },
+        {
+          "name": "gpt-6-sol-high-fast"
+        },
+        {
+          "name": "gpt-6-sol-medium-fast"
+        },
+        {
+          "name": "gpt-6-sol-low-fast"
+        },
+        {
+          "name": "gpt-6-sol-xhigh-fast"
+        },
+        {
+          "name": "gpt-6-sol-max-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-6-sol",
+      "legacyPriceKeys": [
+        "gpt-6-sol-fast"
+      ],
+      "price": {
+        "inputPer1m": 4.0,
+        "outputPer1m": 20.0,
+        "cacheReadPer1m": 0.4,
+        "cacheWritePer1m": 5.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6-luna",
+      "display": "GPT-6 Luna",
+      "aliases": [
+        {
+          "name": "gpt-6-luna"
+        },
+        {
+          "name": "gpt-6-luna-high"
+        },
+        {
+          "name": "gpt-6-luna-medium"
+        },
+        {
+          "name": "gpt-6-luna-low"
+        },
+        {
+          "name": "gpt-6-luna-xhigh"
+        },
+        {
+          "name": "gpt-6-luna-max"
+        },
+        {
+          "name": "openai/gpt-6-luna"
+        }
+      ],
+      "liteLlmKey": "gpt-6-luna",
+      "legacyPriceKeys": [
+        "gpt-6-luna"
+      ],
+      "price": {
+        "inputPer1m": 0.1,
+        "outputPer1m": 0.5,
+        "cacheReadPer1m": 0.01,
+        "cacheWritePer1m": 0.125,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6-luna-fast",
+      "display": "GPT-6 Luna Fast",
+      "aliases": [
+        {
+          "name": "gpt-6-luna-fast"
+        },
+        {
+          "name": "gpt-6-luna-high-fast"
+        },
+        {
+          "name": "gpt-6-luna-medium-fast"
+        },
+        {
+          "name": "gpt-6-luna-low-fast"
+        },
+        {
+          "name": "gpt-6-luna-xhigh-fast"
+        },
+        {
+          "name": "gpt-6-luna-max-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-6-luna",
+      "legacyPriceKeys": [
+        "gpt-6-luna-fast"
+      ],
+      "price": {
+        "inputPer1m": 0.2,
+        "outputPer1m": 1.0,
+        "cacheReadPer1m": 0.02,
+        "cacheWritePer1m": 0.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6-astra",
+      "display": "GPT-6 Astra",
+      "aliases": [
+        {
+          "name": "gpt-6-astra"
+        },
+        {
+          "name": "gpt-6-astra-high"
+        },
+        {
+          "name": "gpt-6-astra-xhigh"
+        },
+        {
+          "name": "gpt-6-astrahigh"
+        },
+        {
+          "name": "gpt-6-astra-ultra"
+        },
+        {
+          "name": "openai/gpt-6-astra"
+        }
+      ],
+      "liteLlmKey": "gpt-6-astra",
+      "legacyPriceKeys": [
+        "gpt-6-astra"
+      ],
+      "price": {
+        "inputPer1m": 10.0,
+        "outputPer1m": 50.0,
+        "cacheReadPer1m": 1.0,
+        "cacheWritePer1m": 12.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.6-sol",
+      "display": "GPT-5.6 Sol",
+      "aliases": [
+        {
+          "name": "gpt-5.6-sol"
+        },
+        {
+          "name": "gpt-5.6-sol-high"
+        },
+        {
+          "name": "gpt-5.6-sol-medium"
+        }
+      ],
+      "liteLlmKey": "gpt-5.6-sol",
+      "legacyPriceKeys": [
+        "gpt-5.6-sol"
+      ],
+      "price": {
+        "inputPer1m": 4.0,
+        "outputPer1m": 20.0,
+        "cacheReadPer1m": 0.4,
+        "cacheWritePer1m": 5.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.6-sol-fast",
+      "display": "GPT-5.6 Sol Fast",
+      "aliases": [
+        {
+          "name": "gpt-5.6-sol-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-5.6-sol",
+      "legacyPriceKeys": [
+        "gpt-5.6-sol-fast"
+      ],
+      "price": {
+        "inputPer1m": 8.0,
+        "outputPer1m": 40.0,
+        "cacheReadPer1m": 0.8,
+        "cacheWritePer1m": 10.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.6-terra",
+      "display": "GPT-5.6 Terra",
+      "aliases": [
+        {
+          "name": "gpt-5.6-terra"
+        }
+      ],
+      "liteLlmKey": "gpt-5.6-terra",
+      "legacyPriceKeys": [
+        "gpt-5.6-terra"
+      ],
+      "price": {
+        "inputPer1m": 2.0,
+        "outputPer1m": 12.0,
+        "cacheReadPer1m": 0.2,
+        "cacheWritePer1m": 2.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.6-terra-fast",
+      "display": "GPT-5.6 Terra Fast",
+      "aliases": [
+        {
+          "name": "gpt-5.6-terra-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-5.6-terra",
+      "legacyPriceKeys": [
+        "gpt-5.6-terra-fast"
+      ],
+      "price": {
+        "inputPer1m": 4.0,
+        "outputPer1m": 24.0,
+        "cacheReadPer1m": 0.4,
+        "cacheWritePer1m": 5.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.6-luna",
+      "display": "GPT-5.6 Luna",
+      "aliases": [
+        {
+          "name": "gpt-5.6-luna"
+        },
+        {
+          "name": "gpt-5.6-luna-max"
+        },
+        {
+          "name": "codex-auto-review"
+        }
+      ],
+      "liteLlmKey": "gpt-5.6-luna",
+      "legacyPriceKeys": [
+        "gpt-5.6-luna"
+      ],
+      "price": {
+        "inputPer1m": 0.2,
+        "outputPer1m": 1.2,
+        "cacheReadPer1m": 0.02,
+        "cacheWritePer1m": 0.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.6-luna-fast",
+      "display": "GPT-5.6 Luna Fast",
+      "aliases": [
+        {
+          "name": "gpt-5.6-luna-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-5.6-luna",
+      "legacyPriceKeys": [
+        "gpt-5.6-luna-fast"
+      ],
+      "price": {
+        "inputPer1m": 0.4,
+        "outputPer1m": 2.4,
+        "cacheReadPer1m": 0.04,
+        "cacheWritePer1m": 0.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.5",
+      "display": "GPT-5.5",
+      "aliases": [
+        {
+          "name": "gpt-5.5"
+        },
+        {
+          "name": "gpt-5.5-medium"
+        }
+      ],
+      "legacyPriceKeys": [
+        "gpt-5.5"
+      ],
+      "price": {
+        "inputPer1m": 5.0,
+        "outputPer1m": 30.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-5.4",
+      "display": "GPT-5.4",
+      "aliases": [
+        {
+          "name": "gpt-5.4"
+        },
+        {
+          "name": "gpt-5.4-medium"
+        }
+      ],
+      "legacyPriceKeys": [
+        "gpt-5.4"
+      ],
+      "price": {
+        "inputPer1m": 2.5,
+        "outputPer1m": 15.0,
+        "cacheReadPer1m": 0.25,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-opus-5",
+      "display": "Claude Opus 5",
+      "aliases": [
+        {
+          "name": "claude-opus-5"
+        },
+        {
+          "name": "claude-opus-5-thinking-high"
+        },
+        {
+          "name": "claude-opus-5-thinking-medium"
+        },
+        {
+          "name": "claude-opus-5-thinking-low"
+        },
+        {
+          "name": "claude-opus-5-thinking-max"
+        },
+        {
+          "name": "claude-opus-5-thinking-xhigh"
+        }
+      ],
+      "liteLlmKey": "claude-opus-5",
+      "legacyPriceKeys": [
+        "claude-opus-5-thinking-high"
+      ],
+      "price": {
+        "inputPer1m": 5.0,
+        "outputPer1m": 25.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": 6.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-opus-5.5",
+      "display": "Claude Opus 5.5",
+      "aliases": [
+        {
+          "name": "claude-opus-5-5"
+        },
+        {
+          "name": "claude-opus-5.5"
+        },
+        {
+          "name": "claude-opus-5-5-thinking-high"
+        },
+        {
+          "name": "claude-opus-5-5-thinking-medium"
+        },
+        {
+          "name": "claude-opus-5-5-thinking-low"
+        },
+        {
+          "name": "claude-opus-5-5-thinking-max"
+        },
+        {
+          "name": "claude-opus-5-5-thinking-xhigh"
+        },
+        {
+          "name": "claude-opus-5-5-high"
+        },
+        {
+          "name": "claude-opus-5-5-medium"
+        },
+        {
+          "name": "claude-opus-5-5-low"
+        },
+        {
+          "name": "claude-opus-5-5-max"
+        },
+        {
+          "name": "claude-opus-5-5-xhigh"
+        },
+        {
+          "name": "anthropic/claude-opus-5-5"
+        }
+      ],
+      "liteLlmKey": "claude-opus-5-5",
+      "legacyPriceKeys": [
+        "claude-opus-5-5-thinking-high"
+      ],
+      "price": {
+        "inputPer1m": 4.0,
+        "outputPer1m": 20.0,
+        "cacheReadPer1m": 0.2,
+        "cacheWritePer1m": 5.0,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-opus-4-6",
+      "display": "Claude Opus 4.6",
+      "aliases": [
+        {
+          "name": "claude-opus-4-6"
+        },
+        {
+          "name": "claude-opus-4-6-thinking-high"
+        },
+        {
+          "name": "claude-4.6-opus-high-thinking"
+        }
+      ],
+      "liteLlmKey": "claude-opus-4-6",
+      "legacyPriceKeys": [
+        "claude-opus-4-6"
+      ],
+      "price": {
+        "inputPer1m": 5.0,
+        "outputPer1m": 25.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": 6.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-opus-4-8",
+      "display": "Claude Opus 4.8",
+      "aliases": [
+        {
+          "name": "claude-opus-4-8"
+        },
+        {
+          "name": "claude-opus-4-8-thinking-high"
+        },
+        {
+          "name": "claude-opus-4-8-thinking-medium"
+        }
+      ],
+      "liteLlmKey": "claude-opus-4-8",
+      "legacyPriceKeys": [
+        "claude-opus-4-8"
+      ],
+      "price": {
+        "inputPer1m": 5.0,
+        "outputPer1m": 25.0,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": 6.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-sonnet-4-5",
+      "display": "Claude Sonnet 4.5",
+      "aliases": [
+        {
+          "name": "claude-sonnet-4-5"
+        },
+        {
+          "name": "claude-4.5-sonnet"
+        },
+        {
+          "name": "claude-sonnet-4-5-thinking-high"
+        }
+      ],
+      "liteLlmKey": "claude-sonnet-4-5",
+      "legacyPriceKeys": [
+        "claude-sonnet-4-5"
+      ],
+      "price": {
+        "inputPer1m": 3.0,
+        "outputPer1m": 15.0,
+        "cacheReadPer1m": 0.3,
+        "cacheWritePer1m": 3.75,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-sonnet-4-6",
+      "display": "Claude Sonnet 4.6",
+      "aliases": [
+        {
+          "name": "claude-sonnet-4-6"
+        },
+        {
+          "name": "claude-4.6-sonnet-medium-thinking"
+        },
+        {
+          "name": "claude-sonnet-4-6-thinking-medium"
+        }
+      ],
+      "liteLlmKey": "claude-sonnet-4-6",
+      "legacyPriceKeys": [
+        "claude-sonnet-4-6"
+      ],
+      "price": {
+        "inputPer1m": 3.0,
+        "outputPer1m": 15.0,
+        "cacheReadPer1m": 0.3,
+        "cacheWritePer1m": 3.75,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-fable-5",
+      "display": "Claude Fable 5",
+      "aliases": [
+        {
+          "name": "claude-fable-5"
+        },
+        {
+          "name": "claude-fable-5-thinking-high"
+        }
+      ],
+      "liteLlmKey": "claude-fable-5",
+      "legacyPriceKeys": [
+        "claude-fable-5"
+      ],
+      "price": {
+        "inputPer1m": 10.0,
+        "outputPer1m": 50.0,
+        "cacheReadPer1m": 1.0,
+        "cacheWritePer1m": 12.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-fable-5-1",
+      "display": "Claude Fable 5.1",
+      "aliases": [
+        {
+          "name": "claude-fable-5-1"
+        },
+        {
+          "name": "claude-fable-5-1-thinking-high"
+        }
+      ],
+      "liteLlmKey": "claude-fable-5-1",
+      "legacyPriceKeys": [
+        "claude-fable-5-1"
+      ],
+      "price": {
+        "inputPer1m": 10.0,
+        "outputPer1m": 50.0,
+        "cacheReadPer1m": 0.25,
+        "cacheWritePer1m": 12.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "composer-2.5",
+      "display": "Composer 2.5",
+      "aliases": [
+        {
+          "name": "composer-2.5"
+        }
+      ],
+      "legacyPriceKeys": [
+        "composer-2.5"
+      ],
+      "price": {
+        "inputPer1m": 0.5,
+        "outputPer1m": 2.5,
+        "cacheReadPer1m": null,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "composer-2.5-fast",
+      "display": "Composer 2.5 Fast",
+      "aliases": [
+        {
+          "name": "composer-2.5-fast"
+        }
+      ],
+      "legacyPriceKeys": [
+        "composer-2.5-fast"
+      ],
+      "price": {
+        "inputPer1m": 3.0,
+        "outputPer1m": 15.0,
+        "cacheReadPer1m": null,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "composer-2-fast",
+      "display": "Composer 2 Fast",
+      "aliases": [
+        {
+          "name": "composer-2-fast"
+        }
+      ],
+      "price": null
+    },
+    {
+      "modelId": "hy4-preview",
+      "display": "HY4 Preview",
+      "aliases": [
+        {
+          "name": "hy4-preview"
+        },
+        {
+          "name": "hy4-preview-x"
+        }
+      ],
+      "legacyPriceKeys": [
+        "hy4-preview"
+      ],
+      "price": {
+        "inputPer1m": 6.0,
+        "outputPer1m": 18.0,
+        "cacheReadPer1m": null,
+        "cacheWritePer1m": null,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "hy3",
+      "display": "HY3",
+      "aliases": [
+        {
+          "name": "hy3"
+        }
+      ],
+      "legacyPriceKeys": [
+        "hy3"
+      ],
+      "price": {
+        "inputPer1m": 6.0,
+        "outputPer1m": 18.0,
+        "cacheReadPer1m": null,
+        "cacheWritePer1m": null,
+        "currency": "CNY"
+      }
+    },
+    {
+      "modelId": "gemini-3.7-flash",
+      "display": "Gemini 3.7 Flash",
+      "aliases": [
+        {
+          "name": "gemini-3.7-flash"
+        },
+        {
+          "name": "gemini-3.7-flash-high"
+        }
+      ],
+      "liteLlmKey": "gemini-3.7-flash",
+      "legacyPriceKeys": [
+        "gemini-3.7-flash-high"
+      ],
+      "price": {
+        "inputPer1m": 0.75,
+        "outputPer1m": 3.5,
+        "cacheReadPer1m": 0.075,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-2.5-flash",
+      "display": "Gemini 2.5 Flash",
+      "aliases": [
+        {
+          "name": "gemini-2.5-flash"
+        }
+      ],
+      "price": null
+    },
+    {
+      "modelId": "minimax-m3",
+      "display": "MiniMax-M3",
+      "aliases": [
+        {
+          "name": "mmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        }
+      ],
+      "price": null
+    },
+    {
+      "modelId": "cantus",
+      "display": "Cantus",
+      "aliases": [
+        {
+          "name": "cmodel",
+          "agents": [
+            "qoder-cn"
+          ]
+        }
+      ],
+      "price": null
+    }
+  ]
+}

@@ -11,6 +11,8 @@ export const RANGES: { key: RangeKey; label: string; vs: string }[] = [
 ]
 
 export interface UsageModel {
+  /** 稳定模型身份；旧响应无 id 时用 name 兼容。 */
+  id: string
   name: string
   tokens: number
   pct: number
@@ -143,14 +145,18 @@ function readAgents(raw: unknown): UsageAgent[] {
 
 function readModels(raw: unknown): UsageModel[] {
   if (!Array.isArray(raw)) return []
-  const rows: { name: string; tokens: number; noPrice?: boolean }[] = []
+  const rows: { id: string; name: string; tokens: number; noPrice?: boolean }[] = []
   for (const item of raw) {
     const rec = asRecord(item)
     if (!rec) continue
     const name = str(rec.name) || 'unknown'
     const tokens = num(rec.tokens)
     if (tokens <= 0) continue
-    const row: { name: string; tokens: number; noPrice?: boolean } = { name, tokens }
+    const row: { id: string; name: string; tokens: number; noPrice?: boolean } = {
+      id: str(rec.id) || name,
+      name,
+      tokens,
+    }
     if (rec.noPrice === true) row.noPrice = true
     rows.push(row)
   }

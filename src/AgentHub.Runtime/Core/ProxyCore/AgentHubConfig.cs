@@ -40,7 +40,10 @@ public sealed class DocsSettings
 /// <summary>价格表一行：模型名 + 每 100 万 token 的输入/输出单价。输入按总量计价。无效行原样保存，算钱时再跳过。</summary>
 public sealed class PriceRow
 {
+    /// <summary>稳定 modelId（目录投影）或旧配置里的原始模型名。</summary>
     public string Model { get; set; } = "";
+    /// <summary>展示名（目录投影时有值）；旧消费者继续只读 Model。</summary>
+    public string? Display { get; set; }
     public double? InputPer1m { get; set; }
     public double? OutputPer1m { get; set; }
     // Cache hit / write per 1M; null => fall back to InputPer1m (LiteLLM/TokenTracker)
@@ -396,7 +399,16 @@ public sealed class AgentHubConfig
 
     private readonly object _saveLock = new();
 
-    public static string Dir => Path.Combine(PlatformPaths.RoamingAppData, "AgentHub");
+    /// <summary>本机配置目录。可用 AGENTHUB_CONFIG_DIR 覆盖，供隔离测试/探针指向临时夹具；生产不设置。</summary>
+    public static string Dir
+    {
+        get
+        {
+            var over = Environment.GetEnvironmentVariable("AGENTHUB_CONFIG_DIR");
+            if (!string.IsNullOrWhiteSpace(over)) return over;
+            return Path.Combine(PlatformPaths.RoamingAppData, "AgentHub");
+        }
+    }
     /// <summary>Velopack 安装根。Setup 只要看到这个目录非空就弹「已安装」。</summary>
     public static string InstallDir => Path.Combine(PlatformPaths.LocalAppData, "AgentHub");
     /// <summary>本机缓存/技能库。必须在安装目录外，否则卸完无法重装。</summary>

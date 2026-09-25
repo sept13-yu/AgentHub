@@ -1,385 +1,429 @@
-{
-  "updatedAt": "2026-09-23",
-  "note": "Official list prices per 1M tokens: overseas USD / domestic CNY; no hard-coded FX; input/output/currency owned by this file; cacheRead/cacheWrite optional seed values. Runtime enriches cache from LiteLLM (scaled to list input) via LiteLlmPriceMap; usage log variants map via PriceAliases. Unpriced: auto/unknown/agent_review. mimo-x-*-preview (closed beta) aliases to official mimo-v2.6-flash / mimo-v2.6-pro. Xiaomi MiMo V2.6 list prices match V2.5: Flash CNY 1/2, Pro CNY 3/6 per 1M (cacheRead 0.02 / 0.025); mimo-v2.6-pro-ultraspeed is Pro speed mode with a published 10× Pro token rate (CNY 30/60, cacheRead 0.25). cacheWrite seed 0 (official cache write limited-time free). Grok 4.7 short-context API matches 4.6 (USD 2/6, cacheRead 0.5; Cursor -fast 2×). Claude Opus 5.5 USD 4/20, cacheRead 0.20, 5m cacheWrite 5. GPT-6 Sol short-context USD 2/10, cacheRead 0.20, cacheWrite 2.50; GPT-6 Luna USD 0.10/0.50, cacheRead 0.01, cacheWrite 0.125; GPT-6 -fast 2× like GPT-5.6. gpt-6-astra remains USD 10/50, cacheRead 1, cacheWrite 12.5. codex-auto-review aliases to gpt-5.6-luna (OpenAI auto-review backend since ~2026-07); stealth/ox-alpha aliases to GLM-5.3-Flash. Sync: GitHub then Gitee then local; LiteLLM: GitHub then jsDelivr then litellm.prices.cache.json (24h).",
-  "prices": [
-    {
-      "model": "cursor-grok-4.6-xhigh-fast",
-      "inputPer1m": 4.0,
-      "outputPer1m": 12.0,
-      "currency": "USD",
-      "cacheReadPer1m": 1.0
-    },
-    {
-      "model": "cursor-grok-4.6-high-fast",
-      "inputPer1m": 4.0,
-      "outputPer1m": 12.0,
-      "currency": "USD",
-      "cacheReadPer1m": 1.0
-    },
-    {
-      "model": "cursor-grok-4.6-xhigh",
-      "inputPer1m": 2.0,
-      "outputPer1m": 6.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5
-    },
-    {
-      "model": "grok-bot-default",
-      "inputPer1m": 2.0,
-      "outputPer1m": 6.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5
-    },
-    {
-      "model": "cursor-grok-4.6-high",
-      "inputPer1m": 2.0,
-      "outputPer1m": 6.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5
-    },
-    {
-      "model": "cursor-grok-4.7-xhigh-fast",
-      "inputPer1m": 4.0,
-      "outputPer1m": 12.0,
-      "currency": "USD",
-      "cacheReadPer1m": 1.0
-    },
-    {
-      "model": "cursor-grok-4.7-high-fast",
-      "inputPer1m": 4.0,
-      "outputPer1m": 12.0,
-      "currency": "USD",
-      "cacheReadPer1m": 1.0
-    },
-    {
-      "model": "cursor-grok-4.7-xhigh",
-      "inputPer1m": 2.0,
-      "outputPer1m": 6.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5
-    },
-    {
-      "model": "cursor-grok-4.7-high",
-      "inputPer1m": 2.0,
-      "outputPer1m": 6.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5
-    },
-    {
-      "model": "claude-opus-5-thinking-high",
-      "inputPer1m": 5.0,
-      "outputPer1m": 25.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5,
-      "cacheWritePer1m": 6.25
-    },
-    {
-      "model": "claude-opus-5-5-thinking-high",
-      "inputPer1m": 4.0,
-      "outputPer1m": 20.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.2,
-      "cacheWritePer1m": 5.0
-    },
-    {
-      "model": "gemini-3.7-flash-high",
-      "inputPer1m": 0.75,
-      "outputPer1m": 3.5,
-      "currency": "USD",
-      "cacheReadPer1m": 0.075
-    },
-    {
-      "model": "composer-2.5",
-      "inputPer1m": 0.5,
-      "outputPer1m": 2.5,
-      "currency": "USD"
-    },
-    {
-      "model": "composer-2.5-fast",
-      "inputPer1m": 3.0,
-      "outputPer1m": 15.0,
-      "currency": "USD"
-    },
-    {
-      "model": "gpt-5.6-sol",
-      "inputPer1m": 4.0,
-      "outputPer1m": 20.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.4,
-      "cacheWritePer1m": 5.0
-    },
-    {
-      "model": "gpt-5.6-sol-fast",
-      "inputPer1m": 8.0,
-      "outputPer1m": 40.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.8,
-      "cacheWritePer1m": 10.0
-    },
-    {
-      "model": "gpt-5.6-terra",
-      "inputPer1m": 2.0,
-      "outputPer1m": 12.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.2,
-      "cacheWritePer1m": 2.5
-    },
-    {
-      "model": "gpt-5.6-terra-fast",
-      "inputPer1m": 4.0,
-      "outputPer1m": 24.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.4,
-      "cacheWritePer1m": 5.0
-    },
-    {
-      "model": "gpt-5.6-luna",
-      "inputPer1m": 0.2,
-      "outputPer1m": 1.2,
-      "currency": "USD",
-      "cacheReadPer1m": 0.02,
-      "cacheWritePer1m": 0.25
-    },
-    {
-      "model": "gpt-5.6-luna-fast",
-      "inputPer1m": 0.4,
-      "outputPer1m": 2.4,
-      "currency": "USD",
-      "cacheReadPer1m": 0.04,
-      "cacheWritePer1m": 0.5
-    },
-    {
-      "model": "GLM-5.3",
-      "inputPer1m": 8.0,
-      "outputPer1m": 28.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 1.485712,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "GLM-5.3-Flash",
-      "inputPer1m": 0.8,
-      "outputPer1m": 2.8,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.16,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "deepseek-v4.1-flash",
-      "inputPer1m": 2.0,
-      "outputPer1m": 8.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.04,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "deepseek-flash",
-      "inputPer1m": 2.0,
-      "outputPer1m": 8.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.04,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "deepseek-v4.1-flash-expires-on-0910",
-      "inputPer1m": 2.0,
-      "outputPer1m": 8.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.04,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "deepseek-v4-flash",
-      "inputPer1m": 2.0,
-      "outputPer1m": 8.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.04,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "deepseek-v4-flash-vision-exp",
-      "inputPer1m": 2.0,
-      "outputPer1m": 8.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.04,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "deepseek-v4-pro",
-      "inputPer1m": 9.0,
-      "outputPer1m": 27.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.299997,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "DeepSeek-V4-Flash 正式版",
-      "inputPer1m": 2.0,
-      "outputPer1m": 8.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.04,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "DeepSeek-V4-Pro 正式版",
-      "inputPer1m": 9.0,
-      "outputPer1m": 27.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.299997,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "kimi-k3",
-      "inputPer1m": 20.0,
-      "outputPer1m": 100.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 3.36842
-    },
-    {
-      "model": "Qwen3.8-Max",
-      "inputPer1m": 12.0,
-      "outputPer1m": 36.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 1.5
-    },
-    {
-      "model": "hy4-preview",
-      "inputPer1m": 6.0,
-      "outputPer1m": 18.0,
-      "currency": "CNY"
-    },
-    {
-      "model": "gpt-5.4",
-      "inputPer1m": 2.5,
-      "outputPer1m": 15.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.25
-    },
-    {
-      "model": "gpt-5.5",
-      "inputPer1m": 5.0,
-      "outputPer1m": 30.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5
-    },
-    {
-      "model": "gpt-6-astra",
-      "inputPer1m": 10.0,
-      "outputPer1m": 50.0,
-      "currency": "USD",
-      "cacheReadPer1m": 1.0,
-      "cacheWritePer1m": 12.5
-    },
-    {
-      "model": "gpt-6-sol",
-      "inputPer1m": 2.0,
-      "outputPer1m": 10.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.2,
-      "cacheWritePer1m": 2.5
-    },
-    {
-      "model": "gpt-6-sol-fast",
-      "inputPer1m": 4.0,
-      "outputPer1m": 20.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.4,
-      "cacheWritePer1m": 5.0
-    },
-    {
-      "model": "gpt-6-luna",
-      "inputPer1m": 0.1,
-      "outputPer1m": 0.5,
-      "currency": "USD",
-      "cacheReadPer1m": 0.01,
-      "cacheWritePer1m": 0.125
-    },
-    {
-      "model": "gpt-6-luna-fast",
-      "inputPer1m": 0.2,
-      "outputPer1m": 1.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.02,
-      "cacheWritePer1m": 0.25
-    },
-    {
-      "model": "claude-sonnet-4-6",
-      "inputPer1m": 3.0,
-      "outputPer1m": 15.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.3,
-      "cacheWritePer1m": 3.75
-    },
-    {
-      "model": "claude-sonnet-4-5",
-      "inputPer1m": 3.0,
-      "outputPer1m": 15.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.3,
-      "cacheWritePer1m": 3.75
-    },
-    {
-      "model": "claude-opus-4-8",
-      "inputPer1m": 5.0,
-      "outputPer1m": 25.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5,
-      "cacheWritePer1m": 6.25
-    },
-    {
-      "model": "claude-opus-4-6",
-      "inputPer1m": 5.0,
-      "outputPer1m": 25.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.5,
-      "cacheWritePer1m": 6.25
-    },
-    {
-      "model": "claude-fable-5",
-      "inputPer1m": 10.0,
-      "outputPer1m": 50.0,
-      "currency": "USD",
-      "cacheReadPer1m": 1.0,
-      "cacheWritePer1m": 12.5
-    },
-    {
-      "model": "claude-fable-5-1",
-      "inputPer1m": 10.0,
-      "outputPer1m": 50.0,
-      "currency": "USD",
-      "cacheReadPer1m": 0.25,
-      "cacheWritePer1m": 12.5
-    },
-    {
-      "model": "Qwen3.8-Flash",
-      "inputPer1m": 0.8,
-      "outputPer1m": 2.7,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.08
-    },
-    {
-      "model": "mimo-v2.6-flash",
-      "inputPer1m": 1.0,
-      "outputPer1m": 2.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.02,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "mimo-v2.6-pro",
-      "inputPer1m": 3.0,
-      "outputPer1m": 6.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.025,
-      "cacheWritePer1m": 0.0
-    },
-    {
-      "model": "mimo-v2.6-pro-ultraspeed",
-      "inputPer1m": 30.0,
-      "outputPer1m": 60.0,
-      "currency": "CNY",
-      "cacheReadPer1m": 0.25,
-      "cacheWritePer1m": 0.0
-    }
-  ]
-}
+{
+  "updatedAt": "2026-09-24",
+  "note": "模型目录：modelId 稳定身份，display 仅展示；Fast 独立，思考等级合并；跨版本借价不进身份别名。 | generated by tools/export-legacy-prices.ps1",
+  "prices": [
+    {
+      "model": "deepseek-v4.1-flash",
+      "inputPer1m": 2.0,
+      "outputPer1m": 8.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.04,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "deepseek-flash",
+      "inputPer1m": 2.0,
+      "outputPer1m": 8.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.04,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "deepseek-v4.1-flash-expires-on-0910",
+      "inputPer1m": 2.0,
+      "outputPer1m": 8.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.04,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "deepseek-v4-flash",
+      "inputPer1m": 2.0,
+      "outputPer1m": 8.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.04,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "deepseek-v4-flash-vision-exp",
+      "inputPer1m": 2.0,
+      "outputPer1m": 8.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.04,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "DeepSeek-V4-Flash 正式版",
+      "inputPer1m": 2.0,
+      "outputPer1m": 8.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.04,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "deepseek-v4-pro",
+      "inputPer1m": 9.0,
+      "outputPer1m": 27.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.299997,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "DeepSeek-V4-Pro 正式版",
+      "inputPer1m": 9.0,
+      "outputPer1m": 27.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.299997,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "cursor-grok-4.6-high",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "cursor-grok-4.6-xhigh",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "cursor-grok-4.6-high-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0
+    },
+    {
+      "model": "cursor-grok-4.6-xhigh-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0
+    },
+    {
+      "model": "cursor-grok-4.7-high",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "cursor-grok-4.7-xhigh",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "cursor-grok-4.7-high-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0
+    },
+    {
+      "model": "cursor-grok-4.7-xhigh-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0
+    },
+    {
+      "model": "cursor-grok-4.5-high",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "cursor-grok-4.5-high-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0
+    },
+    {
+      "model": "grok-bot-default",
+      "inputPer1m": 2.0,
+      "outputPer1m": 6.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "GLM-5.3",
+      "inputPer1m": 8.0,
+      "outputPer1m": 28.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 1.485712,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "GLM-5.3-Flash",
+      "inputPer1m": 0.8,
+      "outputPer1m": 2.8,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.16,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "glm-5.2",
+      "inputPer1m": 8.0,
+      "outputPer1m": 28.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 1.485712,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "glm-5.2-high",
+      "inputPer1m": 8.0,
+      "outputPer1m": 28.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 1.485712,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "glm-5.2-max",
+      "inputPer1m": 8.0,
+      "outputPer1m": 28.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 1.485712,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "kimi-k3",
+      "inputPer1m": 20.0,
+      "outputPer1m": 100.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 3.36842
+    },
+    {
+      "model": "Qwen3.8-Max",
+      "inputPer1m": 12.0,
+      "outputPer1m": 36.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 1.5
+    },
+    {
+      "model": "Qwen3.8-Flash",
+      "inputPer1m": 0.8,
+      "outputPer1m": 2.7,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.08
+    },
+    {
+      "model": "mimo-v2.6-flash",
+      "inputPer1m": 1.0,
+      "outputPer1m": 2.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.02,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "mimo-v2.6-pro",
+      "inputPer1m": 3.0,
+      "outputPer1m": 6.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.025,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "mimo-v2.6-pro-ultraspeed",
+      "inputPer1m": 30.0,
+      "outputPer1m": 60.0,
+      "currency": "CNY",
+      "cacheReadPer1m": 0.25,
+      "cacheWritePer1m": 0.0
+    },
+    {
+      "model": "gpt-6-sol",
+      "inputPer1m": 2.0,
+      "outputPer1m": 10.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.2,
+      "cacheWritePer1m": 2.5
+    },
+    {
+      "model": "gpt-6-sol-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 20.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.4,
+      "cacheWritePer1m": 5.0
+    },
+    {
+      "model": "gpt-6-luna",
+      "inputPer1m": 0.1,
+      "outputPer1m": 0.5,
+      "currency": "USD",
+      "cacheReadPer1m": 0.01,
+      "cacheWritePer1m": 0.125
+    },
+    {
+      "model": "gpt-6-luna-fast",
+      "inputPer1m": 0.2,
+      "outputPer1m": 1.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.02,
+      "cacheWritePer1m": 0.25
+    },
+    {
+      "model": "gpt-6-astra",
+      "inputPer1m": 10.0,
+      "outputPer1m": 50.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0,
+      "cacheWritePer1m": 12.5
+    },
+    {
+      "model": "gpt-5.6-sol",
+      "inputPer1m": 4.0,
+      "outputPer1m": 20.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.4,
+      "cacheWritePer1m": 5.0
+    },
+    {
+      "model": "gpt-5.6-sol-fast",
+      "inputPer1m": 8.0,
+      "outputPer1m": 40.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.8,
+      "cacheWritePer1m": 10.0
+    },
+    {
+      "model": "gpt-5.6-terra",
+      "inputPer1m": 2.0,
+      "outputPer1m": 12.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.2,
+      "cacheWritePer1m": 2.5
+    },
+    {
+      "model": "gpt-5.6-terra-fast",
+      "inputPer1m": 4.0,
+      "outputPer1m": 24.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.4,
+      "cacheWritePer1m": 5.0
+    },
+    {
+      "model": "gpt-5.6-luna",
+      "inputPer1m": 0.2,
+      "outputPer1m": 1.2,
+      "currency": "USD",
+      "cacheReadPer1m": 0.02,
+      "cacheWritePer1m": 0.25
+    },
+    {
+      "model": "gpt-5.6-luna-fast",
+      "inputPer1m": 0.4,
+      "outputPer1m": 2.4,
+      "currency": "USD",
+      "cacheReadPer1m": 0.04,
+      "cacheWritePer1m": 0.5
+    },
+    {
+      "model": "gpt-5.5",
+      "inputPer1m": 5.0,
+      "outputPer1m": 30.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5
+    },
+    {
+      "model": "gpt-5.4",
+      "inputPer1m": 2.5,
+      "outputPer1m": 15.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.25
+    },
+    {
+      "model": "claude-opus-5-thinking-high",
+      "inputPer1m": 5.0,
+      "outputPer1m": 25.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5,
+      "cacheWritePer1m": 6.25
+    },
+    {
+      "model": "claude-opus-5-5-thinking-high",
+      "inputPer1m": 4.0,
+      "outputPer1m": 20.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.2,
+      "cacheWritePer1m": 5.0
+    },
+    {
+      "model": "claude-opus-4-6",
+      "inputPer1m": 5.0,
+      "outputPer1m": 25.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5,
+      "cacheWritePer1m": 6.25
+    },
+    {
+      "model": "claude-opus-4-8",
+      "inputPer1m": 5.0,
+      "outputPer1m": 25.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.5,
+      "cacheWritePer1m": 6.25
+    },
+    {
+      "model": "claude-sonnet-4-5",
+      "inputPer1m": 3.0,
+      "outputPer1m": 15.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.3,
+      "cacheWritePer1m": 3.75
+    },
+    {
+      "model": "claude-sonnet-4-6",
+      "inputPer1m": 3.0,
+      "outputPer1m": 15.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.3,
+      "cacheWritePer1m": 3.75
+    },
+    {
+      "model": "claude-fable-5",
+      "inputPer1m": 10.0,
+      "outputPer1m": 50.0,
+      "currency": "USD",
+      "cacheReadPer1m": 1.0,
+      "cacheWritePer1m": 12.5
+    },
+    {
+      "model": "claude-fable-5-1",
+      "inputPer1m": 10.0,
+      "outputPer1m": 50.0,
+      "currency": "USD",
+      "cacheReadPer1m": 0.25,
+      "cacheWritePer1m": 12.5
+    },
+    {
+      "model": "composer-2.5",
+      "inputPer1m": 0.5,
+      "outputPer1m": 2.5,
+      "currency": "USD"
+    },
+    {
+      "model": "composer-2.5-fast",
+      "inputPer1m": 3.0,
+      "outputPer1m": 15.0,
+      "currency": "USD"
+    },
+    {
+      "model": "hy4-preview",
+      "inputPer1m": 6.0,
+      "outputPer1m": 18.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "hy3",
+      "inputPer1m": 6.0,
+      "outputPer1m": 18.0,
+      "currency": "CNY"
+    },
+    {
+      "model": "gemini-3.7-flash-high",
+      "inputPer1m": 0.75,
+      "outputPer1m": 3.5,
+      "currency": "USD",
+      "cacheReadPer1m": 0.075
+    }
+  ]
+}

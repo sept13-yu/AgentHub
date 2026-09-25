@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Core\DocCore\Templates\SharedRules.md" />
+    <EmbeddedResource Include="..\..\model-catalog.json" LogicalName="AgentHub.ModelCatalog.json" />
   </ItemGroup>
 
   <ItemGroup>

@@ -180,10 +180,11 @@ internal static class QoderLocal
         var ts = ReadLineTimestamp(root) ?? (msg is not null ? ReadLineTimestamp(msg.Value) : null);
         if (ts is null) return null;
 
-        var model = ResolveChinaModelDisplay(
-            (msg is not null ? UsageParsers.GetStr(msg, "model") : null)
-            ?? UsageParsers.GetStr(root, "model")
-            ?? "unknown");
+        // 保留原始 model，展示归一在查询端做，避免入库前丢掉可追溯原名。
+        var model = FirstNonEmpty(
+            msg is not null ? UsageParsers.GetStr(msg, "model") : null,
+            UsageParsers.GetStr(root, "model"),
+            "unknown")!;
         var project = UsageParsers.GetStr(root, "cwd")
             ?? (msg is not null ? UsageParsers.GetStr(msg, "cwd") : null);
 
@@ -205,24 +206,9 @@ internal static class QoderLocal
 
     /// <summary>UTF-8 字节/4，至少 1，保证 byAgent.tokens &gt; 0。</summary>
 
-    /// <summary>
-    /// Qoder CN stores internal route ids (qfmodel); UI labels them Qwen3.8-Flash in dynamic-text.
-    /// Token dashboard uses this for every tool. Xiaomi MiMo API ids / closed-beta preview ids
-    /// map to the official Desktop picker labels (MiMo V2.6 Flash / Pro / Pro Ultraspeed).
-    /// </summary>
-    internal static string ResolveChinaModelDisplay(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw)) return "unknown";
-        // qoder/...、qoder-custom-uuid/workbuddy/deepseek-v4.1-flash → 只留最后一段
-        var key = ModelNameNormalizer.Leaf(raw);
-        if (key.Length == 0) return "unknown";
-        if (ChinaModelDisplay.TryGetValue(key, out var label)) return label;
-        // 邀测 id 等：先走价表别名再套官方展示名（mimo-x-flash-preview → mimo-v2.6-flash → MiMo V2.6 Flash）
-        if (PriceAliases.TryMap(key, out var canonical)
-            && ChinaModelDisplay.TryGetValue(canonical, out label))
-            return label;
-        return key;
-    }
+    /// <summary>展示归一委托模型目录；采集侧只保留原名。</summary>
+    internal static string ResolveChinaModelDisplay(string? raw, string tool = "qoder-cn")
+        => ModelCatalog.Resolve(tool, raw).Display;
 
     private static readonly Dictionary<string, string> ChinaModelDisplay =
         new(StringComparer.OrdinalIgnoreCase)
@@ -233,6 +219,8 @@ internal static class QoderLocal
             ["qmodel_latest"] = "Qwen3.7-Max",
             ["dfmodel"] = "DeepSeek-V4-Flash",
             ["dmodel"] = "DeepSeek-V4-Pro",
+            ["deepseek-v4.1-flash"] = "DeepSeek-V4-Flash",
+            ["deepseek-v4-pro"] = "DeepSeek-V4-Pro",
             ["gfmodel"] = "GLM-5.3-Flash",
             ["gmodel"] = "GLM-5.3",
             ["kmodel"] = "Kimi-K2.7-Code",

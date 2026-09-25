@@ -634,11 +634,15 @@ public sealed class QoderCnProvider(TitleOverrideStore titles) : IConversationPr
         return messages;
     }
 
-    private static string? DisplayModel(string? raw)
+    private static string? DisplayModel(string? raw) => DisplayModelForTest(raw);
+
+    /// <summary>会话详情的模型说明：只隐藏空值与 unknown 哨兵；未登记原名保留可追溯展示。</summary>
+    internal static string? DisplayModelForTest(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        var label = QoderLocal.ResolveChinaModelDisplay(raw);
-        return label is "unknown" ? null : label;
+        var trimmed = raw.Trim();
+        if (trimmed.Equals("unknown", StringComparison.OrdinalIgnoreCase)) return null;
+        return ModelCatalog.Resolve("qoder-cn", trimmed).Display;
     }
 
     private static string? Clean(string? value) =>

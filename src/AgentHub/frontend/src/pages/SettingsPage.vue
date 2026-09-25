@@ -20,6 +20,13 @@ interface PriceSyncInfo {
   lastFetchError?: string | null
   hasDiskCache?: boolean
   cachePath?: string
+  userCatalogPath?: string
+  userCatalogExists?: boolean
+  localOverrideActive?: boolean
+  catalogError?: string | null
+  usingLastGoodCatalog?: boolean
+  catalogUpdatedAt?: string
+  modelCount?: number
 }
 
 interface SettingsPayload {
@@ -179,19 +186,26 @@ function applyLoaded(s: SettingsPayload) {
 
 function priceSyncHint(): string {
   const s = priceSync.value
-  if (!s) return '价格表将在启动或刷新用量时同步'
+  if (!s) return '模型目录将在启动或刷新用量时同步'
+  if (s.catalogError) {
+    const why = s.catalogError.length > 60 ? s.catalogError.slice(0, 60) + '…' : s.catalogError
+    return s.usingLastGoodCatalog
+      ? `本地补丁未生效，仍用上次有效目录 · ${why}`
+      : `本地补丁已忽略 · ${why}`
+  }
   const src = (s.source || '').toLowerCase()
+  const suffix = s.localOverrideActive ? ' · 本地补丁生效' : ''
   if (src === 'github' || src === 'gitee' || src === 'remote') {
     const where = src === 'gitee' ? 'Gitee' : 'GitHub'
-    return s.lastFetchAt ? `已从 ${where} 拉取 · ${s.lastFetchAt}` : `已从 ${where} 拉取`
+    return (s.lastFetchAt ? `已从 ${where} 拉取 · ${s.lastFetchAt}` : `已从 ${where} 拉取`) + suffix
   }
   if (src === 'cache')
-    return s.lastFetchAt
+    return (s.lastFetchAt
       ? `用上次拉到的本地副本 · 上次拉取 ${s.lastFetchAt}`
-      : '用上次拉到的本地副本'
+      : '用上次拉到的本地副本') + suffix
   if (s.lastFetchOk === false)
-    return '使用内置价格表 · 同步失败'
-  return '用内置表 · 尚未拉到远程（启动后会自动拉）'
+    return '使用内置模型目录 · 同步失败' + suffix
+  return '用内置模型目录 · 尚未拉到远程（启动后会自动拉）' + suffix
 }
 
 async function load() {
