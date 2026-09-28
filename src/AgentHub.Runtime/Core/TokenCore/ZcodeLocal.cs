@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -12,6 +14,7 @@ internal static class ZcodeLocal
 
     public static string DbPath => Path.Combine(Home, "cli", "db", "db.sqlite");
     public static string ConfigPath => Path.Combine(Home, "v2", "config.json");
+    public static string CredentialsPath => Path.Combine(Home, "v2", "credentials.json");
     public static string CachePath => Path.Combine(Home, "v2", "coding-plan-cache.json");
 
     public static bool DbExists => File.Exists(DbPath);
@@ -29,40 +32,144 @@ internal static class ZcodeLocal
         finally { DeleteSnapshot(tmp); }
     }
 
+    /// <summary>
+    /// Coding Plan API Key：3.13 及更早读 v2/config.json；
+    /// 3.14+ 改为 v2/credentials.json（enc:v1 AES-GCM，与 ZCode/TokenTracker 同款派生密钥）。
+    /// 额度接口走 bigmodel，优先取 bigmodel 的 coding-plan key。
+    /// </summary>
     public static string? ReadCodingPlanKey()
     {
-        if (!File.Exists(ConfigPath)) return null;
+        if (File.Exists(ConfigPath))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(ConfigPath));
+                var legacy = FindCodingPlanKey(doc.RootElement);
+                if (!string.IsNullOrEmpty(legacy)) return legacy;
+            }
+            catch (JsonException) { }
+            catch (IOException) { }
+        }
+        return ReadCodingPlanKeyFromCredentials();
+    }
+
+    public static bool CodingPlanAvailable()
+    {
+        if (File.Exists(CachePath))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(CachePath));
+                return !IsUnavailable(doc.RootElement, "builtin:bigmodel-coding-plan");
+            }
+            catch (JsonException)
+            {
+                return true;
+            }
+            catch (IOException)
+            {
+                return true;
+            }
+        }
+        // 3.14+ 通常不再写 cache：有可用 key 才视为已开通
+        return !string.IsNullOrEmpty(ReadCodingPlanKey());
+    }
+
+    private static string? ReadCodingPlanKeyFromCredentials()
+    {
+        if (!File.Exists(CredentialsPath)) return null;
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(ConfigPath));
-            return FindCodingPlanKey(doc.RootElement);
+            using var doc = JsonDocument.Parse(File.ReadAllText(CredentialsPath));
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+
+            string? bigmodel = null;
+            string? any = null;
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                // account-provider:coding-plan:account:<family>-individual-coding-plan:account:<id>:api-key
+                if (!prop.Name.StartsWith("account-provider:coding-plan:", StringComparison.Ordinal))
+                    continue;
+                if (!prop.Name.EndsWith(":api-key", StringComparison.Ordinal))
+                    continue;
+                if (prop.Value.ValueKind != JsonValueKind.String) continue;
+                var plain = DecryptCredential(prop.Value.GetString());
+                if (string.IsNullOrWhiteSpace(plain)) continue;
+                any ??= plain.Trim();
+                if (prop.Name.Contains("bigmodel", StringComparison.OrdinalIgnoreCase))
+                    bigmodel ??= plain.Trim();
+            }
+            return bigmodel ?? any;
         }
         catch (JsonException)
         {
             return null;
         }
         catch (IOException)
+        {
+            return null;
+        }
+        catch (CryptographicException)
         {
             return null;
         }
     }
 
-    public static bool CodingPlanAvailable()
+    /// <summary>ZCode enc:v1：base64url(iv).base64url(tag).base64url(ciphertext)，AES-256-GCM。</summary>
+    private static string? DecryptCredential(string? value)
     {
-        if (!File.Exists(CachePath)) return true;
+        if (string.IsNullOrEmpty(value)) return null;
+        if (!value.StartsWith("enc:v1:", StringComparison.Ordinal)) return value;
+        var encoded = value["enc:v1:".Length..];
+        var parts = encoded.Split('.');
+        if (parts.Length != 3) return null;
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(CachePath));
-            return !IsUnavailable(doc.RootElement, "builtin:bigmodel-coding-plan");
+            var iv = Base64UrlDecode(parts[0]);
+            var tag = Base64UrlDecode(parts[1]);
+            var cipher = Base64UrlDecode(parts[2]);
+            var key = SHA256.HashData(Encoding.UTF8.GetBytes(CreateCredentialSecret()));
+            var plain = new byte[cipher.Length];
+            using var aes = new AesGcm(key, tag.Length);
+            aes.Decrypt(iv, cipher, tag, plain);
+            return Encoding.UTF8.GetString(plain);
         }
-        catch (JsonException)
+        catch (FormatException)
         {
-            return true;
+            return null;
         }
-        catch (IOException)
+        catch (CryptographicException)
         {
-            return true;
+            return null;
         }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    private static string CreateCredentialSecret()
+    {
+        var env = Environment.GetEnvironmentVariable("ZCODE_CREDENTIAL_SECRET");
+        if (!string.IsNullOrEmpty(env)) return env;
+        var username = Environment.UserName ?? "";
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        // 与 Node process.platform 对齐：win32 / darwin / linux
+        var platform = OperatingSystem.IsWindows() ? "win32"
+            : OperatingSystem.IsMacOS() ? "darwin"
+            : "linux";
+        return $"zcode-credential-fallback:{platform}:{home}:{username}";
+    }
+
+    private static byte[] Base64UrlDecode(string input)
+    {
+        var s = input.Replace('-', '+').Replace('_', '/');
+        switch (s.Length % 4)
+        {
+            case 2: s += "=="; break;
+            case 3: s += "="; break;
+        }
+        return Convert.FromBase64String(s);
     }
 
     private static List<UsageRecord> ReadCopied(string db)
