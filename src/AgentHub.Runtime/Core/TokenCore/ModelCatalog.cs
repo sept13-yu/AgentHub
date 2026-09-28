@@ -176,7 +176,7 @@ public sealed class ModelCatalogSnapshot
     /// <summary>允许的冒号前缀：只认已验证的区域/厂商标记，不用长度充当合法性检查。</summary>
     private static readonly string[] KnownColonPrefixes = ["cn", "us"];
 
-    /// <summary>只剥已验证前缀（cn:/us:、已知厂商路径段、合法 qoder-custom UUID）；
+    /// <summary>只剥已验证冒号前缀（cn:/us:）与任意单段斜杠前缀；
     /// 保留 -fast/-high 等档位与 --max 之类后缀原样，删除 alias 后不能再靠隐式规则命中。</summary>
     private static IEnumerable<string> UnwrapPrefixOnce(string name)
     {
@@ -191,34 +191,10 @@ public sealed class ModelCatalogSnapshot
         var slash = name.IndexOf('/');
         if (slash > 0)
         {
-            var head = name[..slash];
             var rest = name[(slash + 1)..].Trim();
-            if (rest.Length == 0) yield break;
-            if (KnownHeads.Contains(head, StringComparer.OrdinalIgnoreCase)
-                || IsQoderCustomSegment(head))
+            if (rest.Length > 0)
                 yield return rest;
         }
-    }
-
-    /// <summary>qoder-custom- 段必须带固定 UUID 结构（qoder-custom-&lt;uuid&gt;），否则保留原始身份。</summary>
-    private static bool IsQoderCustomSegment(string head)
-    {
-        const string prefix = "qoder-custom-";
-        if (!head.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
-        var tail = head[prefix.Length..];
-        // 8-4-4-4-12 十六进制
-        if (tail.Length != 36) return false;
-        for (var i = 0; i < tail.Length; i++)
-        {
-            var c = tail[i];
-            if (i is 8 or 13 or 18 or 23)
-            {
-                if (c != '-') return false;
-                continue;
-            }
-            if (!char.IsAsciiHexDigit(c)) return false;
-        }
-        return true;
     }
 
     private ResolvedModel ResolveCore(string tool, string raw)
@@ -255,13 +231,7 @@ public sealed class ModelCatalogSnapshot
         return false;
     }
 
-    private static readonly string[] KnownHeads =
-    [
-        "openai", "anthropic", "xiaomi", "qoder", "qodercn", "workbuddy", "traework",
-        "xai", "zai", "dashscope", "azure_ai", "openrouter", "deepseek",
-    ];
-
-    /// <summary>受控包装候选：已知前缀/嵌套包装；不做任意路径取叶子，不砍任意 -- 后缀。</summary>
+    /// <summary>包装候选：逐层剥冒号/斜杠前缀；不砍任意 -- 后缀，档位身份仍靠 alias 精确命中。</summary>
     internal static IEnumerable<string> WrapperCandidates(string raw)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { raw };
