@@ -1,15 +1,12 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-24",
+  "updatedAt": "2026-09-28",
   "note": "模型目录：modelId 稳定身份，display 仅展示；Fast 独立，思考等级合并；跨版本借价不进身份别名。",
   "models": [
     {
       "modelId": "deepseek-v4-flash",
       "display": "DeepSeek-V4-Flash",
       "aliases": [
-        {
-          "name": "deepseek-v4-flash"
-        },
         {
           "name": "deepseek-v4.1-flash"
         },
@@ -24,9 +21,6 @@
         },
         {
           "name": "deepseek-v4.1-flash-expires-on-0910"
-        },
-        {
-          "name": "DeepSeek-V4-Flash"
         },
         {
           "name": "DeepSeek-V4-Flash 正式版"
@@ -66,10 +60,10 @@
         "DeepSeek-V4-Flash 正式版"
       ],
       "price": {
-        "inputPer1m": 2.0,
-        "outputPer1m": 8.0,
+        "inputPer1m": 2,
+        "outputPer1m": 8,
         "cacheReadPer1m": 0.04,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -77,12 +71,6 @@
       "modelId": "deepseek-v4-pro",
       "display": "DeepSeek-V4-Pro",
       "aliases": [
-        {
-          "name": "deepseek-v4-pro"
-        },
-        {
-          "name": "DeepSeek-V4-Pro"
-        },
         {
           "name": "DeepSeek-V4-Pro 正式版"
         },
@@ -99,10 +87,10 @@
         "DeepSeek-V4-Pro 正式版"
       ],
       "price": {
-        "inputPer1m": 9.0,
-        "outputPer1m": 27.0,
+        "inputPer1m": 9,
+        "outputPer1m": 27,
         "cacheReadPer1m": 0.299997,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -129,8 +117,8 @@
         "cursor-grok-4.6-xhigh"
       ],
       "price": {
-        "inputPer1m": 2.0,
-        "outputPer1m": 6.0,
+        "inputPer1m": 2,
+        "outputPer1m": 6,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": null,
         "currency": "USD"
@@ -159,9 +147,9 @@
         "cursor-grok-4.6-xhigh-fast"
       ],
       "price": {
-        "inputPer1m": 4.0,
-        "outputPer1m": 12.0,
-        "cacheReadPer1m": 1.0,
+        "inputPer1m": 4,
+        "outputPer1m": 12,
+        "cacheReadPer1m": 1,
         "cacheWritePer1m": null,
         "currency": "USD"
       }
@@ -184,9 +172,6 @@
         },
         {
           "name": "cursor-grok-4.7-max"
-        },
-        {
-          "name": "grok-4.7"
         },
         {
           "name": "xai/grok-4.7"
@@ -213,8 +198,8 @@
         "cursor-grok-4.7-xhigh"
       ],
       "price": {
-        "inputPer1m": 2.0,
-        "outputPer1m": 6.0,
+        "inputPer1m": 2,
+        "outputPer1m": 6,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": null,
         "currency": "USD"
@@ -255,9 +240,9 @@
         "cursor-grok-4.7-xhigh-fast"
       ],
       "price": {
-        "inputPer1m": 4.0,
-        "outputPer1m": 12.0,
-        "cacheReadPer1m": 1.0,
+        "inputPer1m": 4,
+        "outputPer1m": 12,
+        "cacheReadPer1m": 1,
         "cacheWritePer1m": null,
         "currency": "USD"
       }
@@ -284,8 +269,8 @@
         "cursor-grok-4.5-high"
       ],
       "price": {
-        "inputPer1m": 2.0,
-        "outputPer1m": 6.0,
+        "inputPer1m": 2,
+        "outputPer1m": 6,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": null,
         "currency": "USD"
@@ -310,9 +295,9 @@
         "cursor-grok-4.5-high-fast"
       ],
       "price": {
-        "inputPer1m": 4.0,
-        "outputPer1m": 12.0,
-        "cacheReadPer1m": 1.0,
+        "inputPer1m": 4,
+        "outputPer1m": 12,
+        "cacheReadPer1m": 1,
         "cacheWritePer1m": null,
         "currency": "USD"
       }
@@ -321,9 +306,6 @@
       "modelId": "grok-bot-default",
       "display": "Grok Bot Default",
       "aliases": [
-        {
-          "name": "grok-bot-default"
-        },
         {
           "name": "grok-bot-automation"
         },
@@ -336,8 +318,8 @@
         "grok-bot-default"
       ],
       "price": {
-        "inputPer1m": 2.0,
-        "outputPer1m": 6.0,
+        "inputPer1m": 2,
+        "outputPer1m": 6,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": null,
         "currency": "USD"
@@ -347,12 +329,6 @@
       "modelId": "glm-5.3",
       "display": "GLM-5.3",
       "aliases": [
-        {
-          "name": "glm-5.3"
-        },
-        {
-          "name": "GLM-5.3"
-        },
         {
           "name": "gmodel",
           "agents": [
@@ -368,10 +344,10 @@
         "GLM-5.3"
       ],
       "price": {
-        "inputPer1m": 8.0,
-        "outputPer1m": 28.0,
+        "inputPer1m": 8,
+        "outputPer1m": 28,
         "cacheReadPer1m": 1.485712,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -379,12 +355,6 @@
       "modelId": "glm-5.3-flash",
       "display": "GLM-5.3-Flash",
       "aliases": [
-        {
-          "name": "glm-5.3-flash"
-        },
-        {
-          "name": "GLM-5.3-Flash"
-        },
         {
           "name": "gfmodel",
           "agents": [
@@ -403,7 +373,7 @@
         "inputPer1m": 0.8,
         "outputPer1m": 2.8,
         "cacheReadPer1m": 0.16,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -411,9 +381,6 @@
       "modelId": "glm-5.2",
       "display": "GLM-5.2",
       "aliases": [
-        {
-          "name": "glm-5.2"
-        },
         {
           "name": "glm-5.2-high"
         },
@@ -428,10 +395,10 @@
         "glm-5.2-max"
       ],
       "price": {
-        "inputPer1m": 8.0,
-        "outputPer1m": 28.0,
+        "inputPer1m": 8,
+        "outputPer1m": 28,
         "cacheReadPer1m": 1.485712,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -440,9 +407,6 @@
       "display": "Kimi-K3",
       "aliases": [
         {
-          "name": "kimi-k3"
-        },
-        {
           "name": "kimi-k3-1"
         },
         {
@@ -450,9 +414,6 @@
         },
         {
           "name": "kimi-k3-max"
-        },
-        {
-          "name": "Kimi-K3"
         },
         {
           "name": "kmodel_latest",
@@ -466,8 +427,8 @@
         "kimi-k3"
       ],
       "price": {
-        "inputPer1m": 20.0,
-        "outputPer1m": 100.0,
+        "inputPer1m": 20,
+        "outputPer1m": 100,
         "cacheReadPer1m": 3.36842,
         "cacheWritePer1m": null,
         "currency": "CNY"
@@ -494,10 +455,10 @@
       "display": "Qwen3.8-Max",
       "aliases": [
         {
-          "name": "qwen3.8-max"
+          "name": "qwen3.8-max-preview"
         },
         {
-          "name": "Qwen3.8-Max"
+          "name": "qwenwork/qwen3.8-max-preview"
         },
         {
           "name": "qmodel_38max",
@@ -512,8 +473,8 @@
         "Qwen3.8-Max"
       ],
       "price": {
-        "inputPer1m": 12.0,
-        "outputPer1m": 36.0,
+        "inputPer1m": 12,
+        "outputPer1m": 36,
         "cacheReadPer1m": 1.5,
         "cacheWritePer1m": null,
         "currency": "CNY"
@@ -523,12 +484,6 @@
       "modelId": "qwen3.8-flash",
       "display": "Qwen3.8-Flash",
       "aliases": [
-        {
-          "name": "qwen3.8-flash"
-        },
-        {
-          "name": "Qwen3.8-Flash"
-        },
         {
           "name": "qfmodel",
           "agents": [
@@ -586,9 +541,6 @@
       "display": "MiMo V2.6 Flash",
       "aliases": [
         {
-          "name": "mimo-v2.6-flash"
-        },
-        {
           "name": "mimo-x-flash-preview"
         },
         {
@@ -608,19 +560,16 @@
         },
         {
           "name": "mimo-v2.6-flash-preview"
-        },
-        {
-          "name": "MiMo V2.6 Flash"
         }
       ],
       "legacyPriceKeys": [
         "mimo-v2.6-flash"
       ],
       "price": {
-        "inputPer1m": 1.0,
-        "outputPer1m": 2.0,
+        "inputPer1m": 1,
+        "outputPer1m": 2,
         "cacheReadPer1m": 0.02,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -628,9 +577,6 @@
       "modelId": "mimo-v2.6-pro",
       "display": "MiMo V2.6 Pro",
       "aliases": [
-        {
-          "name": "mimo-v2.6-pro"
-        },
         {
           "name": "mimo-x-pro-preview"
         },
@@ -651,19 +597,16 @@
         },
         {
           "name": "mimo-v2.6-pro-preview"
-        },
-        {
-          "name": "MiMo V2.6 Pro"
         }
       ],
       "legacyPriceKeys": [
         "mimo-v2.6-pro"
       ],
       "price": {
-        "inputPer1m": 3.0,
-        "outputPer1m": 6.0,
+        "inputPer1m": 3,
+        "outputPer1m": 6,
         "cacheReadPer1m": 0.025,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -671,9 +614,6 @@
       "modelId": "mimo-v2.6-pro-ultraspeed",
       "display": "MiMo V2.6 Pro Ultraspeed",
       "aliases": [
-        {
-          "name": "mimo-v2.6-pro-ultraspeed"
-        },
         {
           "name": "mimo-x-pro-ultraspeed-preview"
         },
@@ -691,22 +631,16 @@
         },
         {
           "name": "X-Pro Ultraspeed Preview"
-        },
-        {
-          "name": "X-Pro UltraSpeed Preview"
-        },
-        {
-          "name": "MiMo V2.6 Pro Ultraspeed"
         }
       ],
       "legacyPriceKeys": [
         "mimo-v2.6-pro-ultraspeed"
       ],
       "price": {
-        "inputPer1m": 30.0,
-        "outputPer1m": 60.0,
+        "inputPer1m": 30,
+        "outputPer1m": 60,
         "cacheReadPer1m": 0.25,
-        "cacheWritePer1m": 0.0,
+        "cacheWritePer1m": 0,
         "currency": "CNY"
       }
     },
@@ -714,9 +648,6 @@
       "modelId": "gpt-6-sol",
       "display": "GPT-6 Sol",
       "aliases": [
-        {
-          "name": "gpt-6-sol"
-        },
         {
           "name": "gpt-6-sol-high"
         },
@@ -741,8 +672,8 @@
         "gpt-6-sol"
       ],
       "price": {
-        "inputPer1m": 2.0,
-        "outputPer1m": 10.0,
+        "inputPer1m": 2,
+        "outputPer1m": 10,
         "cacheReadPer1m": 0.2,
         "cacheWritePer1m": 2.5,
         "currency": "USD"
@@ -752,9 +683,6 @@
       "modelId": "gpt-6-sol-fast",
       "display": "GPT-6 Sol Fast",
       "aliases": [
-        {
-          "name": "gpt-6-sol-fast"
-        },
         {
           "name": "gpt-6-sol-high-fast"
         },
@@ -776,10 +704,10 @@
         "gpt-6-sol-fast"
       ],
       "price": {
-        "inputPer1m": 4.0,
-        "outputPer1m": 20.0,
+        "inputPer1m": 4,
+        "outputPer1m": 20,
         "cacheReadPer1m": 0.4,
-        "cacheWritePer1m": 5.0,
+        "cacheWritePer1m": 5,
         "currency": "USD"
       }
     },
@@ -787,9 +715,6 @@
       "modelId": "gpt-6-luna",
       "display": "GPT-6 Luna",
       "aliases": [
-        {
-          "name": "gpt-6-luna"
-        },
         {
           "name": "gpt-6-luna-high"
         },
@@ -826,9 +751,6 @@
       "display": "GPT-6 Luna Fast",
       "aliases": [
         {
-          "name": "gpt-6-luna-fast"
-        },
-        {
           "name": "gpt-6-luna-high-fast"
         },
         {
@@ -850,7 +772,7 @@
       ],
       "price": {
         "inputPer1m": 0.2,
-        "outputPer1m": 1.0,
+        "outputPer1m": 1,
         "cacheReadPer1m": 0.02,
         "cacheWritePer1m": 0.25,
         "currency": "USD"
@@ -860,9 +782,6 @@
       "modelId": "gpt-6-astra",
       "display": "GPT-6 Astra",
       "aliases": [
-        {
-          "name": "gpt-6-astra"
-        },
         {
           "name": "gpt-6-astra-high"
         },
@@ -884,9 +803,9 @@
         "gpt-6-astra"
       ],
       "price": {
-        "inputPer1m": 10.0,
-        "outputPer1m": 50.0,
-        "cacheReadPer1m": 1.0,
+        "inputPer1m": 10,
+        "outputPer1m": 50,
+        "cacheReadPer1m": 1,
         "cacheWritePer1m": 12.5,
         "currency": "USD"
       }
@@ -895,9 +814,6 @@
       "modelId": "gpt-5.6-sol",
       "display": "GPT-5.6 Sol",
       "aliases": [
-        {
-          "name": "gpt-5.6-sol"
-        },
         {
           "name": "gpt-5.6-sol-high"
         },
@@ -910,48 +826,40 @@
         "gpt-5.6-sol"
       ],
       "price": {
-        "inputPer1m": 4.0,
-        "outputPer1m": 20.0,
+        "inputPer1m": 4,
+        "outputPer1m": 20,
         "cacheReadPer1m": 0.4,
-        "cacheWritePer1m": 5.0,
+        "cacheWritePer1m": 5,
         "currency": "USD"
       }
     },
     {
       "modelId": "gpt-5.6-sol-fast",
       "display": "GPT-5.6 Sol Fast",
-      "aliases": [
-        {
-          "name": "gpt-5.6-sol-fast"
-        }
-      ],
+      "aliases": [],
       "liteLlmKey": "gpt-5.6-sol",
       "legacyPriceKeys": [
         "gpt-5.6-sol-fast"
       ],
       "price": {
-        "inputPer1m": 8.0,
-        "outputPer1m": 40.0,
+        "inputPer1m": 8,
+        "outputPer1m": 40,
         "cacheReadPer1m": 0.8,
-        "cacheWritePer1m": 10.0,
+        "cacheWritePer1m": 10,
         "currency": "USD"
       }
     },
     {
       "modelId": "gpt-5.6-terra",
       "display": "GPT-5.6 Terra",
-      "aliases": [
-        {
-          "name": "gpt-5.6-terra"
-        }
-      ],
+      "aliases": [],
       "liteLlmKey": "gpt-5.6-terra",
       "legacyPriceKeys": [
         "gpt-5.6-terra"
       ],
       "price": {
-        "inputPer1m": 2.0,
-        "outputPer1m": 12.0,
+        "inputPer1m": 2,
+        "outputPer1m": 12,
         "cacheReadPer1m": 0.2,
         "cacheWritePer1m": 2.5,
         "currency": "USD"
@@ -960,20 +868,16 @@
     {
       "modelId": "gpt-5.6-terra-fast",
       "display": "GPT-5.6 Terra Fast",
-      "aliases": [
-        {
-          "name": "gpt-5.6-terra-fast"
-        }
-      ],
+      "aliases": [],
       "liteLlmKey": "gpt-5.6-terra",
       "legacyPriceKeys": [
         "gpt-5.6-terra-fast"
       ],
       "price": {
-        "inputPer1m": 4.0,
-        "outputPer1m": 24.0,
+        "inputPer1m": 4,
+        "outputPer1m": 24,
         "cacheReadPer1m": 0.4,
-        "cacheWritePer1m": 5.0,
+        "cacheWritePer1m": 5,
         "currency": "USD"
       }
     },
@@ -981,9 +885,6 @@
       "modelId": "gpt-5.6-luna",
       "display": "GPT-5.6 Luna",
       "aliases": [
-        {
-          "name": "gpt-5.6-luna"
-        },
         {
           "name": "gpt-5.6-luna-max"
         },
@@ -1006,11 +907,7 @@
     {
       "modelId": "gpt-5.6-luna-fast",
       "display": "GPT-5.6 Luna Fast",
-      "aliases": [
-        {
-          "name": "gpt-5.6-luna-fast"
-        }
-      ],
+      "aliases": [],
       "liteLlmKey": "gpt-5.6-luna",
       "legacyPriceKeys": [
         "gpt-5.6-luna-fast"
@@ -1028,9 +925,6 @@
       "display": "GPT-5.5",
       "aliases": [
         {
-          "name": "gpt-5.5"
-        },
-        {
           "name": "gpt-5.5-medium"
         }
       ],
@@ -1038,8 +932,8 @@
         "gpt-5.5"
       ],
       "price": {
-        "inputPer1m": 5.0,
-        "outputPer1m": 30.0,
+        "inputPer1m": 5,
+        "outputPer1m": 30,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": null,
         "currency": "USD"
@@ -1050,9 +944,6 @@
       "display": "GPT-5.4",
       "aliases": [
         {
-          "name": "gpt-5.4"
-        },
-        {
           "name": "gpt-5.4-medium"
         }
       ],
@@ -1061,7 +952,7 @@
       ],
       "price": {
         "inputPer1m": 2.5,
-        "outputPer1m": 15.0,
+        "outputPer1m": 15,
         "cacheReadPer1m": 0.25,
         "cacheWritePer1m": null,
         "currency": "USD"
@@ -1071,9 +962,6 @@
       "modelId": "claude-opus-5",
       "display": "Claude Opus 5",
       "aliases": [
-        {
-          "name": "claude-opus-5"
-        },
         {
           "name": "claude-opus-5-thinking-high"
         },
@@ -1095,8 +983,8 @@
         "claude-opus-5-thinking-high"
       ],
       "price": {
-        "inputPer1m": 5.0,
-        "outputPer1m": 25.0,
+        "inputPer1m": 5,
+        "outputPer1m": 25,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": 6.25,
         "currency": "USD"
@@ -1108,9 +996,6 @@
       "aliases": [
         {
           "name": "claude-opus-5-5"
-        },
-        {
-          "name": "claude-opus-5.5"
         },
         {
           "name": "claude-opus-5-5-thinking-high"
@@ -1151,10 +1036,10 @@
         "claude-opus-5-5-thinking-high"
       ],
       "price": {
-        "inputPer1m": 4.0,
-        "outputPer1m": 20.0,
+        "inputPer1m": 4,
+        "outputPer1m": 20,
         "cacheReadPer1m": 0.2,
-        "cacheWritePer1m": 5.0,
+        "cacheWritePer1m": 5,
         "currency": "USD"
       }
     },
@@ -1162,9 +1047,6 @@
       "modelId": "claude-opus-4-6",
       "display": "Claude Opus 4.6",
       "aliases": [
-        {
-          "name": "claude-opus-4-6"
-        },
         {
           "name": "claude-opus-4-6-thinking-high"
         },
@@ -1177,8 +1059,8 @@
         "claude-opus-4-6"
       ],
       "price": {
-        "inputPer1m": 5.0,
-        "outputPer1m": 25.0,
+        "inputPer1m": 5,
+        "outputPer1m": 25,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": 6.25,
         "currency": "USD"
@@ -1188,9 +1070,6 @@
       "modelId": "claude-opus-4-8",
       "display": "Claude Opus 4.8",
       "aliases": [
-        {
-          "name": "claude-opus-4-8"
-        },
         {
           "name": "claude-opus-4-8-thinking-high"
         },
@@ -1203,8 +1082,8 @@
         "claude-opus-4-8"
       ],
       "price": {
-        "inputPer1m": 5.0,
-        "outputPer1m": 25.0,
+        "inputPer1m": 5,
+        "outputPer1m": 25,
         "cacheReadPer1m": 0.5,
         "cacheWritePer1m": 6.25,
         "currency": "USD"
@@ -1214,9 +1093,6 @@
       "modelId": "claude-sonnet-4-5",
       "display": "Claude Sonnet 4.5",
       "aliases": [
-        {
-          "name": "claude-sonnet-4-5"
-        },
         {
           "name": "claude-4.5-sonnet"
         },
@@ -1229,8 +1105,8 @@
         "claude-sonnet-4-5"
       ],
       "price": {
-        "inputPer1m": 3.0,
-        "outputPer1m": 15.0,
+        "inputPer1m": 3,
+        "outputPer1m": 15,
         "cacheReadPer1m": 0.3,
         "cacheWritePer1m": 3.75,
         "currency": "USD"
@@ -1240,9 +1116,6 @@
       "modelId": "claude-sonnet-4-6",
       "display": "Claude Sonnet 4.6",
       "aliases": [
-        {
-          "name": "claude-sonnet-4-6"
-        },
         {
           "name": "claude-4.6-sonnet-medium-thinking"
         },
@@ -1255,8 +1128,8 @@
         "claude-sonnet-4-6"
       ],
       "price": {
-        "inputPer1m": 3.0,
-        "outputPer1m": 15.0,
+        "inputPer1m": 3,
+        "outputPer1m": 15,
         "cacheReadPer1m": 0.3,
         "cacheWritePer1m": 3.75,
         "currency": "USD"
@@ -1267,9 +1140,6 @@
       "display": "Claude Fable 5",
       "aliases": [
         {
-          "name": "claude-fable-5"
-        },
-        {
           "name": "claude-fable-5-thinking-high"
         }
       ],
@@ -1278,9 +1148,9 @@
         "claude-fable-5"
       ],
       "price": {
-        "inputPer1m": 10.0,
-        "outputPer1m": 50.0,
-        "cacheReadPer1m": 1.0,
+        "inputPer1m": 10,
+        "outputPer1m": 50,
+        "cacheReadPer1m": 1,
         "cacheWritePer1m": 12.5,
         "currency": "USD"
       }
@@ -1290,9 +1160,6 @@
       "display": "Claude Fable 5.1",
       "aliases": [
         {
-          "name": "claude-fable-5-1"
-        },
-        {
           "name": "claude-fable-5-1-thinking-high"
         }
       ],
@@ -1301,8 +1168,8 @@
         "claude-fable-5-1"
       ],
       "price": {
-        "inputPer1m": 10.0,
-        "outputPer1m": 50.0,
+        "inputPer1m": 10,
+        "outputPer1m": 50,
         "cacheReadPer1m": 0.25,
         "cacheWritePer1m": 12.5,
         "currency": "USD"
@@ -1311,11 +1178,7 @@
     {
       "modelId": "composer-2.5",
       "display": "Composer 2.5",
-      "aliases": [
-        {
-          "name": "composer-2.5"
-        }
-      ],
+      "aliases": [],
       "legacyPriceKeys": [
         "composer-2.5"
       ],
@@ -1330,17 +1193,13 @@
     {
       "modelId": "composer-2.5-fast",
       "display": "Composer 2.5 Fast",
-      "aliases": [
-        {
-          "name": "composer-2.5-fast"
-        }
-      ],
+      "aliases": [],
       "legacyPriceKeys": [
         "composer-2.5-fast"
       ],
       "price": {
-        "inputPer1m": 3.0,
-        "outputPer1m": 15.0,
+        "inputPer1m": 3,
+        "outputPer1m": 15,
         "cacheReadPer1m": null,
         "cacheWritePer1m": null,
         "currency": "USD"
@@ -1349,20 +1208,13 @@
     {
       "modelId": "composer-2-fast",
       "display": "Composer 2 Fast",
-      "aliases": [
-        {
-          "name": "composer-2-fast"
-        }
-      ],
+      "aliases": [],
       "price": null
     },
     {
       "modelId": "hy4-preview",
       "display": "HY4 Preview",
       "aliases": [
-        {
-          "name": "hy4-preview"
-        },
         {
           "name": "hy4-preview-x"
         }
@@ -1371,8 +1223,8 @@
         "hy4-preview"
       ],
       "price": {
-        "inputPer1m": 6.0,
-        "outputPer1m": 18.0,
+        "inputPer1m": 6,
+        "outputPer1m": 18,
         "cacheReadPer1m": null,
         "cacheWritePer1m": null,
         "currency": "CNY"
@@ -1381,17 +1233,13 @@
     {
       "modelId": "hy3",
       "display": "HY3",
-      "aliases": [
-        {
-          "name": "hy3"
-        }
-      ],
+      "aliases": [],
       "legacyPriceKeys": [
         "hy3"
       ],
       "price": {
-        "inputPer1m": 6.0,
-        "outputPer1m": 18.0,
+        "inputPer1m": 6,
+        "outputPer1m": 18,
         "cacheReadPer1m": null,
         "cacheWritePer1m": null,
         "currency": "CNY"
@@ -1401,9 +1249,6 @@
       "modelId": "gemini-3.7-flash",
       "display": "Gemini 3.7 Flash",
       "aliases": [
-        {
-          "name": "gemini-3.7-flash"
-        },
         {
           "name": "gemini-3.7-flash-high"
         }
@@ -1423,11 +1268,7 @@
     {
       "modelId": "gemini-2.5-flash",
       "display": "Gemini 2.5 Flash",
-      "aliases": [
-        {
-          "name": "gemini-2.5-flash"
-        }
-      ],
+      "aliases": [],
       "price": null
     },
     {
