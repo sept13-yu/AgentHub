@@ -483,6 +483,60 @@ internal static class UsagePaths
 
     public static IEnumerable<string> UnslothProbeDirs() => ParentDirs(UnslothStudioDbs());
 
+    /// <summary>
+    /// Cline CLI v3 与桌面端共用会话目录，不读 VS Code 扩展的 globalStorage。
+    /// Unix 是 ~/.cline/data/sessions，Windows 是 %USERPROFILE%\.cline\data\sessions。
+    /// 覆盖顺序：TOKENTRACKER_CLINE_SESSIONS_DIR、CLINE_SESSION_DATA_DIR、
+    /// TOKENTRACKER_CLINE_DATA_DIR、CLINE_DATA_DIR、TOKENTRACKER_CLINE_HOME、CLINE_DIR。
+    /// </summary>
+    public static IEnumerable<string> ClineSessionDirs()
+    {
+        var sessions = Env("TOKENTRACKER_CLINE_SESSIONS_DIR") ?? Env("CLINE_SESSION_DATA_DIR");
+        if (sessions is not null)
+        {
+            yield return sessions;
+            yield break;
+        }
+
+        var data = Env("TOKENTRACKER_CLINE_DATA_DIR") ?? Env("CLINE_DATA_DIR");
+        if (data is not null)
+        {
+            yield return Path.Combine(data, "sessions");
+            yield break;
+        }
+
+        var root = Env("TOKENTRACKER_CLINE_HOME") ?? Env("CLINE_DIR") ?? Path.Combine(Home, ".cline");
+        yield return Path.Combine(root, "data", "sessions");
+    }
+
+    /// <summary>安装探测用 Cline 根。默认 ~/.cline（Windows 同样在用户主目录下），显式 sessions 覆盖则探测该目录。</summary>
+    public static IEnumerable<string> ClineProbeDirs()
+    {
+        foreach (var sessions in ClineSessionDirs())
+        {
+            var data = Path.GetDirectoryName(sessions);
+            if (data is not null
+                && string.Equals(Path.GetFileName(sessions), "sessions", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Path.GetFileName(data), "data", StringComparison.OrdinalIgnoreCase))
+            {
+                var home = Path.GetDirectoryName(data);
+                if (!string.IsNullOrEmpty(home))
+                {
+                    yield return home;
+                    continue;
+                }
+            }
+            yield return sessions;
+        }
+    }
+
+    /// <summary>
+    /// Command Code 数据根。Unix 是 ~/.commandcode，Windows 是 %USERPROFILE%\.commandcode。
+    /// 会话文件在 projects/&lt;cwd-slug&gt;/&lt;session-id&gt;.jsonl。可用 TOKENTRACKER_COMMANDCODE_HOME 覆盖。
+    /// </summary>
+    public static IEnumerable<string> CommandCodeHomes() =>
+        OneOr(Env("TOKENTRACKER_COMMANDCODE_HOME"), Path.Combine(Home, ".commandcode"));
+
     private static IEnumerable<string> ParentDirs(IEnumerable<string> files)
     {
         foreach (var file in files)

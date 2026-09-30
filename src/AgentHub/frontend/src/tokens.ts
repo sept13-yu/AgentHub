@@ -111,6 +111,8 @@ export const tokens = {
     srcClaudeScience: '#FDA4AF',
     srcLmStudio: '#6EE7B7',
     srcUnslothStudio: '#A855F7',
+    srcCline: '#2EE59D',
+    srcCommandCode: '#8B93FF',
   },
   light: {
     bg: '#F5F6F8',
@@ -192,6 +194,8 @@ export const tokens = {
     srcClaudeScience: '#881337',
     srcLmStudio: '#064E3B',
     srcUnslothStudio: '#581C87',
+    srcCline: '#0E7A4B',
+    srcCommandCode: '#3730A3',
   },
 } as const
 

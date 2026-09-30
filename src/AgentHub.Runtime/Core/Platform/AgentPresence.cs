@@ -92,6 +92,8 @@ public static class AgentPresence
         ("claude-science", () => AnyFootprint(UsagePaths.ClaudeScienceProbeDirs())),
         ("lm-studio", () => AnyFootprint(UsagePaths.LmStudioLogDirs())),
         ("unsloth-studio", () => AnyFootprint(UsagePaths.UnslothProbeDirs())),
+        ("cline", () => AnyFootprint(UsagePaths.ClineProbeDirs())),
+        ("command-code", () => AnyFootprint(UsagePaths.CommandCodeHomes())),
     ];
 
     /// <summary>按各家 id 探一遍，给设置页排序和灰态徽标用。</summary>

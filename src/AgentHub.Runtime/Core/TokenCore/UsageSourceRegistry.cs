@@ -153,6 +153,8 @@ internal static class UsageSourceRegistry
                 return dbs.Count == 0 ? [] : [new UsageUnit(dbs[0], () => PassiveUsage.ReadUnsloth(dbs))];
             },
         },
+        Dirs("cline", UsagePaths.ClineSessionDirs, PassiveUsage.ReadCline),
+        Dirs("command-code", UsagePaths.CommandCodeHomes, PassiveUsage.ReadCommandCode),
     ];
 
     public static UsageSource? Find(string id) =>
