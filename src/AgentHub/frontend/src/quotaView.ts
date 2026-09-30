@@ -1,4 +1,5 @@
 import { AGENT_COLOR, AGENT_NAME } from './agentMeta'
+import { parseQuotaReset, quotaPeriodEnd } from './quotaWindows'
 
 export interface QuotaWindow {
   name: string
@@ -38,13 +39,7 @@ function windowMeta(id: string): { group: string; short: string } | null {
 }
 
 export function toQuotaTiles(raw: unknown): QuotaTile[] {
-  const body = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null
-  const items = Array.isArray(body?.items) ? body.items : Array.isArray(raw) ? raw : []
-  const list: Record<string, unknown>[] = []
-  for (const item of items) {
-    if (item && typeof item === 'object' && !Array.isArray(item))
-      list.push(item as Record<string, unknown>)
-  }
+  const list = quotaItems(raw)
 
   const tiles: QuotaTile[] = []
   const used = new Set<number>()
@@ -146,13 +141,12 @@ function formatBalance(value: number, unit: string): string {
 
 function formatPeriod(period: string): string {
   if (!period) return '不限期'
-  const end = period.includes('—') ? period.split('—').pop()!.trim() : period.trim()
+  const end = quotaPeriodEnd(period)
   if (!end || end === 'never') return '不限期'
-  const ms = Date.parse(end)
-  if (Number.isNaN(ms)) return end
+  const ms = parseQuotaReset(period)
+  if (ms == null) return Number.isNaN(Date.parse(end)) ? end : '不限期'
   const d = new Date(ms)
   // Qoder 等会用超远 expiresAt 表示无重置日；填「不限期」避免空 period 挤短进度条
-  if (d.getFullYear() >= 2100) return '不限期'
   const now = new Date()
   const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
   if (sameDay) {
@@ -167,6 +161,17 @@ function formatPeriod(period: string): string {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n))
+}
+
+function quotaItems(raw: unknown): Record<string, unknown>[] {
+  const body = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null
+  const items = Array.isArray(body?.items) ? body.items : Array.isArray(raw) ? raw : []
+  const list: Record<string, unknown>[] = []
+  for (const item of items) {
+    if (item && typeof item === 'object' && !Array.isArray(item))
+      list.push(item as Record<string, unknown>)
+  }
+  return list
 }
 
 function str(v: unknown): string {

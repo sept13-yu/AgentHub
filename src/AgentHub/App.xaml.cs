@@ -19,6 +19,7 @@ public partial class App : Application
 {
     private SingleInstanceGuard? _guard;
     private TrayIconService? _tray;
+    private DesktopQuotaWindow? _desktopQuota;
     private AgentHubRuntime? _rt;
     private int _exiting;
     private string _exitReason = "unknown";
@@ -103,7 +104,12 @@ public partial class App : Application
         var win = new MainWindow(_rt.Web, _rt.Config);
         MainWindow = win;
         win.Show();
-        _tray = new TrayIconService(BuildTrayActions(), IsLightTheme(_rt.Config.App.Theme));
+        _tray = new TrayIconService(
+            BuildTrayActions(),
+            IsLightTheme(_rt.Config.App.Theme),
+            _rt.Config.DesktopQuota.Visible);
+        if (_rt.Config.DesktopQuota.Visible)
+            ShowDesktopQuota(activate: false);
         _rt.RunInitialScanInBackground();
         HubLog.Write($"[exit] started pid={Environment.ProcessId}");
     }
@@ -113,6 +119,7 @@ public partial class App : Application
         ShowMain = ShowMainWindow,
         Exit = ExitApp,
         SyncNow = SyncNow,
+        ToggleDesktopQuota = ToggleDesktopQuota,
     };
 
     /// <summary>托盘「立即同步」：后台跑 ScanAll（本地扫描是同步 IO，不能占 UI 线程），扫完由 SSE 刷新页面。</summary>
@@ -124,7 +131,47 @@ public partial class App : Application
 
     internal void NotifyHiddenToTray() => _tray?.NotifyHiddenToTray();
 
-    internal void ApplyTrayTheme(bool light) => _tray?.ApplyTheme(light);
+    internal void ApplyTrayTheme(bool light)
+    {
+        _tray?.ApplyTheme(light);
+        _desktopQuota?.ApplyTheme(light);
+    }
+
+    /// <summary>托盘「桌面额度」：显示或隐藏悬浮窗。关闭按钮同样只隐藏。</summary>
+    private void ToggleDesktopQuota()
+    {
+        if (_rt is null) return;
+        if (_rt.Config.DesktopQuota.Visible)
+        {
+            if (_desktopQuota is null)
+            {
+                _rt.Config.DesktopQuota.Visible = false;
+                try { _rt.Config.Save(); } catch (Exception) { }
+                _tray?.SetDesktopQuotaChecked(false);
+            }
+            else
+            {
+                _desktopQuota.HideFromUser();
+            }
+            return;
+        }
+        _rt.Config.DesktopQuota.Visible = true;
+        try { _rt.Config.Save(); } catch (Exception) { }
+        ShowDesktopQuota(activate: true);
+    }
+
+    private void ShowDesktopQuota(bool activate)
+    {
+        if (_rt is null) return;
+        if (_desktopQuota is null)
+        {
+            _desktopQuota = new DesktopQuotaWindow(_rt.Web, _rt.Config);
+            _desktopQuota.Dismissed += () => _tray?.SetDesktopQuotaChecked(false);
+        }
+        _desktopQuota.ApplyTheme(IsLightTheme(_rt.Config.App.Theme));
+        _desktopQuota.Present(activate);
+        _tray?.SetDesktopQuotaChecked(true);
+    }
 
     private static bool IsLightTheme(string? theme) =>
         string.Equals(theme, "light", StringComparison.OrdinalIgnoreCase);
@@ -181,6 +228,7 @@ public partial class App : Application
         if (MainWindow is MainWindow win) win.ReallyExit = true;
         try { MainWindow?.Close(); } catch { }
         try { _rt?.Stop(); } catch { }
+        try { _desktopQuota?.Shutdown(); } catch { }
         try { _tray?.Dispose(); } catch { }
         Shutdown();
     }

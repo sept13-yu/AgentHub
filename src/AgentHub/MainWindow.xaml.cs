@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
@@ -52,8 +51,7 @@ public partial class MainWindow : Window
         {
             await _web.Ready;   // 先等服务监听就绪，避免 WebView2 首帧吃到连接拒绝
 
-            var dataFolder = Path.Combine(AgentHubConfig.LocalDataDir, "WebView2");
-            var env = await CoreWebView2Environment.CreateAsync(null, dataFolder);
+            var env = await ShellWebView.EnvironmentAsync();
             await Web.EnsureCoreWebView2Async(env);
 
             // 桌面壳不是浏览器：关掉右键网页菜单（后退/刷新/检查等）和底栏链接预览
@@ -197,15 +195,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>壳内只允许本机 Kestrel（含 about:blank 首帧）。</summary>
-    private static bool IsLocalShellUri(string? uriText)
-    {
-        if (string.IsNullOrEmpty(uriText)) return false;
-        if (uriText.Equals("about:blank", StringComparison.OrdinalIgnoreCase)) return true;
-        if (!Uri.TryCreate(uriText, UriKind.Absolute, out var uri)) return false;
-        return uri.Scheme == Uri.UriSchemeHttp
-            && uri.Host.Equals("127.0.0.1", StringComparison.Ordinal)
-            && uri.Port == WebHostService.Port;
-    }
+    private static bool IsLocalShellUri(string? uriText) => ShellWebView.IsLocalShellUri(uriText);
 
     protected override void OnClosing(CancelEventArgs e)
     {
