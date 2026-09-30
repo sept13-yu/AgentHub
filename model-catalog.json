@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-28",
+  "updatedAt": "2026-09-30",
   "note": "模型目录：modelId 稳定身份，display 仅展示；Fast 独立，思考等级合并；跨版本借价不进身份别名。",
   "models": [
     {
@@ -707,6 +707,73 @@
         "inputPer1m": 4,
         "outputPer1m": 20,
         "cacheReadPer1m": 0.4,
+        "cacheWritePer1m": 5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6.1-sol",
+      "display": "GPT-6.1 Sol",
+      "aliases": [
+        {
+          "name": "gpt-6.1-sol-high"
+        },
+        {
+          "name": "gpt-6.1-sol-medium"
+        },
+        {
+          "name": "gpt-6.1-sol-low"
+        },
+        {
+          "name": "gpt-6.1-sol-xhigh"
+        },
+        {
+          "name": "gpt-6.1-sol-max"
+        },
+        {
+          "name": "openai/gpt-6.1-sol"
+        }
+      ],
+      "liteLlmKey": "gpt-6.1-sol",
+      "legacyPriceKeys": [
+        "gpt-6.1-sol"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.1,
+        "cacheWritePer1m": 2.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6.1-sol-fast",
+      "display": "GPT-6.1 Sol Fast",
+      "aliases": [
+        {
+          "name": "gpt-6.1-sol-high-fast"
+        },
+        {
+          "name": "gpt-6.1-sol-medium-fast"
+        },
+        {
+          "name": "gpt-6.1-sol-low-fast"
+        },
+        {
+          "name": "gpt-6.1-sol-xhigh-fast"
+        },
+        {
+          "name": "gpt-6.1-sol-max-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-6.1-sol",
+      "legacyPriceKeys": [
+        "gpt-6.1-sol-fast"
+      ],
+      "price": {
+        "inputPer1m": 4,
+        "outputPer1m": 20,
+        "cacheReadPer1m": 0.2,
         "cacheWritePer1m": 5,
         "currency": "USD"
       }
