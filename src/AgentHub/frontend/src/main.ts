@@ -8,6 +8,7 @@ import CapabilitiesPage from './pages/CapabilitiesPage.vue'
 import CodexConfigPage from './pages/CodexConfigPage.vue'
 import RulesPage from './pages/RulesPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
+import DesktopQuotaPage from './pages/DesktopQuotaPage.vue'
 import { applyCssVars } from './tokens'
 import { theme } from './theme'
 import { startEventStream } from './events'
@@ -27,6 +28,7 @@ const router = createRouter({
     { path: '/rules', component: RulesPage, meta: { title: '规则' } },
     { path: '/codex-config', component: CodexConfigPage, meta: { title: 'Codex' } },
     { path: '/settings', component: SettingsPage, meta: { title: '设置' } },
+    { path: '/desktop-quota', name: 'desktop-quota', component: DesktopQuotaPage, meta: { title: '桌面额度', bare: true } },
   ],
 })
 

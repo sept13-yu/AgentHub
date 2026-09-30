@@ -393,10 +393,39 @@ public sealed class AppSettings
     public bool WindowMaximized { get; set; }
 }
 
+/// <summary>Windows 桌面额度悬浮窗。默认关闭，托盘「桌面额度」打开；关闭按钮只隐藏并记住，不退出应用。
+/// WindowIds 为 null 表示用户还没选过（界面按当前可查询窗口取前 2 个）；空列表表示用户主动清空。</summary>
+public sealed class DesktopQuotaSettings
+{
+    public const int MaxWindows = 2;
+
+    public bool Visible { get; set; }
+    public bool Expanded { get; set; }
+    public double? Left { get; set; }
+    public double? Top { get; set; }
+    public List<string>? WindowIds { get; set; }
+
+    public static List<string> NormalizeWindowIds(IEnumerable<string>? raw)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var list = new List<string>();
+        if (raw is null) return list;
+        foreach (var id in raw)
+        {
+            var text = (id ?? "").Trim();
+            if (text.Length == 0 || !seen.Add(text)) continue;
+            list.Add(text);
+            if (list.Count == MaxWindows) break;
+        }
+        return list;
+    }
+}
+
 /// <summary>AgentHub 配置：落 %APPDATA%\AgentHub\config.json。</summary>
 public sealed class AgentHubConfig
 {
     public AppSettings App { get; set; } = new();
+    public DesktopQuotaSettings DesktopQuota { get; set; } = new();
     public DocsSettings Docs { get; set; } = new();
     public DashboardSettings Dashboard { get; set; } = new();
     public CredentialsSettings Credentials { get; set; } = new();
@@ -491,6 +520,9 @@ public sealed class AgentHubConfig
             raw = File.ReadAllText(ConfigPath);
             cfg = JsonSerializer.Deserialize<AgentHubConfig>(raw, JsonOpts)
                 ?? new AgentHubConfig();
+            cfg.DesktopQuota ??= new DesktopQuotaSettings();
+            if (cfg.DesktopQuota.WindowIds is { Count: > 0 })
+                cfg.DesktopQuota.WindowIds = DesktopQuotaSettings.NormalizeWindowIds(cfg.DesktopQuota.WindowIds);
         }
         catch (Exception ex)
         {
