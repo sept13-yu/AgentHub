@@ -70,6 +70,7 @@ public sealed class DashboardSettings
         "openclaw", "every-code", "astudio", "oh-my-pi", "omo", "pi",
         "prime-agent", "craft-agents", "kilo-cli", "kilo-code", "roo-code", "zed-agent",
         "goose", "droid", "anythingllm", "claude-science", "lm-studio", "unsloth-studio",
+        "cline", "command-code",
     ];
 
     private static readonly Dictionary<string, string> AgentGroupOf = new(StringComparer.OrdinalIgnoreCase)
@@ -128,6 +129,8 @@ public sealed class DashboardSettings
         ["claude-science"] = "claude-science",
         ["lm-studio"] = "lm-studio",
         ["unsloth-studio"] = "unsloth-studio",
+        ["cline"] = "cline",
+        ["command-code"] = "command-code",
     };
 
     private static readonly Dictionary<string, string> QuotaGroupOf = new(StringComparer.Ordinal)
@@ -332,6 +335,8 @@ public sealed class DashboardSettings
         "claude-science" => "Claude Science",
         "lm-studio" => "LM Studio",
         "unsloth-studio" => "Unsloth Studio",
+        "cline" => "Cline",
+        "command-code" => "Command Code",
         _ => id,
     };
 
@@ -343,7 +348,8 @@ public sealed class DashboardSettings
             or "gemini-cli" or "kiro" or "copilot" or "kimi-code" or "codebuddy" or "hermes"
             or "openclaw" or "every-code" or "astudio" or "oh-my-pi" or "omo" or "pi" or "dots"
             or "prime-agent" or "craft-agents" or "kilo-cli" or "kilo-code" or "roo-code" or "zed-agent"
-            or "goose" or "droid" or "anythingllm" or "claude-science" or "lm-studio" or "unsloth-studio" => true,
+            or "goose" or "droid" or "anythingllm" or "claude-science" or "lm-studio" or "unsloth-studio"
+            or "cline" or "command-code" => true,
         _ => false,
     };
 }

@@ -37,6 +37,8 @@ const INK: Record<string, string> = {
   'claude-science': 'M9 3h6v2.2H13V8c2.8.4 5 2.6 5 5.6V19H6v-5.4C6 10.6 8.2 8.4 11 8V5.2H9V3z',
   'lm-studio': 'M6 5h3.2v10.2L16.8 5H20v14h-3.2V8.8L9.2 19H6V5z',
   'unsloth-studio': 'M7 5h3.2l1.8 9.2L13.8 5H17l-3.2 14h-3.6L7 5z',
+  cline: 'M8 5h9v2.4H10.6v3.2H16v2.4h-5.4v3.6H17V19H8V5z',
+  'command-code': 'M5 6h9v2.2H8.2V11H13v2.2H8.2v2.6H14V19H5V6zm9.4 7.2H19V19h-4.6v-5.8z',
 }
 
 const props = defineProps<{ id: string | null | undefined }>()

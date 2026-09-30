@@ -71,6 +71,8 @@ export const AGENT_COLOR: Record<string, string> = {
   'claude-science': 'var(--src-claude-science)',
   'lm-studio': 'var(--src-lm-studio)',
   'unsloth-studio': 'var(--src-unsloth-studio)',
+  cline: 'var(--src-cline)',
+  'command-code': 'var(--src-command-code)',
 }
 
 export const AGENT_NAME: Record<string, string> = {
@@ -118,6 +120,8 @@ export const AGENT_NAME: Record<string, string> = {
   'claude-science': 'Claude Science',
   'lm-studio': 'LM Studio',
   'unsloth-studio': 'Unsloth Studio',
+  cline: 'Cline',
+  'command-code': 'Command Code',
 }
 
 function normalizeAgentId(id: string): string {
