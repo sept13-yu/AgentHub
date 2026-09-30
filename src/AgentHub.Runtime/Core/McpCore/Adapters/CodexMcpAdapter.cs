@@ -36,27 +36,26 @@ public sealed partial class CodexMcpAdapter : IMcpAdapter
 
     public IReadOnlyList<McpServerSpec> List()
     {
+        try { return ListStrict(); }
+        catch { return []; }
+    }
+
+    public IReadOnlyList<McpServerSpec> ListStrict()
+    {
         if (!File.Exists(ConfigPath)) return [];
-        try
+        var text = File.ReadAllText(ConfigPath);
+        var doc = Toml.Parse(text);
+        if (doc.Diagnostics.Count > 0) throw new InvalidOperationException("Codex 配置语法无效");
+        var root = doc.ToModel();
+        if (!root.TryGetValue("mcp_servers", out var ms)) return [];
+        if (ms is not TomlTable servers) throw new InvalidOperationException("Codex MCP 配置格式无效");
+        var list = new List<McpServerSpec>();
+        foreach (var key in servers.Keys)
         {
-            var text = File.ReadAllText(ConfigPath);
-            var doc = Toml.Parse(text);
-            if (doc.Diagnostics.Count > 0) return [];
-            var root = doc.ToModel();
-            if (!root.TryGetValue("mcp_servers", out var ms) || ms is not TomlTable servers)
-                return [];
-            var list = new List<McpServerSpec>();
-            foreach (var key in servers.Keys)
-            {
-                if (servers[key] is not TomlTable table) continue;
-                list.Add(ParseTable(key, table));
-            }
-            return list;
+            if (servers[key] is not TomlTable table) throw new InvalidOperationException("Codex MCP 条目格式无效");
+            list.Add(ParseTable(key, table));
         }
-        catch
-        {
-            return [];
-        }
+        return list;
     }
 
     public void Upsert(McpServerSpec spec)

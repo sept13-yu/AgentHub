@@ -87,7 +87,7 @@ public sealed class CodexAuthProfileStore
         }
         var plain = Secrets.Unprotect(file?.AuthCipher);
         if (string.IsNullOrEmpty(plain))
-            throw new InvalidOperationException("档案凭据无法解密（可能换过 Windows 用户），请重新导入");
+            throw new InvalidOperationException("档案凭据无法解密（可能换过本机用户或凭据密钥文件），请重新导入");
         return plain;
     }
 

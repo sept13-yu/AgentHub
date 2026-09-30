@@ -1,6 +1,7 @@
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
+using AgentHub.Core.ProxyCore;
 
 namespace AgentHub.Core.Platform;
 
@@ -43,10 +44,15 @@ public sealed class WindowsDpapiSecretProtector : ISecretProtector
         {
             return null;
         }
+        catch (FormatException)
+        {
+            // 非 base64（如 macOS 产出的 aghs1: 密文）：按「解不开即未配置」处理，不能让读取接口整体失败。
+            return null;
+        }
     }
 }
 
-/// <summary>非 Windows 平台占位（Keychain 在后续步骤接入）。</summary>
+/// <summary>显式关闭加密时使用（宿主可通过 Secrets.Use 注入）；默认不再选用，非 Windows 走 AesGcmFileSecretProtector。</summary>
 public sealed class UnsupportedSecretProtector : ISecretProtector
 {
     public static readonly UnsupportedSecretProtector Instance = new();
@@ -56,12 +62,13 @@ public sealed class UnsupportedSecretProtector : ISecretProtector
     public string? Unprotect(string? cipher) => null;
 }
 
-/// <summary>静态门面。宿主可在启动最早期 Use() 替换实现；不调用则按平台自动选择。</summary>
+/// <summary>静态门面。宿主可在启动最早期 Use() 替换实现；不调用则按平台自动选择（Windows DPAPI / 其他 AES-GCM + 密钥文件）。
+/// 非 Windows 的密钥文件随配置目录走，独立于 AgentHubRuntime 创建：codex-credential 在 Runtime 之前就执行。</summary>
 public static class Secrets
 {
     private static ISecretProtector _current = OperatingSystem.IsWindows()
         ? new WindowsDpapiSecretProtector()
-        : UnsupportedSecretProtector.Instance;
+        : new AesGcmFileSecretProtector(Path.Combine(AgentHubConfig.Dir, "secrets.key"));
 
     public static ISecretProtector Current => _current;
     public static bool IsSupported => _current.IsSupported;

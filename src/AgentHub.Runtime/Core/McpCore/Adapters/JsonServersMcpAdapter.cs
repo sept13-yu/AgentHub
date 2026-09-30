@@ -33,24 +33,23 @@ public abstract class JsonServersMcpAdapter : IMcpAdapter
 
     public IReadOnlyList<McpServerSpec> List()
     {
+        try { return ListStrict(); }
+        catch { return []; }
+    }
+
+    public IReadOnlyList<McpServerSpec> ListStrict()
+    {
         if (!File.Exists(ConfigPath)) return [];
-        try
+        var root = JsonMcpFile.LoadRoot(ConfigPath);
+        var servers = JsonMcpFile.TryGetServers(root, _serversPath);
+        if (servers is null) return [];
+        var list = new List<McpServerSpec>();
+        foreach (var (id, node) in servers)
         {
-            var root = JsonMcpFile.LoadRoot(ConfigPath);
-            var servers = JsonMcpFile.TryGetServers(root, _serversPath);
-            if (servers is null) return [];
-            var list = new List<McpServerSpec>();
-            foreach (var (id, node) in servers)
-            {
-                if (node is not JsonObject obj) continue;
-                list.Add(JsonMcpFile.ParseServer(id, obj, ReadEnabled));
-            }
-            return list;
+            if (node is not JsonObject obj) throw new InvalidOperationException("MCP 条目格式无效");
+            list.Add(JsonMcpFile.ParseServer(id, obj, ReadEnabled));
         }
-        catch
-        {
-            return [];
-        }
+        return list;
     }
 
     public void Upsert(McpServerSpec spec)

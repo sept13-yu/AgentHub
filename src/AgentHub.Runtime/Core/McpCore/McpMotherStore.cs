@@ -40,19 +40,18 @@ public sealed class McpMotherStore
             try
             {
                 var text = File.ReadAllText(_path);
-                if (string.IsNullOrWhiteSpace(text))
-                    return new McpMotherDocument();
-                var doc = JsonSerializer.Deserialize<McpMotherDocument>(text, JsonOpts) ?? new McpMotherDocument();
-                doc.Servers ??= new Dictionary<string, McpMotherServer>(StringComparer.OrdinalIgnoreCase);
-                doc.Targets ??= new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-                doc.ExcludeNames ??= ["node_repl", "cua_repl"];
+                var doc = JsonSerializer.Deserialize<McpMotherDocument>(text, JsonOpts) ?? throw new JsonException();
+                if (doc.Servers is null || doc.Targets is null || doc.ExcludeNames is null ||
+                    doc.Servers.Any(p => p.Value is null)) throw new JsonException();
+                doc.Servers = new Dictionary<string, McpMotherServer>(doc.Servers, StringComparer.OrdinalIgnoreCase);
+                doc.Targets = new Dictionary<string, bool>(doc.Targets, StringComparer.OrdinalIgnoreCase);
                 EnsureDefaultTargets(doc);
                 return doc;
             }
-            catch (JsonException ex)
+            catch (Exception ex)
             {
-                HubLog.Write("[mcp] mcp-mother.json 损坏，回空母本：" + ex.Message);
-                return new McpMotherDocument();
+                HubLog.Write("[mcp] 标准配置读取失败：" + ex.GetType().Name);
+                throw new InvalidOperationException("标准配置读取失败，配置可能损坏或不可访问");
             }
         }
     }
@@ -83,18 +82,22 @@ public sealed class McpMotherStore
     public McpServerSpec? Get(string id)
     {
         var doc = Load();
-        return doc.Servers.TryGetValue(id, out var s) ? FromMother(id, s) : null;
+        var pair = doc.Servers.FirstOrDefault(p => string.Equals(p.Key, id, StringComparison.OrdinalIgnoreCase));
+        return pair.Value is null ? null : FromMother(pair.Key, pair.Value);
     }
 
     public void Upsert(McpServerSpec spec)
     {
-        if (string.IsNullOrWhiteSpace(spec.Id))
-            throw new ArgumentException("MCP 名称不能为空");
-        var doc = Load();
-        if (IsExcluded(doc, spec.Id))
-            throw new InvalidOperationException($"系统项 {spec.Id} 不能写入母本");
-        doc.Servers[spec.Id] = ToMother(spec);
-        Save(doc);
+        lock (_gate)
+        {
+            if (string.IsNullOrWhiteSpace(spec.Id))
+                throw new ArgumentException("MCP 名称不能为空");
+            var doc = Load();
+            if (IsExcluded(doc, spec.Id))
+                throw new InvalidOperationException($"系统项 {spec.Id} 不能写入母本");
+            doc.Servers[spec.Id] = ToMother(spec);
+            Save(doc);
+        }
     }
 
     public void SetEnabled(string id, bool enabled)
@@ -192,7 +195,7 @@ public sealed class McpMotherStore
 
     private static void EnsureDefaultTargets(McpMotherDocument doc)
     {
-        foreach (var id in new[] { "cursor", "codex", "trae", "workbuddy", "zcode", "mimocode" })
+        foreach (var id in new[] { "cursor", "codex", "trae", "workbuddy", "zcode", "mimocode", "dsh" })
             if (!doc.Targets.ContainsKey(id))
                 doc.Targets[id] = true;
     }

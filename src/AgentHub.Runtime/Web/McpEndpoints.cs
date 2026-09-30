@@ -25,27 +25,18 @@ public static class McpEndpoints
             if (!writeAuth(ctx)) return Forbidden();
             if (string.IsNullOrWhiteSpace(name))
                 return Results.Json(new { error = "需要 name" }, statusCode: 400);
-            var spec = mcp.GetRaw(name.Trim());
-            if (spec is null)
-                return Results.Json(new { error = "找不到该配置" }, statusCode: 404);
-            // 仅供编辑表单；列表接口已掩码。不写日志。
-            return Results.Json(new
+            try
             {
-                id = spec.Id,
-                transport = spec.Transport.ToString().ToLowerInvariant(),
-                command = spec.Command,
-                args = spec.Args,
-                env = spec.Env,
-                url = spec.Url,
-                headers = spec.Headers,
-                enabled = spec.Enabled,
-                startupTimeoutSec = spec.StartupTimeoutSec,
-                timeoutMs = spec.TimeoutMs,
-                alias = spec.Alias,
-                note = spec.Note,
-                explicitType = spec.ExplicitType,
-                hasSecretRisk = McpSecrets.HasSecretRisk(spec),
-            });
+                var spec = mcp.GetRaw(name.Trim());
+                if (spec is null)
+                    return Results.Json(new McpApiError("找不到该来源配置"), statusCode: 404);
+                // 仅供编辑表单；列表接口已掩码。不写日志。
+                return Results.Json(new McpRawResponse(spec.Id, spec.Transport.ToString().ToLowerInvariant(),
+                    spec.Command, spec.Args, spec.Env, spec.Url, spec.Headers, spec.Enabled,
+                    spec.StartupTimeoutSec, spec.TimeoutMs, spec.Alias, spec.Note, spec.ExplicitType,
+                    McpSecrets.HasSecretRisk(spec)));
+            }
+            catch { return Results.Json(new McpApiError("读取配置失败，请重新加载"), statusCode: 500); }
         });
 
         app.MapPost("/api/mcp/import", async (HttpContext ctx) =>
@@ -125,16 +116,17 @@ public static class McpEndpoints
                 // 若 URL 非空则视为 HTTP
                 if (!string.IsNullOrWhiteSpace(spec.Url))
                     spec.Transport = McpTransport.Http;
-                mcp.UpsertMother(spec);
-                return Results.Json(new { ok = true, hasSecretRisk = McpSecrets.HasSecretRisk(spec) });
+                var result = mcp.UpsertToAgents(spec, []);
+                return Results.Json(new McpUpsertAgentsResponse(result.Ok, McpSecrets.HasSecretRisk(spec),
+                    result.Items, result.Error), statusCode: result.Ok ? 200 : 207);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+                return Results.Json(new McpApiError("保存配置失败，请检查输入和配置"), statusCode: 400);
             }
         });
 
-        // 直接写入指定 Agent（不依赖母本门闸；母本可静默缓存）
+        // 同名 MCP 统一保存；targets 只用于新增端，既有端始终同步。
         app.MapPost("/api/mcp/upsert-agents", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx)) return Forbidden();
@@ -152,8 +144,6 @@ public static class McpEndpoints
                         if (a.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(a.GetString()))
                             targets.Add(a.GetString()!.Trim());
                 }
-                if (targets.Count == 0)
-                    return Results.Json(new { error = "需要 targets" }, statusCode: 400);
                 var transport = Str(root, "transport");
                 var spec = new McpServerSpec
                 {
@@ -186,19 +176,13 @@ public static class McpEndpoints
                             spec.Headers[p.Name] = p.Value.GetString() ?? "";
                 if (!string.IsNullOrWhiteSpace(spec.Url))
                     spec.Transport = McpTransport.Http;
-                var ensureMother = !root.TryGetProperty("ensureMother", out var em) || em.ValueKind != JsonValueKind.False;
-                var result = mcp.UpsertToAgents(spec, targets, ensureMother);
-                return Results.Json(new
-                {
-                    ok = result.Ok,
-                    hasSecretRisk = McpSecrets.HasSecretRisk(spec),
-                    items = result.Items,
-                    error = result.Error,
-                }, statusCode: result.Ok ? 200 : 207);
+                var result = mcp.UpsertToAgents(spec, targets);
+                return Results.Json(new McpUpsertAgentsResponse(result.Ok, McpSecrets.HasSecretRisk(spec),
+                    result.Items, result.Error), statusCode: result.Ok ? 200 : 207);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return Results.Json(new { ok = false, error = ex.Message }, statusCode: 400);
+                return Results.Json(new McpApiError("保存配置失败，请检查输入和配置"), statusCode: 400);
             }
         });
 
@@ -248,7 +232,7 @@ public static class McpEndpoints
                     names.Add(body.name.Trim());
                 if (names.Count == 0)
                     return Results.Json(new { error = "body 需要 { name } 或 { names }" }, statusCode: 400);
-                var result = mcp.PushNames(names, body?.targets, body?.source, ensureMother: true);
+                var result = mcp.PushNames(names, body?.targets, body?.source);
                 return Results.Json(result, statusCode: result.Ok ? 200 : 207);
             }
             catch (Exception ex)

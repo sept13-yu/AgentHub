@@ -19,9 +19,7 @@ public static class JsonMcpFile
         if (!File.Exists(path))
             return new JsonObject();
         var text = File.ReadAllText(path);
-        if (string.IsNullOrWhiteSpace(text))
-            return new JsonObject();
-        return JsonNode.Parse(text) as JsonObject ?? new JsonObject();
+        return JsonNode.Parse(text) as JsonObject ?? throw new InvalidOperationException("MCP 配置根节点无效");
     }
 
     public static void SaveRoot(string path, JsonObject root)
@@ -58,11 +56,12 @@ public static class JsonMcpFile
         JsonNode? cur = root;
         foreach (var key in pathParts)
         {
-            if (cur is not JsonObject obj || obj[key] is not JsonNode next)
-                return null;
+            if (cur is not JsonObject obj) throw new InvalidOperationException("MCP 配置节点格式无效");
+            if (!obj.TryGetPropertyValue(key, out var next)) return null;
+            if (next is null) throw new InvalidOperationException("MCP 配置节点格式无效");
             cur = next;
         }
-        return cur as JsonObject;
+        return cur as JsonObject ?? throw new InvalidOperationException("MCP 配置节点格式无效");
     }
 
     public static McpServerSpec ParseServer(string id, JsonObject node, Func<JsonObject, bool> readEnabled)

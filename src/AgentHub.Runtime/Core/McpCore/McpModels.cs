@@ -15,6 +15,7 @@ public enum McpPresence
     Missing,
     System,
     Unsupported,
+    Error,
 }
 
 public sealed class McpServerSpec
@@ -83,6 +84,7 @@ public sealed class McpMotherDocument
         ["workbuddy"] = true,
         ["zcode"] = true,
         ["mimocode"] = true,
+        ["dsh"] = true,
     };
     public List<string> ExcludeNames { get; set; } = ["node_repl", "cua_repl"];
 }

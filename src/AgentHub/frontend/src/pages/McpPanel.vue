@@ -50,6 +50,7 @@ interface AdapterInfo {
   configPath: string
   detected: boolean
   count: number
+  error: string | null
 }
 interface McpPayload {
   motherPath: string
@@ -68,7 +69,11 @@ const data = ref<McpPayload | null>(null)
 const q = ref('')
 const editShow = ref(false)
 const editLoading = ref(false)
+const editSaving = ref(false)
+const editLoaded = ref(false)
+const editError = ref('')
 const editingExisting = ref(false)
+const editingItem = ref<McpItem | null>(null)
 const busyAgentKey = ref('')
 const riskConfirmShow = ref(false)
 let riskConfirmResolve: ((ok: boolean) => void) | null = null
@@ -76,6 +81,7 @@ let riskConfirmResolve: ((ok: boolean) => void) | null = null
 const jsonText = ref('')
 const createName = ref('')
 const editTargets = ref<string[]>([])
+let editRequestId = 0
 
 const deleteShow = ref(false)
 const deleteItem = ref<McpItem | null>(null)
@@ -109,6 +115,15 @@ const deletePresentAgents = computed(() =>
   (deleteItem.value?.agents ?? []).filter((a) => a.presence === 'present' && a.detected))
 
 const detectedAdapters = computed(() => (data.value?.adapters ?? []).filter((a) => a.detected))
+const writableAdapters = computed(() => detectedAdapters.value.filter((a) => !a.error))
+const adapterErrors = computed(() => detectedAdapters.value.filter((a) => !!a.error))
+const requiredEditAgents = computed(() => editingItem.value?.agents.filter((a) => a.presence === 'present' && a.detected) ?? [])
+const optionalEditAdapters = computed(() => writableAdapters.value.filter((a) =>
+  !requiredEditAgents.value.some((present) => present.agentId === a.agentId)))
+
+function agentName(agent: { agentId: string; displayName: string }) {
+  return agent.agentId === 'dsh' ? 'DSH' : agent.displayName
+}
 
 function presentAgentIds(item: McpItem) {
   return item.agents.filter((a) => a.presence === 'present' && a.detected).map((a) => a.agentId)
@@ -120,13 +135,13 @@ function cardAgents(item: McpItem) {
 
 function defaultEditTargets(item?: McpItem | null) {
   if (item) {
-    const present = presentAgentIds(item)
-    if (present.length) return present
+    return presentAgentIds(item)
   }
-  return (data.value?.adapters ?? []).filter((a) => a.detected).map((a) => a.agentId)
+  return writableAdapters.value.map((a) => a.agentId)
 }
 
 function toggleEditTarget(id: string, on: boolean) {
+  if (!on && requiredEditAgents.value.some((a) => a.agentId === id)) return
   const set = new Set(editTargets.value)
   if (on) set.add(id)
   else set.delete(id)
@@ -151,21 +166,26 @@ function presenceClass(p: string) {
     case 'missing': return 'miss'
     case 'system': return 'sys'
     case 'unsupported': return 'off'
+    case 'error': return 'error'
     default: return ''
   }
 }
 
 function agentChipTitle(a: AgentStatus) {
-  const name = a.displayName
+  const name = agentName(a)
+  // DSH 写的是 home 共享层（对所有 profile 生效），运行中的实例要重启才加载
+  const dshNote = a.agentId === 'dsh' ? '\n写入后需重启 DSH 生效' : ''
   switch (a.presence) {
     case 'present':
-      return `${name} · 已有（${a.enabledOnAgent ? '开' : '关'}）\n${a.configPath}`
+      return `${name} · 已有（${a.enabledOnAgent ? '开' : '关'}）\n${a.configPath}${dshNote}`
     case 'missing':
-      return `${name} · 缺失（点开写入）\n${a.configPath}`
+      return `${name} · 缺失（点开写入）\n${a.configPath}${dshNote}`
     case 'system':
       return `${name} · 系统`
     case 'unsupported':
       return `${name} · 未装`
+    case 'error':
+      return `${name} · ${a.detail || '读取配置失败'}\n${a.configPath}`
     default:
       return name
   }
@@ -235,7 +255,13 @@ async function load() {
 async function refresh() {
   await load()
   const n = data.value?.items.length ?? 0
-  message.success(`已刷新，共 ${n} 项`)
+  if (adapterErrors.value.length) message.warning(`已刷新，共 ${n} 项；${adapterErrors.value.length} 个配置读取失败`)
+  else message.success(`已刷新，共 ${n} 项`)
+}
+
+// 写入结果里含 dsh 时提醒重启（共享 patch 不热加载新增/删除条目）
+function dshRestartSuffix(items: PushResult['items']) {
+  return (items || []).some((x) => x.ok && x.agent === 'dsh') ? '；DSH 需重启生效' : ''
 }
 
 async function doPush(names: string[], targets?: string[], source?: string) {
@@ -246,15 +272,15 @@ async function doPush(names: string[], targets?: string[], source?: string) {
   })
   const fail = (r.items || []).filter((x) => !x.ok)
   const okCount = (r.items || []).filter((x) => x.ok && x.agent !== '*').length
-  if (fail.length) message.warning(`推送完成：成功 ${okCount}，失败 ${fail.length}`)
+  if (fail.length) message.warning(`推送完成：成功 ${okCount}，失败 ${fail.length}${dshRestartSuffix(r.items)}`)
   else if (okCount === 0) message.info('没有需要推送的缺失端')
-  else message.success(`已推送到 ${okCount} 处`)
+  else message.success(`已推送到 ${okCount} 处${dshRestartSuffix(r.items)}`)
   return r
 }
 
 async function onAgentSwitch(item: McpItem, agent: AgentStatus, wantOn: boolean) {
   if (readonly) return
-  if (agent.presence === 'system' || agent.presence === 'unsupported') return
+  if (agent.presence === 'system' || agent.presence === 'unsupported' || agent.presence === 'error') return
   if (!wantOn && agent.presence === 'missing') return
 
   const key = `${item.id}:${agent.agentId}`
@@ -268,6 +294,7 @@ async function onAgentSwitch(item: McpItem, agent: AgentStatus, wantOn: boolean)
     }
     if (agent.presence === 'present') {
       await post('/api/mcp/agent-enable', { agent: agent.agentId, name: item.id, enabled: wantOn })
+      if (agent.agentId === 'dsh') message.info('DSH 需重启生效')
       await load()
       return
     }
@@ -298,7 +325,13 @@ function prettyJson() {
 }
 
 function openCreate() {
+  if (readonly || editSaving.value) return
+  editRequestId++
   editingExisting.value = false
+  editingItem.value = null
+  editLoading.value = false
+  editLoaded.value = true
+  editError.value = ''
   createName.value = ''
   jsonText.value = NEW_TEMPLATE
   editTargets.value = defaultEditTargets(null)
@@ -325,31 +358,26 @@ function toEditJson(raw: Record<string, unknown>) {
 }
 
 async function openEdit(item: McpItem) {
+  if (readonly || editSaving.value) return
+  const requestId = ++editRequestId
   editLoading.value = true
+  editLoaded.value = false
+  editError.value = ''
+  jsonText.value = ''
   editShow.value = true
   editingExisting.value = true
+  editingItem.value = item
   createName.value = item.id
   editTargets.value = defaultEditTargets(item)
   try {
     const raw = await get<Record<string, unknown>>(`/api/mcp/raw?name=${encodeURIComponent(item.id)}`)
+    if (requestId !== editRequestId || !editShow.value) return
     jsonText.value = JSON.stringify(toEditJson(raw), null, 2)
+    editLoaded.value = true
   } catch (e) {
-    // 回退：用列表脱敏视图，提示核对密钥
-    jsonText.value = JSON.stringify(toEditJson({
-      id: item.id,
-      transport: item.transport,
-      command: item.command,
-      args: item.args,
-      env: item.env,
-      url: item.url,
-      headers: item.headers,
-      enabled: item.enabled,
-      alias: item.alias,
-      note: item.note,
-    }), null, 2)
-    message.warning('未能从端加载明文配置，列表可能已脱敏，请核对密钥')
+    if (requestId === editRequestId) editError.value = e instanceof Error ? e.message : '读取配置失败'
   } finally {
-    editLoading.value = false
+    if (requestId === editRequestId) editLoading.value = false
   }
 }
 
@@ -410,33 +438,49 @@ function parseServerEntry(text: string): Record<string, unknown> {
 }
 
 async function saveEdit() {
-  if (readonly) return
+  if (readonly || editLoading.value || editSaving.value || !editLoaded.value) return
   let body: Record<string, unknown>
   try {
     body = parseServerEntry(jsonText.value)
+    if (editingExisting.value && body.name !== createName.value) throw new Error('已有 MCP 请保留原名称')
   } catch (e) {
     message.warning(e instanceof Error ? e.message : 'JSON 无效')
     return
   }
-  const targets = [...editTargets.value]
-  if (!targets.length) {
+  const targets = [...new Set([...editTargets.value, ...requiredEditAgents.value.map((a) => a.agentId)])]
+  if (!editingExisting.value && !targets.length) {
     message.warning('请至少选择一个目标端')
     return
   }
-  if (!(await ensureRiskAck())) return
+  editSaving.value = true
+  editError.value = ''
   try {
+    if (!(await ensureRiskAck())) return
     const r = await post<PushResult>('/api/mcp/upsert-agents', {
       ...body,
       targets,
     })
     const fail = (r.items || []).filter((x) => !x.ok)
-    const okCount = (r.items || []).filter((x) => x.ok && x.agent !== '*').length
-    if (fail.length) message.warning(`已写入 ${okCount} 端，失败 ${fail.length}`)
-    else message.success(`已写入 ${okCount || targets.length} 端`)
+    const okCount = (r.items || []).filter((x) => x.ok && x.agent !== '*' && x.agent !== 'mother').length
+    if (!r.ok || fail.length) {
+      const details = [r.error, ...fail.map((x) => `${x.agent}：${x.error || '同步失败'}`)].filter(Boolean).join('；')
+      editError.value = `保存或同步未完成：${details || '请检查配置后重试'}${dshRestartSuffix(r.items)}`
+      await load()
+      const current = data.value?.items.find((item) => item.id === body.name)
+      if (current) {
+        editingExisting.value = true
+        editingItem.value = current
+        createName.value = current.id
+      }
+      return
+    }
+    message.success(`已保存标准配置并同步 ${okCount} 个 Agent${dshRestartSuffix(r.items)}`)
     editShow.value = false
     await load()
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '保存失败')
+    editError.value = e instanceof Error ? e.message : '保存失败'
+  } finally {
+    editSaving.value = false
   }
 }
 
@@ -484,8 +528,8 @@ async function confirmDelete() {
       targets,
     })
     const fail = (r.items || []).filter((x) => !x.ok && x.agent !== 'mother')
-    if (fail.length) message.warning(`从所选端移除部分失败（${fail.length}）`)
-    else message.success('已从所选端移除')
+    if (fail.length) message.warning(`从所选端移除部分失败（${fail.length}）${dshRestartSuffix(r.items)}`)
+    else message.success(`已从所选端移除${dshRestartSuffix(r.items)}`)
     deleteShow.value = false
     deleteItem.value = null
     await load()
@@ -529,12 +573,22 @@ onMounted(() => { void load() })
         @click="openAgent(a.agentId)"
       >
         <AgentMark :id="a.agentId" />
-        <b>{{ a.displayName }}</b>
+        <b>{{ agentName(a) }}</b>
         <span class="mcp-adapter-file">{{ configFileName(a.configPath) }}</span>
       </button>
     </div>
 
-    <div v-if="!filtered.length" class="docs-empty">暂无 MCP 项</div>
+    <p v-if="readonly" class="hint">浏览器只读。编辑、保存和同步配置请到 AgentHub 桌面操作。</p>
+
+    <div v-if="adapterErrors.length" class="mcp-read-errors" role="alert">
+      <p v-for="a in adapterErrors" :key="a.agentId">
+        {{ agentName(a) }}：{{ a.error }}。请检查 {{ a.configPath }}
+      </p>
+    </div>
+
+    <div v-if="!filtered.length" class="docs-empty">
+      {{ adapterErrors.length ? '暂无可显示的 MCP 项，请先处理上方读取错误' : '暂无 MCP 项' }}
+    </div>
 
     <div v-else class="mcp-grid">
     <article
@@ -550,6 +604,7 @@ onMounted(() => { void load() })
           <span class="tag">{{ item.transport }}</span>
           <span v-if="item.hasSecretRisk" class="tag risk">含密钥</span>
         </div>
+        <n-button size="small" :disabled="readonly" :title="readonly ? '请到 AgentHub 桌面操作' : '编辑 MCP'" @click.stop="openEdit(item)">编辑</n-button>
       </header>
       <p v-if="item.note" class="mcp-note">{{ item.note }}</p>
       <p class="mcp-cmd" :title="item.transport === 'http' ? item.url || '' : item.command || ''">
@@ -565,8 +620,9 @@ onMounted(() => { void load() })
           :title="agentChipTitle(a)"
         >
           <AgentMark :id="a.agentId" />
-          <span class="name">{{ a.displayName }}</span>
-          <span v-if="a.drift" class="drift">drift</span>
+          <span class="name">{{ agentName(a) }}</span>
+          <button v-if="a.drift" type="button" class="drift" :disabled="readonly" :title="readonly ? '请到 AgentHub 桌面操作' : '编辑统一配置并同步所有已配置 Agent'" @click.stop="openEdit(item)">待同步</button>
+          <span v-if="a.presence === 'error'" class="mcp-agent-error">读取失败</span>
           <n-switch
             v-if="a.presence === 'present' || a.presence === 'missing'"
             size="small"
@@ -583,44 +639,55 @@ onMounted(() => { void load() })
   <n-modal
     v-model:show="editShow"
     preset="card"
-    :title="editingExisting ? '编辑 MCP' : '新建 MCP'"
+    :title="editingExisting ? `${createName}：编辑统一配置` : '新建 MCP'"
     style="width: min(720px, 94vw)"
+    :mask-closable="!editSaving"
+    :close-on-esc="!editSaving"
+    :closable="!editSaving"
   >
     <div class="mcp-form" v-if="!editLoading">
+      <p v-if="editError" class="mcp-read-errors" role="alert">{{ editError }}</p>
+      <n-button v-if="!editLoaded && editingItem" @click="openEdit(editingItem)">重新读取配置</n-button>
       <label v-if="!editingExisting" class="mcp-name-field">
         名称（Cursor 单对象无 id 时必填）
-        <n-input v-model:value="createName" placeholder="如 jira" />
+        <n-input v-model:value="createName" :disabled="editSaving" placeholder="如 jira" />
       </label>
       <label>
-        JSON（单个 server）
+        JSON（统一标准配置，单个 server）
         <n-input
           v-model:value="jsonText"
           type="textarea"
           class="mcp-json"
+          :disabled="!editLoaded || editSaving"
           :autosize="{ minRows: 14, maxRows: 28 }"
           placeholder='{"id":"jira","transport":"stdio",...}'
         />
       </label>
-      <div class="mcp-form-row mcp-targets">
-        <span class="mcp-targets-label">写入到</span>
+      <div v-if="editingExisting" class="mcp-form-row mcp-targets">
+        <span class="mcp-targets-label">同步到所有已配置 Agent</span>
+        <n-checkbox v-for="a in requiredEditAgents" :key="a.agentId" checked disabled>{{ agentName(a) }}</n-checkbox>
+        <span v-if="!requiredEditAgents.length" class="hint">当前仅保存标准配置，可在下方选择新增 Agent。</span>
+      </div>
+      <div class="mcp-form-row mcp-targets" v-if="!editingExisting || optionalEditAdapters.length">
+        <span class="mcp-targets-label">{{ editingExisting ? '新增到' : '同步到' }}</span>
         <n-checkbox
-          v-for="a in detectedAdapters"
+          v-for="a in (editingExisting ? optionalEditAdapters : writableAdapters)"
           :key="a.agentId"
           :checked="editTargets.includes(a.agentId)"
-          :disabled="readonly"
+          :disabled="readonly || editSaving || !editLoaded"
           @update:checked="(v: boolean) => toggleEditTarget(a.agentId, v)"
         >
-          {{ a.displayName }}
+          {{ agentName(a) }}
         </n-checkbox>
       </div>
-      <p class="hint">保存将写入所选端配置。可粘贴 Cursor mcpServers 单端对象。密钥会明文写入各端配置。</p>
+      <p class="hint">保存一份标准配置，并同步所有已配置 Agent 和新增所选 Agent。已有 Agent 的启用状态保留。密钥会明文写入本机各端配置。</p>
       <div class="mcp-form-actions">
-        <n-button @click="prettyJson">
+        <n-button :disabled="!editLoaded || editSaving" @click="prettyJson">
           <template #icon><n-icon><FileJson :size="16" :stroke-width="1.8" /></n-icon></template>
           格式化
         </n-button>
-        <n-button @click="editShow = false">取消</n-button>
-        <n-button type="primary" :disabled="readonly" @click="saveEdit">保存</n-button>
+        <n-button :disabled="editSaving" @click="editShow = false">取消</n-button>
+        <n-button type="primary" :disabled="readonly || !editLoaded" :loading="editSaving" @click="saveEdit">保存并同步</n-button>
       </div>
     </div>
     <p v-else class="hint">加载中…</p>
@@ -641,7 +708,7 @@ onMounted(() => { void load() })
         :disabled="readonly"
         @update:checked="(v: boolean) => toggleDeleteTarget(a.agentId, v)"
       >
-        {{ a.displayName }}
+        {{ agentName(a) }}
       </n-checkbox>
     </div>
   </AhConfirm>
@@ -670,6 +737,9 @@ onMounted(() => { void load() })
 .mcp-adapter:hover { color: var(--text); border-color: var(--stroke-strong); }
 .mcp-adapter b { font-weight: 500; color: var(--text); }
 .mcp-adapter-file { color: var(--faint); font-family: var(--mono); font-size: var(--fs-caption); }
+.mcp-read-errors { padding: var(--sp-3); border: 1px solid var(--danger); border-radius: var(--r-in); color: var(--danger); background: var(--danger-soft); font-size: var(--fs-small); overflow-wrap: anywhere; }
+.mcp-read-errors p { margin: 0; }
+.mcp-read-errors p + p { margin-top: var(--sp-2); }
 .mcp-card {
   border: 1px solid var(--stroke); border-radius: var(--r-card);
   padding: var(--sp-5); background: var(--surface); min-width: 0;
@@ -688,7 +758,7 @@ onMounted(() => { void load() })
   margin: var(--sp-2) 0 0; font-size: var(--fs-caption); color: var(--faint);
   font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.mcp-agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr)); gap: var(--sp-2); margin-top: var(--sp-4); }
+.mcp-agents { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: var(--sp-2); margin-top: var(--sp-4); }
 .mcp-agent {
   display: inline-flex; align-items: center; gap: 6px;
   padding: var(--sp-2); border-radius: var(--r-in); background: var(--wash); font-size: var(--fs-caption); min-width: 0;
@@ -699,7 +769,12 @@ onMounted(() => { void load() })
 .mcp-agent.ok { background: var(--wash); }
 .mcp-agent.miss { opacity: 0.85; }
 .mcp-agent.sys { outline: 1px dashed var(--stroke-strong); }
-.mcp-agent .drift { color: var(--warn); font-weight: 600; }
+.mcp-agent.error { background: var(--danger-soft); color: var(--danger); }
+.mcp-agent-error { white-space: nowrap; }
+.mcp-agent .drift { padding: 0; border: 0; background: none; color: var(--warn); font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.mcp-agent .drift:hover { text-decoration: underline; }
+.mcp-agent .drift:disabled { cursor: default; }
+.mcp-agent .drift:focus-visible { outline: 1px solid var(--warn); outline-offset: 3px; }
 .mcp-form { display: flex; flex-direction: column; gap: var(--sp-3); }
 .mcp-form label { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-small); color: var(--dim); }
 .mcp-form-row { display: flex; gap: var(--sp-4); flex-wrap: wrap; }

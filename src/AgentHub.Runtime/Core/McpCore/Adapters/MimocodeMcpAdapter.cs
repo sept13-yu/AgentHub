@@ -31,26 +31,25 @@ public sealed class MimocodeMcpAdapter : IMcpAdapter
 
     public IReadOnlyList<McpServerSpec> List()
     {
+        try { return ListStrict(); }
+        catch { return []; }
+    }
+
+    public IReadOnlyList<McpServerSpec> ListStrict()
+    {
         if (!File.Exists(ConfigPath)) return [];
-        try
+        var root = LoadRoot(ConfigPath);
+        var servers = JsonMcpFile.TryGetServers(root, ServersPath);
+        if (servers is null) return [];
+        var list = new List<McpServerSpec>();
+        foreach (var (id, node) in servers)
         {
-            var root = LoadRoot(ConfigPath);
-            var servers = JsonMcpFile.TryGetServers(root, ServersPath);
-            if (servers is null) return [];
-            var list = new List<McpServerSpec>();
-            foreach (var (id, node) in servers)
-            {
-                if (node is not JsonObject obj) continue;
-                // mcp 下可能夹杂非 server 节点，跳过无 type/command/url 的项
-                if (obj["type"] is null && obj["command"] is null && obj["url"] is null) continue;
-                list.Add(ParseServer(id, obj));
-            }
-            return list;
+            if (node is not JsonObject obj) continue;
+            // mcp 下可能夹杂非 server 节点，跳过无 type/command/url 的项
+            if (obj["type"] is null && obj["command"] is null && obj["url"] is null) continue;
+            list.Add(ParseServer(id, obj));
         }
-        catch
-        {
-            return [];
-        }
+        return list;
     }
 
     public void Upsert(McpServerSpec spec)
@@ -223,10 +222,8 @@ public sealed class MimocodeMcpAdapter : IMcpAdapter
         if (!File.Exists(path))
             return new JsonObject();
         var text = File.ReadAllText(path);
-        if (string.IsNullOrWhiteSpace(text))
-            return new JsonObject();
         var cleaned = StripJsonc(text);
-        return JsonNode.Parse(cleaned) as JsonObject ?? new JsonObject();
+        return JsonNode.Parse(cleaned) as JsonObject ?? throw new InvalidOperationException("MiMo 配置根节点无效");
     }
 
     private static void SaveRoot(string path, JsonObject root)
