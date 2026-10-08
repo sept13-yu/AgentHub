@@ -11,6 +11,7 @@ interface Window {
     webview?: {
       postMessage: (msg: string) => void
       addEventListener?: (type: 'message', listener: (ev: { data?: unknown }) => void) => void
+      removeEventListener?: (type: 'message', listener: (ev: { data?: unknown }) => void) => void
     }
   }
   /** 桌面额度悬浮窗注入。主窗口没有这个标记。 */

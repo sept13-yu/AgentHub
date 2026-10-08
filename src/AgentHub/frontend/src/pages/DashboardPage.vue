@@ -32,6 +32,7 @@ const range = ref<RangeKey>(dashCache.range)
 const refreshing = ref(false)
 const usage = ref(dashCache.usage)
 const quotasReady = ref(dashCache.quotasReady)
+const quotaError = ref('')
 const tiles = ref<QuotaTile[]>(dashCache.tiles)
 /** stale 磁盘缓存只补拉有限次，避免后台刷新慢时打满本地 API */
 let staleRetries = 0
@@ -142,20 +143,47 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : '请求失败'
 }
 
-async function loadUsage() {
+// A01：区间请求带世代，只有最新区间的用量/比较/缓存能写入；A02：卸载后旧请求
+// 不写共享 dashCache 或页面状态，也不再发起补拉。外围 loading 按在途计数归属。
+let usageGeneration = 0
+let disposed = false
+let usageLoadOwners = 0
+
+function beginUsageLoading() {
+  usageLoadOwners++
+  setLoading(true)
+}
+
+function endUsageLoading() {
+  usageLoadOwners = Math.max(0, usageLoadOwners - 1)
+  if (!disposed) setLoading(usageLoadOwners > 0)
+}
+
+async function loadUsage(): Promise<boolean> {
+  if (disposed) return false
+  const gen = ++usageGeneration
+  const rangeAtStart = range.value
   try {
-    usage.value = toUsageView(await get(`/api/usage?range=${range.value}`), range.value)
+    const view = toUsageView(await get(`/api/usage?range=${rangeAtStart}`), rangeAtStart)
+    if (gen !== usageGeneration || disposed) return false
+    usage.value = view
     persist()
+    return true
   } catch (e) {
+    if (gen !== usageGeneration || disposed) return false
     usage.value = usageErrorView(errMessage(e))
     persist()
+    return false
   }
 }
 
 async function loadQuotas(force = false) {
+  if (disposed) return
   try {
     const raw = (await get(force ? '/api/quotas?force=true' : '/api/quotas')) as { stale?: boolean }
+    if (disposed) return
     const next = toQuotaTiles(raw)
+    quotaError.value = ''
     if (drag.value) {
       const map = new Map(next.map((t) => [t.id, t]))
       const keep = tiles.value.map((t) => map.get(t.id) ?? t)
@@ -174,7 +202,9 @@ async function loadQuotas(force = false) {
       window.setTimeout(() => { void loadQuotas(false) }, 1500 * staleRetries)
     }
     if (!raw.stale) staleRetries = 0
-  } catch {
+  } catch (e) {
+    if (disposed) return
+    quotaError.value = errMessage(e)
     if (!quotasReady.value) tiles.value = []
   }
 }
@@ -201,6 +231,7 @@ async function loadDue(id: string) {
     const r = await get<{ id: string; date?: string | null; amount?: number | null; error?: string }>(
       `/api/quotas/expiry?id=${id}`,
     )
+    if (disposed) return
     if (r.error) {
       due[id] = { ready: false, loading: false, error: r.error, text: r.error }
       return
@@ -212,28 +243,40 @@ async function loadDue(id: string) {
     const n = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(r.amount)
     due[id] = { ready: true, loading: false, error: '', text: `${formatDueDate(r.date)} 到期 ${n} 积分` }
   } catch (e) {
+    if (disposed) return
     due[id] = { ready: false, loading: false, error: errMessage(e), text: errMessage(e) }
   }
 }
 
 async function onRefresh() {
-  if (refreshing.value) return
+  if (refreshing.value || disposed) return
   refreshing.value = true
-  setLoading(true)
+  beginUsageLoading()
   let scanErr: unknown = null
+  let scanForbidden = false
   try {
-    await post('/api/usage/scan')
-  } catch (e) {
-    const status = e && typeof e === 'object' && 'status' in e ? Number((e as { status?: number }).status) : 0
-    if (status !== 403) scanErr = e
+    try {
+      if (WRITABLE) await post('/api/usage/scan')
+      else scanForbidden = true
+    } catch (e) {
+      const status = e && typeof e === 'object' && 'status' in e ? Number((e as { status?: number }).status) : 0
+      if (status === 403) scanForbidden = true
+      else scanErr = e
+    }
+    // A02：慢扫描离页后回包不再报错或清下一页共享加载条
+    if (disposed) return
+    // 扫描只等本地源入库；额度仍在后台刷新，反馈只确认用量读取的结果。
+    const usageLoaded = await loadUsage()
+    if (disposed) return
+    void loadQuotas(true)
+    if (!usageLoaded) message.error('用量读取失败，请查看页面错误信息')
+    else if (scanErr) message.warning(`用量已读取，本地扫描失败：${errMessage(scanErr)}`)
+    else if (scanForbidden) message.info('已重新读取用量；当前连接无扫描权限，额度在后台刷新')
+    else message.success('用量已刷新，额度在后台刷新')
+  } finally {
+    endUsageLoading()
+    refreshing.value = false
   }
-  // 扫描接口只等本地源入库（秒回）；额度 force 换新放后台，瓷砖到了就替换，不卡转圈
-  await loadUsage()
-  void loadQuotas(true)
-  setLoading(false)
-  refreshing.value = false
-  if (scanErr) message.error(errMessage(scanErr))
-  else message.success('已刷新')
 }
 
 // 壳层推送：后台收尾（Cursor CSV + 会话索引）完成后自动补数据，无需手动刷新
@@ -242,10 +285,15 @@ function onPushRefresh() {
   void loadQuotas(false)
 }
 
+// A01：外围 loading 按在途计数归属，旧区间的 finally 不清最新区间还在途的加载
 watch(range, async () => {
-  setLoading(true)
-  await loadUsage()
-  setLoading(false)
+  if (disposed) return
+  beginUsageLoading()
+  try {
+    await loadUsage()
+  } finally {
+    endUsageLoading()
+  }
 })
 
 function onResize() {
@@ -465,14 +513,19 @@ onMounted(() => {
     return
   }
   // 首屏遮罩只等本地 usage（毫秒级）；额度后台补齐，不卡启动
-  setLoading(true)
+  // A02：首屏读取走同一加载归属，卸载时同步释放自己的共享加载条
+  beginUsageLoading()
   void loadQuotas(false)
   void loadUsage().finally(() => {
-    setLoading(false)
+    endUsageLoading()
   })
 })
 
 onUnmounted(() => {
+  // A02：卸载后旧请求作废，不写共享缓存与页面反馈；同步释放自己拥有的共享加载条
+  if (usageLoadOwners > 0 && pageLoading) pageLoading.value = false
+  disposed = true
+  usageGeneration++
   window.removeEventListener('agenthub-refresh', onPushRefresh)
   window.removeEventListener('resize', onResize)
   document.documentElement.classList.remove('ah-tile-sorting')
@@ -512,11 +565,12 @@ onUnmounted(() => {
 
   <DashboardUsage :usage="usage" :range="range" />
 
-  <section v-if="quotasReady" class="card quota-card" aria-labelledby="quota-title">
+  <section v-if="quotasReady || quotaError" class="card quota-card" aria-labelledby="quota-title">
     <div class="card-head">
       <h2 id="quota-title">可用额度</h2>
       <span v-if="exhaustedCount" class="quota-alert">{{ exhaustedCount }} 项已用尽</span>
     </div>
+    <p v-if="quotaError" class="quota-empty" role="status">额度读取失败：{{ quotaError }}{{ quotasReady ? '，当前保留上次读取的额度。' : '，请重试。' }}</p>
     <div v-if="tiles.length" class="card-body">
       <div ref="gridEl" class="qtiles" :class="{ 'is-sorting': !!drag, 'has-groups': quotaGroups.length > 1 }">
         <div v-for="group in quotaGroups" :key="group.kind" class="quota-section" :class="{ 'balance-group': group.kind === 'balance' }">
@@ -582,7 +636,7 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
-    <p v-else class="quota-empty">暂无可用额度，请检查登录态或凭据后刷新。</p>
+    <p v-else-if="!quotaError" class="quota-empty">暂无可用额度，请检查登录态或凭据后刷新。</p>
   </section>
 
   <details v-if="!usage.error" class="history" :open="historyOpen" @toggle="toggleHistory">

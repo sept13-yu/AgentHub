@@ -39,8 +39,11 @@ let clock = 0
 let staleTries = 0
 let stateReady = !window.__AGENTHUB_DESKTOP_QUOTA__
 let refreshFlight: Promise<void> | null = null
+// 卸载后旧响应不得写状态、发宿主消息或重新调度（C03）
+let disposed = false
 
 function post(msg: string) {
+  if (disposed) return
   try { window.chrome?.webview?.postMessage(msg) } catch { /* 浏览器预览没有壳 */ }
 }
 
@@ -72,6 +75,8 @@ function waitForState(): Promise<void> {
       settled = true
       window.clearTimeout(timerId)
       window.removeEventListener('agenthub-dq-state', done)
+      // 等待中卸载：不再读注入状态，resolve 后的 refresh 由 disposed 兜底
+      if (disposed) { resolve(); return }
       readState()
       stateReady = true
       resolve()
@@ -80,9 +85,18 @@ function waitForState(): Promise<void> {
   })
 }
 
-function onHostMessage(event: Event) {
-  const data = (event as CustomEvent | { data?: unknown }).data ?? (event as CustomEvent).detail
+function applyHostData(data: unknown) {
   if (data === 'theme:light' || data === 'theme:dark') applyThemeName(String(data).slice(6))
+}
+
+// WebView2 宿主消息的合同是 { data?: unknown }（T02）
+function onHostMessage(ev: { data?: unknown }) {
+  applyHostData(ev.data)
+}
+
+// agenthub-theme 是 DOM CustomEvent，载荷在 detail（T02）
+function onThemeEvent(event: Event) {
+  applyHostData((event as CustomEvent).detail)
 }
 
 async function load() {
@@ -93,6 +107,8 @@ async function load() {
   } catch {
     result = { ok: false }
   }
+  // C03：卸载后旧响应直接丢弃，不写状态、不发宿主消息、不参与重试计数
+  if (disposed) return
   const next = reduceQuotaPoll(rows.value, result)
   rows.value = next.rows
   stale.value = next.stale
@@ -106,12 +122,13 @@ async function load() {
 }
 
 function schedule(ms: number) {
+  if (disposed) return
   window.clearTimeout(timer)
   timer = window.setTimeout(() => { void refresh() }, ms)
 }
 
 async function refresh() {
-  if (!stateReady) return
+  if (disposed || !stateReady) return
   if (refreshFlight) return refreshFlight
   refreshFlight = (async () => {
     await load()
@@ -152,18 +169,20 @@ function onVisible() {
 
 onMounted(() => {
   window.chrome?.webview?.addEventListener?.('message', onHostMessage)
+  window.addEventListener('agenthub-theme', onThemeEvent)
   window.addEventListener('agenthub-refresh', onPushRefresh)
-  window.addEventListener('agenthub-theme', onHostMessage)
   document.addEventListener('visibilitychange', onVisible)
   clock = window.setInterval(() => { now.value = Date.now() }, 30_000)
   void waitForState().then(() => refresh())
 })
 
 onUnmounted(() => {
+  disposed = true
   window.clearTimeout(timer)
   window.clearInterval(clock)
+  window.chrome?.webview?.removeEventListener?.('message', onHostMessage)
+  window.removeEventListener('agenthub-theme', onThemeEvent)
   window.removeEventListener('agenthub-refresh', onPushRefresh)
-  window.removeEventListener('agenthub-theme', onHostMessage)
   document.removeEventListener('visibilitychange', onVisible)
 })
 </script>

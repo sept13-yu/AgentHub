@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, nextTick, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { NButton, NCheckbox, NIcon, NInput, useMessage } from 'naive-ui'
 import { ChevronDown, Copy, Eraser, ExternalLink, Lock, RefreshCw, Trash2, Unlock, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
@@ -243,7 +243,7 @@ const canDelete = computed(() => {
   return !!current.value && !current.value.locked
 })
 
-function keyOf(r: SessionRow) { return `${r.agent}:${r.id}` }
+function keyOf(r: { agent: string; id: string }) { return `${r.agent}:${r.id}` }
 
 function projectKey(path: string | null): string {
   if (!path) return ''
@@ -268,72 +268,121 @@ function setLoading(on: boolean) {
   if (pageLoading) pageLoading.value = on
 }
 
-function listParams(offset: number, limit: number) {
+// S01：卸载后旧响应不写实例状态、不清下一页共享加载条；外围 loading 按在途计数归属
+let disposed = false
+let loadingOwners = 0
+function beginLoading() {
+  loadingOwners++
+  setLoading(true)
+}
+function endLoading() {
+  loadingOwners = Math.max(0, loadingOwners - 1)
+  if (!disposed) setLoading(loadingOwners > 0)
+}
+
+interface ListQuery { range: RangeKey; agent: string; q: string }
+
+function listParamsOf(snap: ListQuery, offset: number, limit: number) {
   const params = new URLSearchParams({
-    range: range.value,
+    range: snap.range,
     offset: String(offset),
     limit: String(limit),
   })
-  if (agent.value !== 'all') params.set('agent', agent.value)
-  if (q.value.trim()) params.set('q', q.value.trim())
+  if (snap.agent !== 'all') params.set('agent', snap.agent)
+  if (snap.q.trim()) params.set('q', snap.q.trim())
   return params
 }
 
-async function loadList() {
+// 每次列表查询捕获筛选快照与世代：只有最新查询能写列表/总数/选中收窄（S01），
+// 分页属于同一查询，旧响应晚到直接丢弃；卸载后不再更新。
+// 返回归属：applied=已写入；stale=被更新查询作废（外围不提示、不清状态）；error=最新查询失败。
+let listGeneration = 0
+type ListOutcome = { status: 'applied' | 'stale' | 'error'; error?: unknown }
+
+async function loadList(): Promise<ListOutcome> {
+  if (disposed) return { status: 'stale' }
+  const gen = ++listGeneration
+  const snap: ListQuery = { range: range.value, agent: agent.value, q: q.value }
   const acc: SessionRow[] = []
   let off = 0
   const lim = 200
   let last: SessionPage | null = null
-  while (true) {
-    const data = await get<SessionPage>(`/api/sessions?${listParams(off, lim)}`)
-    last = data
-    acc.push(...data.items)
-    off += data.items.length
-    if (off >= data.total || data.items.length === 0 || data.items.length < lim) break
+  try {
+    while (true) {
+      const data = await get<SessionPage>(`/api/sessions?${listParamsOf(snap, off, lim)}`)
+      if (gen !== listGeneration) return { status: 'stale' }
+      last = data
+      acc.push(...data.items)
+      off += data.items.length
+      if (off >= data.total || data.items.length === 0 || data.items.length < lim) break
+    }
+    if (gen !== listGeneration) return { status: 'stale' }
+    page.value = last ? { ...last, items: acc, offset: 0, limit: acc.length } : null
+    // 选中的这家这轮没内容了（筛选项已收起），别停在一个不存在的 chip 上
+    if (snap.agent !== 'all' && !chipSources.value.some((s) => s.id === snap.agent))
+      agent.value = 'all'
+    const keys = new Set(acc.map(keyOf))
+    if (current.value && !keys.has(keyOf(current.value))) closePreview()
+    return { status: 'applied' }
+  } catch (e) {
+    return gen === listGeneration ? { status: 'error', error: e } : { status: 'stale' }
   }
-  page.value = last ? { ...last, items: acc, offset: 0, limit: acc.length } : null
-  // 选中的这家这轮没内容了（筛选项已收起），别停在一个不存在的 chip 上
-  if (agent.value !== 'all' && !chipSources.value.some((s) => s.id === agent.value))
-    agent.value = 'all'
-  const keys = new Set(acc.map(keyOf))
-  if (current.value && !keys.has(keyOf(current.value))) closePreview()
 }
 
 let cloudCatchupTimer: ReturnType<typeof setTimeout> | null = null
 function scheduleCloudCatchup() {
+  // S01：卸载后不再安排补拉
+  if (disposed) return
   if (cloudCatchupTimer) clearTimeout(cloudCatchupTimer)
   // 后端本地先返回、云端短超时后台合并；稍后再拉一次拿到合并结果或网络提示
   cloudCatchupTimer = setTimeout(() => {
+    if (disposed) return
     void loadList().catch(() => {})
   }, 4500)
 }
 
+// S02：刷新 pending 用响应式状态守住入口、按钮与快捷键，防止重复重建索引
+const refreshBusy = ref(false)
+
 async function refresh() {
-  if (readonly) return
-  setLoading(true)
+  if (readonly || refreshBusy.value || disposed) return
+  refreshBusy.value = true
+  beginLoading()
   try {
     await post('/api/sessions/index/refresh')
-    await loadList()
+    const outcome = await loadList()
+    if (disposed) return
+    if (outcome.status === 'error') {
+      message.error(outcome.error instanceof Error ? outcome.error.message : '刷新失败')
+      return
+    }
+    if (outcome.status !== 'applied') return
     await Promise.all([loadCursorStorage(), loadCursorOrphans()])
     scheduleCloudCatchup()
     message.success('已刷新')
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '刷新失败')
+    if (!disposed) message.error(e instanceof Error ? e.message : '刷新失败')
   } finally {
-    setLoading(false)
+    endLoading()
+    refreshBusy.value = false
   }
 }
 
 async function load() {
-  setLoading(true)
+  if (disposed) return
+  beginLoading()
   try {
-    await loadList()
+    const outcome = await loadList()
+    if (disposed) return
+    if (outcome.status === 'error') {
+      message.error(outcome.error instanceof Error ? outcome.error.message : '读取失败')
+      return
+    }
+    if (outcome.status !== 'applied') return
     await Promise.all([loadCursorStorage(), loadCursorOrphans()])
     scheduleCloudCatchup()
-  } catch (e) {
-    message.error(e instanceof Error ? e.message : '读取失败')
   } finally {
-    setLoading(false)
+    endLoading()
   }
 }
 
@@ -401,33 +450,60 @@ function toggleAll(on: boolean) {
   selected.value = picked
 }
 
+// S03：按会话 key 防重；捕获目标值，成功按已提交值写回，失败保留原状态
+const lockBusy = ref(new Set<string>())
+
 async function toggleLock(row: SessionRow) {
   if (readonly) return
+  const k = keyOf(row)
+  if (lockBusy.value.has(k)) return
+  const target = !row.locked
+  lockBusy.value.add(k)
   try {
-    await post('/api/sessions/lock', { agent: row.agent, id: row.id, locked: !row.locked })
-    row.locked = !row.locked
-    if (row.locked) {
+    await post('/api/sessions/lock', { agent: row.agent, id: row.id, locked: target })
+    // S03：成功按提交值写回当前匹配 key 的列表行/预览（列表可能已因筛选重读换新对象）
+    for (const r of items.value) {
+      if (keyOf(r) === k) r.locked = target
+    }
+    if (target) {
       const next = new Map(selected.value)
-      next.delete(keyOf(row))
+      next.delete(k)
       selected.value = next
     }
-    if (detail.value && detail.value.id === row.id) detail.value.locked = row.locked
+    if (current.value && keyOf(current.value) === k) current.value.locked = target
+    if (detail.value && detail.value.agent === row.agent && detail.value.id === row.id)
+      detail.value.locked = target
   } catch (e) {
     message.error(e instanceof Error ? e.message : '锁定失败')
+  } finally {
+    lockBusy.value.delete(k)
   }
 }
+
+// S04：改标题按会话 key 各自防重（并发多个会话互不吞并）；回包只更新匹配目标
+const renameInflight = ref(new Set<string>())
 
 async function saveTitle() {
   if (readonly || !detail.value || !detail.value.canRename) return
   const title = titleEdit.value.trim()
   if (!title || title.length > 200) return
+  const targetKey = keyOf(detail.value)
+  const targetAgent = detail.value.agent
+  const targetId = detail.value.id
+  if (renameInflight.value.has(targetKey)) return
+  renameInflight.value.add(targetKey)
   try {
-    await post('/api/sessions/rename', { agent: detail.value.agent, id: detail.value.id, title })
-    detail.value.title = title
-    if (current.value) current.value.title = title
+    await post('/api/sessions/rename', { agent: targetAgent, id: targetId, title })
+    if (detail.value && keyOf(detail.value) === targetKey) detail.value.title = title
+    if (current.value && keyOf(current.value) === targetKey) current.value.title = title
+    for (const row of items.value) {
+      if (keyOf(row) === targetKey) row.title = title
+    }
     message.success('已改标题')
   } catch (e) {
     message.error(e instanceof Error ? e.message : '改标题失败')
+  } finally {
+    renameInflight.value.delete(targetKey)
   }
 }
 
@@ -460,7 +536,7 @@ function askCleanResidue() {
 }
 
 async function runDelete(rows: SessionRow[]) {
-  if (deleting.value) return
+  if (readonly || deleting.value) return
   deleting.value = true
   setLoading(true)
   try {
@@ -503,6 +579,8 @@ async function runDelete(rows: SessionRow[]) {
 }
 
 async function runCleanResidue() {
+  if (readonly || deleting.value) return
+  deleting.value = true
   setLoading(true)
   try {
     const r = await post<{
@@ -540,10 +618,12 @@ async function runCleanResidue() {
     message.error(e instanceof Error ? e.message : '清理失败')
   } finally {
     setLoading(false)
+    deleting.value = false
   }
 }
 
 async function confirmOk() {
+  if (readonly || deleting.value) return
   confirmShow.value = false
   if (confirmKind.value === 'residue') await runCleanResidue()
   else await runDelete(pendingRows.value)
@@ -724,6 +804,15 @@ usePageHotkeys({
 })
 
 onMounted(() => { void load() })
+onUnmounted(() => {
+  // S01：卸载后旧列表/预览响应不再写实例状态；同步释放自己的共享加载条
+  if (loadingOwners > 0 && pageLoading) pageLoading.value = false
+  disposed = true
+  listGeneration++
+  if (qTimer) window.clearTimeout(qTimer)
+  if (cloudCatchupTimer) clearTimeout(cloudCatchupTimer)
+  previewAc?.abort()
+})
 </script>
 
 <template>
@@ -743,7 +832,7 @@ onMounted(() => { void load() })
       <template #icon><n-icon><Trash2 :size="16" :stroke-width="1.8" /></n-icon></template>
       删除
     </n-button>
-    <n-button :disabled="readonly" @click="refresh">
+    <n-button :disabled="readonly || refreshBusy" @click="refresh">
       <template #icon><n-icon><RefreshCw :size="16" :stroke-width="1.8" /></n-icon></template>
       刷新
     </n-button>
@@ -868,7 +957,7 @@ onMounted(() => { void load() })
                     :class="{ 'is-locked': row.locked }"
                     :aria-label="row.locked ? '解锁' : '锁定'"
                     :aria-pressed="row.locked ? 'true' : 'false'"
-                    :disabled="readonly"
+                    :disabled="readonly || lockBusy.has(keyOf(row))"
                     @click="toggleLock(row)"
                   >
                     <!-- 图标显示当前状态（已锁=闭锁），点击动作由 aria-label 表达 -->
@@ -928,7 +1017,7 @@ onMounted(() => { void load() })
     </div>
   </div>
 
-  <AhConfirm v-model:show="confirmShow" :text="confirmText" @confirm="confirmOk">
+  <AhConfirm v-model:show="confirmShow" :text="confirmText" :loading="deleting" tone="danger" :ok-text="confirmKind === 'residue' ? '清理残留' : '删除会话'" @confirm="confirmOk">
     <label v-if="confirmShowVacuum" class="vac">
       <n-checkbox v-model:checked="vacuum" :disabled="cursorRunning" />
       同时回收磁盘

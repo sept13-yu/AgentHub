@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { NButton, NCheckbox, NIcon, NInput, NModal, NSwitch, useMessage } from 'naive-ui'
 import { Archive, ArrowRightLeft, ChevronDown, CloudDownload, Eraser, ExternalLink, FolderOpen, ListChecks, Plus, RefreshCw, SearchX, Trash2, X } from 'lucide-vue-next'
 import { get, post, WRITABLE } from '../api'
@@ -85,6 +86,8 @@ const folded = ref<Set<string>>(new Set())
 const legacy = ref<LegacyStatus | null>(null)
 const confirmShow = ref(false)
 const confirmText = ref('')
+const confirmTone = ref<'primary' | 'danger'>('danger')
+const confirmBusy = ref(false)
 let confirmAction: (() => Promise<void>) | null = null
 const installShow = ref(false)
 const installSource = ref('')
@@ -119,8 +122,18 @@ const toggling = ref(new Set<string>())
 const deleting = ref(false)
 const metaSaving = ref(false)
 const legacyBusy = ref(false)
+// D01④：更新/安装的初始写请求在途同样纳入离开保护；后台长任务（running）不算
+const updateSubmitting = ref(false)
+// D01：Skills 写请求在途时离开与保存备注同等保护
+const writesBusy = computed(() =>
+  toggling.value.size > 0 || deleting.value || legacyBusy.value || metaSaving.value || updateSubmitting.value)
 const noteDraft = ref('')
 const aliasDraft = ref('')
+const metaBaseline = ref({ alias: '', note: '' })
+const metaDirty = computed(() => picked.value?.kind === 'skill'
+  && (aliasDraft.value !== metaBaseline.value.alias || noteDraft.value !== metaBaseline.value.note))
+const discardShow = ref(false)
+let discardResolve: ((leave: boolean) => void) | null = null
 const progress = ref<SkillsUpdate | null>(null)
 const updateableCount = computed(() => data.value?.updateableCount ?? 0)
 const updateRunning = computed(() => !!progress.value?.running)
@@ -142,6 +155,8 @@ const groups = computed(() => {
 })
 
 function setLoading(on: boolean) {
+  // D01：卸载后旧响应不再驱动共享加载条
+  if (disposed) return
   if (pageLoading) pageLoading.value = on
 }
 
@@ -159,63 +174,134 @@ function skillSummary(s: SkillItem) {
 function syncMetaDraft(s: SkillItem | null) {
   aliasDraft.value = s?.alias || ''
   noteDraft.value = s?.note || ''
+  metaBaseline.value = { alias: aliasDraft.value, note: noteDraft.value }
 }
 
+async function requestDiscardMeta(): Promise<boolean> {
+  if (metaSaving.value) {
+    message.info('正在保存备注，请稍后再操作')
+    return false
+  }
+  // D01：Skills 写请求在途先拒绝离开，与保存备注保护一致
+  if (writesBusy.value) {
+    message.info('正在执行操作，请等待完成后再离开')
+    return false
+  }
+  if (discardShow.value) return false
+  if (!metaDirty.value) return true
+  if (confirmShow.value) return false
+  discardShow.value = true
+  return new Promise((resolve) => { discardResolve = resolve })
+}
+
+function resolveDiscard(leave: boolean) {
+  discardShow.value = false
+  const resolve = discardResolve
+  discardResolve = null
+  resolve?.(leave)
+}
+
+function onBeforeUnload(event: BeforeUnloadEvent) {
+  // D01：写请求在途与未保存备注同样拦截浏览器重载
+  if (writesBusy.value || metaDirty.value) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+
+onBeforeRouteLeave(() => requestDiscardMeta())
+defineExpose({ canLeave: requestDiscardMeta })
+
 async function refresh() {
-  await load()
-  if (!data.value) return
+  if (confirmShow.value || discardShow.value) return
+  if (!await load()) return
   if (kind.value === 'skills')
     message.success(`技能 ${skills.value.length} 个，使用中 ${onSkills.value.length}`)
   else
     message.success(library.value.length ? `方案 ${library.value.length} 篇` : '没有方案')
 }
 
-async function load() {
+// D01①：外围读取的共享加载按归属计数；卸载时同步释放自己的加载条
+let loadingOwners = 0
+function beginLoading() {
+  loadingOwners++
   setLoading(true)
+}
+function endLoading() {
+  loadingOwners = Math.max(0, loadingOwners - 1)
+  if (!disposed) setLoading(loadingOwners > 0)
+}
+
+// D01：卸载后旧写请求只做收尾，不再读列表、发反馈或清下一页加载状态
+let disposed = false
+
+let loadVersion = 0
+async function load(): Promise<boolean> {
+  if (disposed) return false
+  const version = ++loadVersion
+  const requestedKind = kind.value
+  const requestedQuery = q.value.trim()
+  const isCurrent = () => version === loadVersion
+    && kind.value === requestedKind && q.value.trim() === requestedQuery
+  beginLoading()
   try {
-    const params = new URLSearchParams({ kind: kind.value })
-    if (q.value.trim()) params.set('q', q.value.trim())
-    data.value = await get<DocsPayload>(`/api/docs?${params}`)
+    const params = new URLSearchParams({ kind: requestedKind })
+    if (requestedQuery) params.set('q', requestedQuery)
+    const next = await get<DocsPayload>(`/api/docs?${params}`)
+    if (!isCurrent()) return false
+    data.value = next
     if (picked.value) {
       const still = kind.value === 'skills'
         ? skills.value.find((s) => s.relPath === picked.value!.relPath)
         : library.value.find((s) => s.path === picked.value!.path)
       if (!still) {
-        picked.value = null
-        preview.value = null
+        if (await requestDiscardMeta() && isCurrent()) clearPreview()
       } else if (still !== picked.value) {
         // 换成新列表里的对象，保证 enabled 等字段跟手（开关切换后预览状态同步）
         picked.value = still
+        if (!metaDirty.value) syncMetaDraft(still.kind === 'skill' ? still : null)
       }
     }
     if (kind.value === 'skills') {
       const names = new Set(skills.value.map((s) => s.relPath))
       selected.value = new Set([...selected.value].filter((name) => names.has(name)))
-      legacy.value = await get<LegacyStatus>('/api/docs/skills/legacy')
+      const nextLegacy = await get<LegacyStatus>('/api/docs/skills/legacy')
+      if (!isCurrent()) return false
+      legacy.value = nextLegacy
       if (data.value?.skillsUpdate) progress.value = data.value.skillsUpdate
       if (data.value?.skillsUpdate?.running) startPoll()
     } else {
       const paths = new Set(library.value.map((s) => s.path))
       selected.value = new Set([...selected.value].filter((path) => paths.has(path)))
     }
+    return isCurrent()
   } catch (e) {
-    message.error(e instanceof Error ? e.message : '读取失败')
+    if (isCurrent()) message.error(e instanceof Error ? e.message : '读取失败')
+    return false
   } finally {
-    setLoading(false)
+    // D01①：外围读取按归属清共享加载，旧读取不清最新读取还在途的条
+    endLoading()
   }
 }
 
-function closePreview() {
+function clearPreview() {
   picked.value = null
   preview.value = null
+  syncMetaDraft(null)
+}
+
+async function closePreview() {
+  if (await requestDiscardMeta()) clearPreview()
 }
 
 async function openPreview(item: SkillItem | LibItem) {
   if (picked.value?.path === item.path) {
-    closePreview()
+    await closePreview()
     return
   }
+  if (!await requestDiscardMeta()) return
   picked.value = item
+  preview.value = null
   if (item.kind === 'skill') syncMetaDraft(item as SkillItem)
   else syncMetaDraft(null)
   try {
@@ -243,9 +329,11 @@ async function toggleSkill(skill: SkillItem, on: boolean) {
   toggling.value.add(skill.relPath)
   try {
     await post(on ? '/api/docs/skills/enable' : '/api/docs/skills/disable', { name: skill.relPath })
+    if (disposed) return
     message.success(on ? '已启用' : '已停用')
     await load()
   } catch (e) {
+    if (disposed) return
     message.error(e instanceof Error ? e.message : '操作失败')
   } finally {
     toggling.value.delete(skill.relPath)
@@ -280,6 +368,7 @@ function startPoll() {
 async function tickProgress() {
   try {
     const p = await get<SkillsUpdate>('/api/docs/skills/update-progress')
+    if (disposed) return
     progress.value = p
     if (p.running) sawRunning = true
     else if (sawRunning) {
@@ -306,6 +395,8 @@ async function beginUpdate(names?: string[]) {
   }
   sawRunning = true
   startPoll()
+  // D01④：初始写请求纳入离开保护；后台长任务（running 轮询）不算
+  updateSubmitting.value = true
   try {
     const r = await post<{
       updated: number
@@ -314,19 +405,23 @@ async function beginUpdate(names?: string[]) {
       alreadyRunning?: boolean
       progress?: SkillsUpdate
     }>('/api/docs/skills/update', names ? { names } : {})
+    updateSubmitting.value = false
     if (r.progress) progress.value = r.progress
     if (r.alreadyRunning) return
     sawRunning = false
     stopPoll()
+    if (disposed) return
     if (r.errors?.length) message.error(r.errors[0])
     else if (r.updated > 0) message.success(`已更新 ${r.updated} 个${r.skipped ? `，跳过 ${r.skipped} 个已是最新` : ''}`)
     else if (r.skipped > 0) message.success('都已是最新')
     else message.success('没有需要检查的 Skill')
     await load()
   } catch (e) {
+    updateSubmitting.value = false
     sawRunning = false
     stopPoll()
     if (progress.value) progress.value = { ...progress.value, running: false }
+    if (disposed) return
     message.error(e instanceof Error ? e.message : '更新失败')
   }
 }
@@ -337,15 +432,17 @@ function updateSkills() {
   return beginUpdate()
 }
 
-async function skillAction(path: string, body: unknown, success: string) {
-  if (readonly || !picked.value || picked.value.kind !== 'skill') return
-  const skill = picked.value as SkillItem
+async function skillAction(path: string, body: unknown, success: string, target?: SkillItem) {
+  const skill = target ?? (picked.value?.kind === 'skill' ? picked.value : null)
+  if (readonly || !skill || toggling.value.has(skill.relPath)) return
   toggling.value.add(skill.relPath)
   try {
     await post(path, body)
+    if (disposed) return
     message.success(success)
     await load()
   } catch (e) {
+    if (disposed) return
     message.error(e instanceof Error ? e.message : '操作失败')
   } finally {
     toggling.value.delete(skill.relPath)
@@ -355,21 +452,23 @@ async function skillAction(path: string, body: unknown, success: string) {
 async function saveMeta() {
   if (readonly || metaSaving.value || !picked.value || picked.value.kind !== 'skill') return
   const skill = picked.value as SkillItem
+  const saved = { alias: aliasDraft.value, note: noteDraft.value }
   metaSaving.value = true
   try {
     await post('/api/docs/skills/meta', {
       name: skill.relPath,
-      alias: aliasDraft.value,
-      note: noteDraft.value,
+      alias: saved.alias,
+      note: saved.note,
     })
+    // 写入成功即更新基线；后续列表读取失败也不把已保存的内容当作未保存。
+    metaBaseline.value = saved
+    skill.alias = saved.alias
+    skill.note = saved.note
+    if (disposed) return
     message.success('备注已保存')
     await load()
-    const still = skills.value.find((s) => s.relPath === skill.relPath)
-    if (still) {
-      picked.value = still
-      syncMetaDraft(still)
-    }
   } catch (e) {
+    if (disposed) return
     message.error(e instanceof Error ? e.message : '保存备注失败')
   } finally {
     metaSaving.value = false
@@ -377,8 +476,7 @@ async function saveMeta() {
 }
 
 function manageSkill(skill: SkillItem) {
-  picked.value = skill
-  return skillAction('/api/docs/skills/manage', { name: skill.relPath }, '已收进仓库')
+  return skillAction('/api/docs/skills/manage', { name: skill.relPath }, '已收进仓库', skill)
 }
 
 function openInstall() {
@@ -408,6 +506,8 @@ async function runInstall() {
   }
   sawRunning = true
   startPoll()
+  // D01④：安装的初始写请求与更新同用离开保护；后台长任务（running 轮询）不算
+  updateSubmitting.value = true
   try {
     const r = await post<{
       updated: number
@@ -416,18 +516,22 @@ async function runInstall() {
       alreadyRunning?: boolean
       progress?: SkillsUpdate
     }>('/api/docs/skills/install', { source })
+    updateSubmitting.value = false
     if (r.progress) progress.value = r.progress
     if (r.alreadyRunning) return
     sawRunning = false
     stopPoll()
+    if (disposed) return
     if (r.errors?.length) message.error(r.errors[0])
     else if (r.updated > 0) message.success(`已安装 ${r.updated} 个`)
     else message.success('没有安装到新的 Skill')
     await load()
   } catch (e) {
+    updateSubmitting.value = false
     sawRunning = false
     stopPoll()
     if (progress.value) progress.value = { ...progress.value, running: false }
+    if (disposed) return
     message.error(e instanceof Error ? e.message : '安装失败')
   }
 }
@@ -477,44 +581,61 @@ function askDeleteSelected() {
 async function deleteSelectedNow() {
   if (readonly || deleting.value) return
   deleting.value = true
-  setLoading(true)
+  beginLoading()
   try {
     if (kind.value === 'skills') {
       const names = selectedSkills.value.map((s) => s.relPath)
       let ok = 0
       const errors: string[] = []
+      const deleted = new Set<string>()
       for (const name of names) {
         try {
           await post('/api/docs/skills/delete', { name })
+          deleted.add(name)
           ok++
         } catch (e) {
           errors.push(e instanceof Error ? e.message : name)
         }
       }
-      selected.value = new Set()
+      // D02：已确认删除成功的目标清对应预览与备注草稿；失败的保留，不影响其他草稿
+      if (picked.value && picked.value.kind === 'skill' && deleted.has(picked.value.relPath))
+        clearPreview()
+      // 部分失败只清成功目标的勾选，失败项保留便于重试
+      selected.value = new Set([...selected.value].filter((name) => !deleted.has(name)))
+      // D01③：卸载后不再弹反馈、不再重读
+      if (disposed) return
       if (errors.length) message.error(ok ? `已删除 ${ok} 个，失败：${errors[0]}` : errors[0])
       else message.success(`已删除 ${ok} 个`)
+      if (disposed) return
       await load()
       return
     }
     const paths = selectedLibrary.value.map((s) => s.path)
     let ok = 0
     const errors: string[] = []
+    const deleted = new Set<string>()
     for (const path of paths) {
       try {
         await post('/api/docs/library/delete', { path })
+        deleted.add(path)
         ok++
       } catch (e) {
         errors.push(e instanceof Error ? e.message : path)
       }
     }
-    selected.value = new Set()
+    // D02：方案分支同样只清删除成功的预览
+    if (picked.value && picked.value.kind === 'library' && deleted.has(picked.value.path))
+      clearPreview()
+    // 部分失败只清成功目标的勾选
+    selected.value = new Set([...selected.value].filter((p) => !deleted.has(p)))
+    if (disposed) return
     if (errors.length) message.error(ok ? `已删除 ${ok} 篇，失败：${errors[0]}` : errors[0])
     else message.success(`已删除 ${ok} 篇`)
+    if (disposed) return
     await load()
   } finally {
     deleting.value = false
-    setLoading(false)
+    endLoading()
   }
 }
 
@@ -524,39 +645,52 @@ function resolveSkill(skill: SkillItem, action: 'keepLocalAsStore' | 'restoreFro
       ? '将用当前启用副本覆盖持久仓，并备份旧仓库版本。'
       : '将用持久仓覆盖当前启用副本，并备份本地版本。',
     () => skillAction('/api/docs/skills/resolve', { name: skill.relPath, action },
-      action === 'keepLocalAsStore' ? '已保留本地版本' : '已恢复仓库版本'),
+      action === 'keepLocalAsStore' ? '已保留本地版本' : '已恢复仓库版本', skill),
   )
 }
 
-function askConfirm(text: string, action: () => Promise<void>) {
+function askConfirm(text: string, action: () => Promise<void>, tone: 'primary' | 'danger' = 'danger') {
+  if (confirmShow.value || discardShow.value) return
   confirmText.value = text
+  confirmTone.value = tone
   confirmAction = action
   confirmShow.value = true
 }
 
 async function runConfirmed() {
-  confirmShow.value = false
+  if (confirmBusy.value) return
   const action = confirmAction
-  confirmAction = null
-  if (action) await action()
+  if (!action) return
+  confirmBusy.value = true
+  try {
+    await action()
+    confirmShow.value = false
+    confirmAction = null
+  } finally {
+    confirmBusy.value = false
+  }
 }
 
 function migrateLegacy() {
-  askConfirm('将把旧 All-Skills 内容复制到 AgentHub 持久仓，并把启用联接替换为真实目录。旧仓不会自动删除。', migrateLegacyNow)
+  askConfirm('将把旧 All-Skills 内容复制到 AgentHub 持久仓，并把启用联接替换为真实目录。旧仓不会自动删除。', migrateLegacyNow, 'primary')
 }
 
 async function migrateLegacyNow() {
   if (readonly || legacyBusy.value) return
   legacyBusy.value = true
-  setLoading(true)
+  beginLoading()
   try {
     const r = await post<{ updated: number; errors: string[] }>('/api/docs/skills/legacy/migrate')
+    if (disposed) return
     if (r.errors.length) message.warning(r.errors[0])
     else message.success(`已迁移 ${r.updated} 个启用 Skill`)
     await load()
-  } catch (e) { message.error(e instanceof Error ? e.message : '迁移失败') }
+  } catch (e) {
+    if (disposed) return
+    message.error(e instanceof Error ? e.message : '迁移失败')
+  }
   finally {
-    setLoading(false)
+    endLoading()
     legacyBusy.value = false
   }
 }
@@ -568,14 +702,18 @@ function cleanLegacy() {
 async function cleanLegacyNow() {
   if (readonly || legacyBusy.value) return
   legacyBusy.value = true
-  setLoading(true)
+  beginLoading()
   try {
     await post('/api/docs/skills/legacy/clean')
+    if (disposed) return
     message.success('旧 Skill 仓已清理')
     await load()
-  } catch (e) { message.error(e instanceof Error ? e.message : '清理失败') }
+  } catch (e) {
+    if (disposed) return
+    message.error(e instanceof Error ? e.message : '清理失败')
+  }
   finally {
-    setLoading(false)
+    endLoading()
     legacyBusy.value = false
   }
 }
@@ -604,9 +742,10 @@ function toggleFold(name: string) {
   folded.value = next
 }
 
-function pickKind(id: Kind) {
+async function pickKind(id: Kind) {
+  if (id === kind.value || !await requestDiscardMeta()) return
   kind.value = id
-  closePreview()
+  clearPreview()
   selecting.value = false
   selected.value = new Set()
 }
@@ -779,7 +918,7 @@ function onLibGroupMenu(e: MouseEvent, g: { name: string; items: LibItem[] }) {
 }
 
 function onEsc() {
-  if (confirmShow.value || installShow.value) return
+  if (confirmShow.value || discardShow.value || installShow.value) return
   if (picked.value) {
     closePreview()
     return
@@ -820,8 +959,21 @@ watch(q, () => {
   qTimer = window.setTimeout(() => { void load() }, 280)
 })
 
-onMounted(() => { void load() })
-onUnmounted(() => { stopPoll() })
+onMounted(() => {
+  window.addEventListener('beforeunload', onBeforeUnload)
+  void load()
+})
+onUnmounted(() => {
+  // D01①：先同步释放自己拥有的共享加载条（setLoading 在 disposed 后不再动作），
+  // 再置 disposed 并作废世代——旧回包不得清下一页刚点亮的加载条。
+  if (loadingOwners > 0 && pageLoading) pageLoading.value = false
+  disposed = true
+  stopPoll()
+  window.clearTimeout(qTimer)
+  window.removeEventListener('beforeunload', onBeforeUnload)
+  resolveDiscard(false)
+  loadVersion++
+})
 </script>
 
 <template>
@@ -1171,8 +1323,20 @@ onUnmounted(() => { stopPoll() })
   <AhConfirm
     :show="confirmShow"
     :text="confirmText"
+    :tone="confirmTone"
+    :loading="confirmBusy"
     @update:show="confirmShow = $event"
     @confirm="runConfirmed"
+  />
+  <AhConfirm
+    :show="discardShow"
+    title="放弃未保存的修改？"
+    text="中文名或备注尚未保存。继续操作会放弃这些修改。"
+    ok-text="放弃修改"
+    tone="danger"
+    :mask-closable="false"
+    @update:show="!$event && resolveDiscard(false)"
+    @confirm="resolveDiscard(true)"
   />
   <n-modal :show="installShow" :mask-closable="true" @update:show="installShow = $event">
     <div class="install-box" role="dialog" aria-modal="true" aria-label="安装技能">

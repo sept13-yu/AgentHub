@@ -139,10 +139,14 @@ function pickTokenUnit(next: TokenUnit) {
   setTokenUnit(next)
 }
 
-function snapOf(): string {
-  const copy = JSON.parse(JSON.stringify(f)) as Record<string, unknown>
+function snapOfForm(form: typeof f): string {
+  const copy = JSON.parse(JSON.stringify(form)) as Record<string, unknown>
   for (const key of secretKeys) copy[key] = ''
   return JSON.stringify(copy)
+}
+
+function snapOf(): string {
+  return snapOfForm(f)
 }
 
 const dirty = computed(() => {
@@ -154,12 +158,27 @@ const dirty = computed(() => {
   return snapOf() !== snapshot.value
 })
 
-function applyLoaded(s: SettingsPayload) {
-  f.relayPanelBaseUrl = s.credentials.relayPanelBaseUrl
-  f.autostart = s.autostartActual
+function applyLoaded(s: SettingsPayload, keepDraft = false) {
   autostartSupported.value = s.autostartSupported !== false
   updateSupported.value = s.updateSupported !== false
   secretsSupported.value = s.secretsSupported !== false
+  configPath.value = s.configPath
+  appVersion.value = s.appVersion || ''
+  updateInstalled.value = !!s.updateInstalled
+  priceSync.value = s.dashboard.priceSync ?? null
+  if (keepDraft) {
+    // G01：保存期间用户仍在输入，只同步服务端事实（各密钥已配置标志），
+    // 不回填用户可编辑字段。基线推进到已提交的版本（服务器现状），与当前
+    // 草稿分别比较——否则用户改回原值时 dirty 误判为 false，掩盖已保存的事实。
+    f.deepseekKeySet = s.credentials.deepseekKeySet
+    f.relayKeySet = s.credentials.relayKeySet
+    f.workbuddySessionSet = !!s.credentials.workbuddySessionSet
+    f.cursorCloudApiKeySet = !!s.credentials.cursorCloudApiKeySet
+    if (lastSubmitted) snapshot.value = snapOfForm(JSON.parse(lastSubmitted) as typeof f)
+    return
+  }
+  f.relayPanelBaseUrl = s.credentials.relayPanelBaseUrl
+  f.autostart = s.autostartActual
   const d = s.dashboard
   f.costEstimate = !!d.costEstimate
   if (d.tokenUnit === 'en' || d.tokenUnit === 'zh') {
@@ -177,10 +196,6 @@ function applyLoaded(s: SettingsPayload) {
   f.relayKeySet = s.credentials.relayKeySet
   f.workbuddySessionSet = !!s.credentials.workbuddySessionSet
   f.cursorCloudApiKeySet = !!s.credentials.cursorCloudApiKeySet
-  configPath.value = s.configPath
-  appVersion.value = s.appVersion || ''
-  updateInstalled.value = !!s.updateInstalled
-  priceSync.value = s.dashboard.priceSync ?? null
   snapshot.value = snapOf()
 }
 
@@ -208,12 +223,18 @@ function priceSyncHint(): string {
   return '用内置模型目录 · 尚未拉到远程（启动后会自动拉）' + suffix
 }
 
-async function load() {
+// G01：最近一次保存提交的表单版本；load 回读窗口内用它判断草稿是否又被改过
+let lastSubmitted: string | null = null
+
+async function load(keepDraft = false, compareAgainst: string | null = null) {
   loadError.value = ''
   if (pageLoading) pageLoading.value = true
   try {
     const settings = await get<SettingsPayload>('/api/settings')
-    applyLoaded(settings)
+    // G01：整个保存/回读窗口内用户可能继续输入；GET 应用时以最新草稿对比
+    // 提交版本再定是否保草稿，避免先前算出的 keepDraft=false 抹掉后来的输入。
+    const draftMoved = compareAgainst != null && JSON.stringify(f) !== compareAgainst
+    applyLoaded(settings, keepDraft || draftMoved)
     loaded.value = true
     await nextTick()
     bindSectionObserver()
@@ -241,6 +262,10 @@ function bindSectionObserver() {
 async function save() {
   if (readonly || saving.value) return
   saving.value = true
+  // G01：捕获提交版本。PUT 挂起期间用户可能继续输入；保存完成后仅当草稿
+  // 仍等于提交版本才回填服务器状态，否则保留用户输入并保持 dirty。
+  const submitted = JSON.stringify(f)
+  lastSubmitted = submitted
   if (pageLoading) pageLoading.value = true
   try {
     await put<{ ok: boolean }>('/api/settings', {
@@ -267,10 +292,11 @@ async function save() {
         : { relayPanelBaseUrl: f.relayPanelBaseUrl },
     })
     setTokenUnit(f.tokenUnit)
-    clearCursorCloudKey.value = false
+    const keptEditing = JSON.stringify(f) !== submitted
+    if (!keptEditing) clearCursorCloudKey.value = false
     invalidateDashCache()
     window.dispatchEvent(new CustomEvent('agenthub-refresh'))
-    await load()
+    await load(keptEditing, submitted)
     message.success('已保存并应用')
   } catch (e) {
     message.error('保存失败：' + (e instanceof Error ? e.message : String(e)))
@@ -485,14 +511,23 @@ function scrollToSection(id: string) {
 const leaveShow = ref(false)
 let leaveResolve: ((ok: boolean) => void) | null = null
 
-onBeforeRouteLeave(() => {
+// G02：保存 PUT 在途优先拒绝路由离开，再沿用草稿确认
+function canRouteLeave(): boolean | Promise<boolean> {
+  if (saving.value) return false
   if (!dirty.value) return true
   leaveShow.value = true
   return new Promise<boolean>((resolve) => { leaveResolve = resolve })
-})
+}
+onBeforeRouteLeave(canRouteLeave)
 
 function leaveOk() {
   leaveShow.value = false
+  // G02：确认回调重新核对 saving，不用旧判定放行
+  if (saving.value) {
+    leaveResolve?.(false)
+    leaveResolve = null
+    return
+  }
   leaveResolve?.(true)
   leaveResolve = null
 }
@@ -504,9 +539,12 @@ function leaveCancel() {
 }
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
-  if (readonly || !dirty.value) return
-  e.preventDefault()
-  e.returnValue = ''
+  if (readonly) return
+  // G02：保存 PUT 在途与未保存草稿同样拦截浏览器重载
+  if (saving.value || dirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
 }
 
 usePageHotkeys({
@@ -569,7 +607,7 @@ onUnmounted(() => {
             <span class="hint">修改后重启生效</span>
           </div>
           <div class="ctrl">
-            <n-button type="button" :disabled="readonly" @click="openConfig">
+            <n-button attr-type="button" :disabled="readonly" @click="openConfig">
               <template #icon><n-icon><FileCog :size="16" :stroke-width="1.8" /></n-icon></template>
               打开配置文件
             </n-button>
@@ -582,14 +620,14 @@ onUnmounted(() => {
           </div>
           <div class="ctrl ctrl--actions">
             <template v-if="updateSupported">
-            <n-button type="button" :disabled="updateBusy" :loading="updateBusy" @click="checkUpdate">
+            <n-button attr-type="button" :disabled="updateBusy" :loading="updateBusy" @click="checkUpdate">
               检查更新
             </n-button>
             </template>
             <n-button v-if="updateReady" type="primary" :disabled="updateBusy" @click="readyShow = true">
               打开安装向导
             </n-button>
-            <n-button type="button" @click="openReleasePage">
+            <n-button attr-type="button" @click="openReleasePage">
               手动下载
             </n-button>
           </div>
@@ -758,6 +796,7 @@ onUnmounted(() => {
 
   <AhConfirm
     :show="leaveShow"
+    tone="danger"
     text="设置页有未保存的修改。确定离开吗？未保存的修改将丢失。"
     ok-text="离开"
     @update:show="(on: boolean) => { if (!on) leaveCancel(); else leaveShow = true }"
@@ -765,6 +804,7 @@ onUnmounted(() => {
   />
   <AhConfirm
     :show="applyShow"
+    :loading="updateBusy"
     :text="updateLatest ? `下载并校验 ${updateLatest} 的完整安装包？` : '下载并校验完整安装包？'"
     ok-text="开始下载"
     @update:show="(on: boolean) => { applyShow = on }"
@@ -772,6 +812,7 @@ onUnmounted(() => {
   />
   <AhConfirm
     :show="readyShow"
+    :loading="updateBusy"
     text="安装包已校验。打开安装向导后，AgentHub 将退出；请在向导中完成安装。"
     ok-text="打开安装向导"
     @update:show="(on: boolean) => { readyShow = on }"
@@ -798,13 +839,13 @@ onUnmounted(() => {
         :processing="progressPhase === 'downloading'"
       />
       <div v-if="progressPhase === 'error'" class="update-progress__actions">
-        <n-button type="button" @click="progressShow = false">关闭</n-button>
-        <n-button type="button" :disabled="updateBusy" @click="updateReady ? launchUpdate() : applyUpdate()">
+        <n-button attr-type="button" @click="progressShow = false">关闭</n-button>
+        <n-button attr-type="button" :disabled="updateBusy" @click="updateReady ? launchUpdate() : applyUpdate()">
           {{ updateReady ? '重试打开' : '重新下载' }}
         </n-button>
       </div>
       <div v-else-if="progressPhase === 'downloading' && !cancelRequested" class="update-progress__actions">
-        <n-button type="button" :loading="cancelBusy" :disabled="cancelBusy" @click="cancelUpdate">取消下载</n-button>
+        <n-button attr-type="button" :loading="cancelBusy" :disabled="cancelBusy" @click="cancelUpdate">取消下载</n-button>
       </div>
     </div>
   </n-modal>

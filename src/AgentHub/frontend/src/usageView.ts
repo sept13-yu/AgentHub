@@ -86,7 +86,8 @@ export function visibleModels(agent: UsageAgent): UsageModel[] {
   const tokens = rest.reduce((sum, m) => sum + m.tokens, 0)
   const pct = rest.reduce((sum, m) => sum + m.pct, 0)
   const noPrice = rest.some((m) => m.noPrice === true)
-  const other: UsageModel = { name: '其他', tokens, pct }
+  // 聚合行也要有稳定身份：__other__ 不会与真实模型名冲突（T04）
+  const other: UsageModel = { id: '__other__', name: '其他', tokens, pct }
   if (noPrice) other.noPrice = true
   return [...agent.models.slice(0, 3), other]
 }

@@ -426,20 +426,46 @@ async function saveLibrary(move: boolean) {
   }
 }
 
+// R01：切换统一管理会重读盘上状态，未保存草稿会被覆盖；先沿用既有确认机制
+// 要求用户放弃，确认后才继续对应的 enable/disable 流程。
+let pendingSwitch: boolean | null = null
+
 function onSwitch(on: boolean) {
   if (readonly || busy.value) return
+  if (dirty.value) {
+    pendingSwitch = on
+    confirmKind.value = 'leave'
+    return
+  }
   confirmKind.value = on ? 'enable' : 'disable'
 }
 
 function onConfirm() {
+  if (busy.value) return
   if (confirmKind.value === 'enable') return void runEnable()
   if (confirmKind.value === 'disable') return void runDisable()
   if (confirmKind.value === 'move') return void saveLibrary(true)
   if (confirmKind.value === 'restore') return void restoreEmpty()
   if (confirmKind.value === 'leave') {
     confirmKind.value = ''
-    leaveResolve?.(true)
-    leaveResolve = null
+    // G02：确认回调重新核对 busy，不用旧判定放行
+    if (busy.value) {
+      pendingSwitch = null
+      return
+    }
+    if (leaveResolve) {
+      const resolve = leaveResolve
+      leaveResolve = null
+      resolve(true)
+      return
+    }
+    if (pendingSwitch !== null) {
+      const on = pendingSwitch
+      pendingSwitch = null
+      // 用户已确认放弃草稿：直接执行对应的开关动作，不再叠一层确认
+      if (on) return void runEnable()
+      return void runDisable()
+    }
     return
   }
   if (confirmKind.value === 'reload') {
@@ -449,6 +475,7 @@ function onConfirm() {
 }
 
 function onAlt() {
+  if (busy.value) return
   if (confirmKind.value === 'move') return void saveLibrary(false)
 }
 
@@ -456,22 +483,32 @@ function onConfirmClose(show: boolean) {
   if (show) return
   if (confirmKind.value === 'move') libDraft.value = libSaved.value
   if (confirmKind.value === 'leave') {
-    leaveResolve?.(false)
-    leaveResolve = null
+    if (leaveResolve) {
+      const resolve = leaveResolve
+      leaveResolve = null
+      resolve(false)
+    }
+    pendingSwitch = null
   }
   confirmKind.value = ''
 }
 
-onBeforeRouteLeave(() => {
+// G02：写请求在途优先拒绝路由离开；草稿确认沿用既有机制
+function canRouteLeave(): boolean | Promise<boolean> {
+  if (busy.value) return false
   if (!pageDirty.value) return true
   confirmKind.value = 'leave'
   return new Promise<boolean>((resolve) => { leaveResolve = resolve })
-})
+}
+onBeforeRouteLeave(canRouteLeave)
 
 function onBeforeUnload(e: BeforeUnloadEvent) {
-  if (readonly || !pageDirty.value) return
-  e.preventDefault()
-  e.returnValue = ''
+  if (readonly) return
+  // G02：写请求在途与未保存草稿同样拦截浏览器重载
+  if (busy.value || pageDirty.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
 }
 
 async function onWindowFocus() {
@@ -693,6 +730,8 @@ onUnmounted(() => {
     :show="!!confirmKind"
     :text="confirmText"
     :ok-text="confirmOk"
+    :loading="busy"
+    :tone="['disable', 'restore', 'leave', 'reload'].includes(confirmKind) ? 'danger' : 'primary'"
     :alt-text="confirmKind === 'move' ? '只改路径' : undefined"
     :hide-cancel="confirmKind === 'move'"
     @update:show="onConfirmClose"
