@@ -26,7 +26,7 @@ const router = createRouter({
     { path: '/capabilities', component: CapabilitiesPage, meta: { title: '能力' } },
     { path: '/docs', component: DocsPage, props: { panel: 'library' }, meta: { title: '资料' } },
     { path: '/rules', component: RulesPage, meta: { title: '规则' } },
-    { path: '/codex-config', component: CodexConfigPage, meta: { title: 'Codex' } },
+    { path: '/codex-config', component: CodexConfigPage, meta: { title: 'Codex 连接' } },
     { path: '/settings', component: SettingsPage, meta: { title: '设置' } },
     { path: '/desktop-quota', name: 'desktop-quota', component: DesktopQuotaPage, meta: { title: '桌面额度', bare: true } },
   ],

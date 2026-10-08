@@ -33,7 +33,7 @@ const nav = [
   { to: '/capabilities', label: '能力', icon: Zap },
   { to: '/docs', label: '资料', icon: FileText },
   { to: '/rules', label: '规则', icon: ScrollText },
-  { to: '/codex-config', label: 'Codex', icon: KeyRound },
+  { to: '/codex-config', label: 'Codex 连接', icon: KeyRound },
 ]
 </script>
 
