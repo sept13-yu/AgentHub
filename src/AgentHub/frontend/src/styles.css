@@ -27,32 +27,8 @@ body {
   box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring);
 }
 
-.n-button--primary:focus-visible {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--focus-ring-on-accent) !important;
-}
-
-.n-button--error-type:not(.n-button--disabled):not(:disabled) {
-  --n-text-color: #ffffff !important;
-  --n-text-color-hover: #ffffff !important;
-  --n-text-color-pressed: #ffffff !important;
-  --n-text-color-focus: #ffffff !important;
-}
-
-.n-button--primary-type.n-button--disabled,
-.n-button--primary-type:disabled,
-.n-button--error-type.n-button--disabled,
-.n-button--error-type:disabled {
-  --n-color: var(--disabled-bg) !important;
-  --n-color-hover: var(--disabled-bg) !important;
-  --n-color-pressed: var(--disabled-bg) !important;
-  --n-color-focus: var(--disabled-bg) !important;
-  --n-color-disabled: var(--disabled-bg) !important;
-  --n-text-color: var(--disabled-fg) !important;
-  --n-text-color-disabled: var(--disabled-fg) !important;
-  --n-border: 1px solid var(--disabled-stroke) !important;
-  --n-border-disabled: 1px solid var(--disabled-stroke) !important;
-  --n-opacity-disabled: 1 !important;
-  opacity: 1 !important;
+.n-button.n-button--disabled {
+  color: var(--disabled-fg) !important;
 }
 
 /* 数字只对齐不换字体；等宽留给路径、代码与 .docs-body */
