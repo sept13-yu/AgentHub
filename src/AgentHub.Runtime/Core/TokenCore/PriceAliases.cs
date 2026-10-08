@@ -102,7 +102,7 @@ public static class PriceAliases
 
 
 
-    /// stealth/ox-alpha → GLM-5.3-Flash；codex-auto-review → gpt-5.6-luna（OpenAI 自动审后端）。
+    /// stealth/ox-alpha → GLM-5.3-Flash；codex-auto-review → gpt-5.6-luna（OpenAI 自动审后端）；gpt-reserve → gpt-5.6-luna（Codex Luna Reserve）。
 
 
 
@@ -472,6 +472,7 @@ public static class PriceAliases
 
 
             ["codex-auto-review"] = "gpt-5.6-luna",
+            ["gpt-reserve"] = "gpt-5.6-luna",
 
 
 

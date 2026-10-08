@@ -957,6 +957,9 @@
         },
         {
           "name": "codex-auto-review"
+        },
+        {
+          "name": "gpt-reserve"
         }
       ],
       "liteLlmKey": "gpt-5.6-luna",
