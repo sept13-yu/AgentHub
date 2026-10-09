@@ -50,63 +50,111 @@ public sealed class SessionService
     public string? CloudScanHint => _cloudScanHint;
     public SessionLockStore Locks => _locks;
 
-    /// <summary>清各家残留。某一家还在跑就跳过那一家，不挡其余。</summary>
-    public ResidueSweepResult SweepResidues(bool vacuum)
+    /// <summary>会话页「清理残留」计划：只列本机确有这家自家落盘的家。
+    /// AgentHub 往各家根目录写托管文件（skills 镜像、AGENTS.md 等），只看目录存在会把删掉的家认成在装，
+    /// 所以判据走 AgentPresence（与设置页徽标同一套）。前端按钮、跳过提示、确认文案都照这个列表渲染。</summary>
+    public ResiduePlan BuildResiduePlan()
     {
-        CursorVacuum? vac = null;
-        return new(SweepZcodeResidue(), SweepWorkBuddyResidue(), SweepCursorResidue(vacuum, out vac), SweepCodexResidue(), vac);
+        var targets = new List<ResidueTarget>();
+        if (AgentPresence.IsInstalled("zcode"))
+            targets.Add(new("zcode", DashboardSettings.AgentDisplayName("zcode"),
+                "侧栏任务索引、上次会话、空页签", ZcodeProvider.ZcodeRunning()));
+        if (AgentPresence.IsInstalled("workbuddy"))
+            targets.Add(new("workbuddy", DashboardSettings.AgentDisplayName("workbuddy"),
+                "云端还挂着的已删会话", WorkBuddyProvider.WorkBuddyRunning()));
+        // Cursor 的残留都在主库里：库不在就没得清，也不该占一行
+        if (Cursor.MissingReason is null)
+        {
+            var o = Cursor.FindOrphans();
+            var detail = o.TotalRows > 0
+                ? $"清无消息空壳，以及无主孤儿 {o.TotalRows} 行（约 {FormatBytes(o.TotalBytes)}）；不碰 agentKv"
+                : "清无消息空壳；不碰 agentKv";
+            targets.Add(new("cursor", DashboardSettings.AgentDisplayName("cursor"),
+                detail, CursorProvider.CursorRunning()));
+        }
+        if (AgentPresence.IsInstalled("codex"))
+            targets.Add(new("codex", DashboardSettings.AgentDisplayName("codex"),
+                "侧栏索引里无 jsonl 的孤儿标题", CodexDesktopCleanup.CodexRunning()));
+        // 只有 Cursor 库在、且没在跑，才谈得上顺带回收磁盘
+        return new(targets, targets.Any(t => t.Id == "cursor" && !t.Running));
     }
 
-    private static ResidueSweepAgent SweepZcodeResidue()
+    private static string FormatBytes(long n)
+    {
+        if (n < 1024) return $"{n} B";
+        if (n < 1024 * 1024) return $"{n / 1024.0:0.#} KB";
+        if (n < 1024L * 1024 * 1024) return $"{n / (1024.0 * 1024):0.#} MB";
+        return $"{n / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+
+    /// <summary>清计划里各家残留。某一家还在跑就跳过那一家，不挡其余。</summary>
+    public ResidueSweepResult SweepResidues(bool vacuum)
+    {
+        var results = new List<ResidueSweepAgent>();
+        CursorVacuum? vac = null;
+        foreach (var target in BuildResiduePlan().Targets)
+        {
+            results.Add(target.Id switch
+            {
+                "workbuddy" => SweepWorkBuddyResidue(target),
+                "cursor" => SweepCursorResidue(target, vacuum, out vac),
+                "codex" => SweepCodexResidue(target),
+                _ => SweepZcodeResidue(target),
+            });
+        }
+        return new(results, vac);
+    }
+
+    private static ResidueSweepAgent SweepZcodeResidue(ResidueTarget t)
     {
         if (ZcodeProvider.ZcodeRunning())
-            return new(false, "running", 0, "还在运行，已跳过");
+            return new(t.Id, t.Name, false, "running", 0, "还在运行，已跳过");
         try
         {
-            return new(true, null, ZcodeProvider.SweepOrphanLeftovers(), null);
+            return new(t.Id, t.Name, true, null, ZcodeProvider.SweepOrphanLeftovers(), null);
         }
         catch (Exception ex)
         {
-            return new(false, "error", 0, ex.Message);
+            return new(t.Id, t.Name, false, "error", 0, ex.Message);
         }
     }
 
-    private ResidueSweepAgent SweepWorkBuddyResidue()
+    private ResidueSweepAgent SweepWorkBuddyResidue(ResidueTarget t)
     {
         if (WorkBuddyProvider.WorkBuddyRunning())
-            return new(false, "running", 0, "还在运行，已跳过");
+            return new(t.Id, t.Name, false, "running", 0, "还在运行，已跳过");
         try
         {
             var cloud = WorkBuddySidebar.SweepCloudDeleted(Secrets.Unprotect(_config.Credentials.WorkBuddySession));
-            return new(true, null, cloud.Ok, cloud.Warning);
+            return new(t.Id, t.Name, true, null, cloud.Ok, null, cloud.Warning);
         }
         catch (Exception ex)
         {
-            return new(false, "error", 0, ex.Message);
+            return new(t.Id, t.Name, false, "error", 0, ex.Message);
         }
     }
 
-    private static ResidueSweepAgent SweepCodexResidue()
+    private static ResidueSweepAgent SweepCodexResidue(ResidueTarget t)
     {
         if (CodexDesktopCleanup.CodexRunning())
-            return new(false, "running", 0, "还在运行，已跳过");
+            return new(t.Id, t.Name, false, "running", 0, "还在运行，已跳过");
         try
         {
-            return new(true, null, CodexDesktopCleanup.SweepOrphanLeftovers(), null);
+            return new(t.Id, t.Name, true, null, CodexDesktopCleanup.SweepOrphanLeftovers(), null);
         }
         catch (Exception ex)
         {
-            return new(false, "error", 0, ex.Message);
+            return new(t.Id, t.Name, false, "error", 0, ex.Message);
         }
     }
 
-    private ResidueSweepAgent SweepCursorResidue(bool vacuum, out CursorVacuum? vac)
+    private ResidueSweepAgent SweepCursorResidue(ResidueTarget t, bool vacuum, out CursorVacuum? vac)
     {
         vac = null;
         if (Cursor.MissingReason is not null)
-            return new(false, "unavailable", 0, Cursor.MissingReason);
+            return new(t.Id, t.Name, false, "unavailable", 0, Cursor.MissingReason);
         if (CursorProvider.CursorRunning())
-            return new(false, "running", 0, "还在运行，已跳过");
+            return new(t.Id, t.Name, false, "running", 0, "还在运行，已跳过");
         try
         {
             var shells = Cursor.CleanShells().Count(r => r.Ok);
@@ -120,11 +168,11 @@ public sealed class SessionService
             var detail = orphans.Ok
                 ? $"空壳 {shells} · 孤儿 {orphans.DeletedRows} 行"
                 : orphans.Error ?? $"空壳 {shells} · 孤儿失败";
-            return new(true, orphans.Ok ? null : "error", n, detail);
+            return new(t.Id, t.Name, true, orphans.Ok ? null : "error", n, detail);
         }
         catch (Exception ex)
         {
-            return new(false, "error", 0, ex.Message);
+            return new(t.Id, t.Name, false, "error", 0, ex.Message);
         }
     }
 
@@ -174,7 +222,7 @@ public sealed class SessionService
             scored.Add((id, DashboardSettings.AgentDisplayName(id), CountOf(counts, id)));
         }
         // 有内容的排前面；同条数保持 ResolvedAgentOrder 的相对顺序（OrderByDescending 稳定）。
-        // 0 条的照旧返回：残留清理那块要看「这家能不能读」，不是「有没有会话」。
+        // 0 条（但可读）的家照旧返回：筛选项按 hasContent 收，残留清理另走 ResiduePlan()。
         var ordered = scored.OrderByDescending(x => x.Count)
             .Select(x => (x.Id, x.Name, x.Count > 0)).ToList();
         return ordered;

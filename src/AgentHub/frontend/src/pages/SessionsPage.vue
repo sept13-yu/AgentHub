@@ -97,8 +97,7 @@ const pendingRows = ref<SessionRow[]>([])
 
 const items = computed(() => page.value?.items ?? [])
 const sources = computed(() => page.value?.sources ?? [])
-// 0 条会话的家不占筛选项。后端仍把它返回在 sources 里：残留清理那块要看「这家能不能读」，
-// 不是「有没有会话」——解析不出会话的家恰恰最需要清。
+// 0 条会话的家不占筛选项：后端按 hasContent 标出来，这里只留可读且有内容的家。
 const chipSources = computed(() => sources.value.filter((s) => s.hasContent !== false))
 const groups = computed(() => {
   const map = new Map<string, { key: string; name: string; path: string; items: SessionRow[] }>()
@@ -121,27 +120,43 @@ const groups = computed(() => {
 })
 const cursorOk = computed(() => !!page.value?.cursorAvailable)
 const cloudHint = computed(() => page.value?.cursorCloudHint?.trim() || '')
-const cursorRunning = computed(() => !!page.value?.cursorRunning)
 const zcodeRunning = computed(() => !!page.value?.zcodeRunning)
 const workbuddyRunning = computed(() => !!page.value?.workbuddyRunning)
 const qoderCnRunning = computed(() => !!page.value?.qoderCnRunning)
 const codexRunning = computed(() => !!page.value?.codexRunning)
-const hasZcode = computed(() => sources.value.some((s) => s.id === 'zcode'))
-const hasWorkbuddy = computed(() => sources.value.some((s) => s.id === 'workbuddy'))
-const hasCodex = computed(() => sources.value.some((s) => s.id === 'codex'))
-const residueVisible = computed(() => hasZcode.value || hasWorkbuddy.value || cursorOk.value || hasCodex.value)
-const residueCanRun = computed(() =>
-  (hasZcode.value && !zcodeRunning.value)
-  || (hasWorkbuddy.value && !workbuddyRunning.value)
-  || (cursorOk.value && !cursorRunning.value)
-  || (hasCodex.value && !codexRunning.value))
+
+// 残留清理的家、说明与可清性由后端按「本机确有这家落盘」给出（没装的家不出现），前端不写死家名。
+interface ResidueTarget { id: string; name: string; detail: string; running: boolean }
+interface ResiduePlan { targets: ResidueTarget[]; cursorVacuum: boolean }
+interface ResidueTargetResult {
+  id: string
+  name: string
+  ran: boolean
+  skipped: string | null
+  count: number
+  detail: string | null
+  warning?: string | null
+}
+const residuePlan = ref<ResiduePlan>({ targets: [], cursorVacuum: false })
+
+async function loadResiduePlan() {
+  try {
+    residuePlan.value = await get<ResiduePlan>('/api/sessions/residue')
+  } catch { /* 拿不到就不显示入口，不影响会话页 */ }
+}
+
+/// 只清成功的家，别把「还在运行已跳过」算成清干净了；有提示优先亮提示。
+function warnOf(targets: ResidueTargetResult[]): string | null {
+  return targets.find((t) => t.ran && t.warning)?.warning ?? null
+}
+
+const residueTargets = computed(() => residuePlan.value.targets)
+const residueVisible = computed(() => residueTargets.value.length > 0)
+const residueRunningNames = computed(() => residueTargets.value.filter((t) => t.running).map((t) => t.name))
+const residueCanRun = computed(() => residueTargets.value.some((t) => !t.running))
 const residueSkipHint = computed(() => {
-  const skip: string[] = []
-  if (hasZcode.value && zcodeRunning.value) skip.push('ZCode')
-  if (hasWorkbuddy.value && workbuddyRunning.value) skip.push('WorkBuddy')
-  if (cursorOk.value && cursorRunning.value) skip.push('Cursor')
-  if (hasCodex.value && codexRunning.value) skip.push('Codex')
-  return skip.length ? `${skip.join(' / ')} 还在运行，点清理时会跳过这${skip.length > 1 ? '几' : '一'}家。` : ''
+  const skip = residueRunningNames.value
+  return skip.length ? `${skip.join(' / ')} 还在运行，清理时会跳过。` : ''
 })
 const hostRunning = computed(() =>
   zcodeRunning.value || workbuddyRunning.value || qoderCnRunning.value || codexRunning.value)
@@ -157,33 +172,11 @@ const gcHintVisible = computed(() =>
   cursorOk.value && !gcHintOff.value && !!cursorStorage.value
   && cursorStorage.value.agentKvBytes >= GC_HINT_THRESHOLD)
 
-interface CursorOrphans {
-  fateRows: number
-  fateBytes: number
-  heightRows: number
-  heightBytes: number
-  inlineDiffRows: number
-  inlineDiffBytes: number
-  composerIds: number
-  totalRows: number
-  totalBytes: number
-}
-const cursorOrphans = ref<CursorOrphans | null>(null)
-
 async function loadCursorStorage() {
   if (!cursorOk.value) return
   try {
     cursorStorage.value = await get<CursorStorage>('/api/sessions/cursor/storage')
   } catch { /* 拿不到就不提示，不影响会话页 */ }
-}
-
-async function loadCursorOrphans() {
-  if (!cursorOk.value) return
-  try {
-    cursorOrphans.value = await get<CursorOrphans>('/api/sessions/cursor/orphans')
-  } catch {
-    cursorOrphans.value = null
-  }
 }
 
 function dismissGcHint() {
@@ -212,19 +205,8 @@ const confirmSkip = computed(() => {
 const confirmText = computed(() => {
   if (confirmKind.value === 'residue') {
     const lines = ['不删列表里的会话。谁还在跑就跳过谁。']
-    if (hasZcode.value)
-      lines.push(zcodeRunning.value ? 'ZCode：还在运行，这次跳过' : 'ZCode：侧栏任务索引、上次会话、空页签')
-    if (hasWorkbuddy.value)
-      lines.push(workbuddyRunning.value ? 'WorkBuddy：还在运行，这次跳过' : 'WorkBuddy：云端还挂着的已删会话')
-    if (hasCodex.value)
-      lines.push(codexRunning.value ? 'Codex：还在运行，这次跳过' : 'Codex：侧栏索引里无 jsonl 的孤儿标题')
-    if (cursorOk.value) {
-      const o = cursorOrphans.value
-      const orphan = o?.totalRows
-        ? `孤儿 ${o.totalRows} 行（约 ${formatBytes(o.totalBytes)}）`
-        : '孤儿缓存'
-      lines.push(cursorRunning.value ? 'Cursor：还在运行，这次跳过' : `Cursor：空壳，以及${orphan}；不碰 agentKv`)
-    }
+    for (const t of residueTargets.value)
+      lines.push(t.running ? `${t.name}：还在运行，这次跳过` : `${t.name}：${t.detail}`)
     return lines.join('\n')
   }
   const hostHint = pendingRows.value.some((r) =>
@@ -236,7 +218,7 @@ const confirmText = computed(() => {
   return `删除 ${pendingRows.value.length} 条，已跳过 ${confirmSkip.value} 条锁定。${hostHint}`
 })
 const confirmShowVacuum = computed(() =>
-  !readonly && confirmKind.value === 'residue' && cursorOk.value && !cursorRunning.value)
+  !readonly && confirmKind.value === 'residue' && residuePlan.value.cursorVacuum)
 const canDelete = computed(() => {
   if (readonly) return false
   if (selected.value.size) return true
@@ -357,7 +339,7 @@ async function refresh() {
       return
     }
     if (outcome.status !== 'applied') return
-    await Promise.all([loadCursorStorage(), loadCursorOrphans()])
+    await Promise.all([loadCursorStorage(), loadResiduePlan()])
     scheduleCloudCatchup()
     message.success('已刷新')
   } catch (e) {
@@ -379,7 +361,7 @@ async function load() {
       return
     }
     if (outcome.status !== 'applied') return
-    await Promise.all([loadCursorStorage(), loadCursorOrphans()])
+    await Promise.all([loadCursorStorage(), loadResiduePlan()])
     scheduleCloudCatchup()
   } finally {
     endLoading()
@@ -568,7 +550,7 @@ async function runDelete(rows: SessionRow[]) {
     for (const row of rows) if (gone.has(keyOf(row))) next.delete(keyOf(row))
     selected.value = next
     await loadList()
-    await loadCursorOrphans()
+    await loadResiduePlan()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '删除失败')
     await loadList()
@@ -586,10 +568,7 @@ async function runCleanResidue() {
     const r = await post<{
       ok: boolean
       error?: string
-      zcode: { ran: boolean; skipped: string | null; count: number; detail: string | null }
-      workbuddy: { ran: boolean; skipped: string | null; count: number; detail: string | null }
-      cursor: { ran: boolean; skipped: string | null; count: number; detail: string | null }
-      codex: { ran: boolean; skipped: string | null; count: number; detail: string | null }
+      targets?: ResidueTargetResult[]
       vacuum?: { ok?: boolean; error?: string | null }
     }>('/api/sessions/residue-clean', { vacuum: vacuum.value })
     if (r.error) {
@@ -598,22 +577,19 @@ async function runCleanResidue() {
     }
     const bits: string[] = []
     const fail: string[] = []
-    for (const [name, part] of [
-      ['ZCode', r.zcode],
-      ['WorkBuddy', r.workbuddy],
-      ['Cursor', r.cursor],
-      ['Codex', r.codex],
-    ] as const) {
-      if (part.skipped === 'running') bits.push(`${name} 已跳过`)
-      else if (part.skipped === 'error') fail.push(part.detail || `${name} 失败`)
-      else if (part.ran) bits.push(`${name} ${part.count}`)
+    for (const part of r.targets ?? []) {
+      if (part.skipped === 'running') bits.push(`${part.name} 已跳过`)
+      else if (part.skipped === 'error') fail.push(part.detail || `${part.name} 失败`)
+      else if (part.ran) bits.push(`${part.name} ${part.count}`)
     }
     if (r.vacuum && r.vacuum.ok === false && r.vacuum.error) fail.push(r.vacuum.error)
-    else if (r.workbuddy.ran && r.workbuddy.detail) bits.push(r.workbuddy.detail)
+    // 失败优先报错；其次报非致命提示（如云端还没删干净），别被「已清残留」盖过去
+    const warn = warnOf(r.targets ?? [])
     if (fail.length) message.error(fail[0])
+    else if (warn) message.warning(warn)
     else message.success(bits.length ? `已清残留：${bits.join(' · ')}` : '没有可清的残留')
     await loadList()
-    await loadCursorOrphans()
+    await loadResiduePlan()
   } catch (e) {
     message.error(e instanceof Error ? e.message : '清理失败')
   } finally {
@@ -1019,9 +995,8 @@ onUnmounted(() => {
 
   <AhConfirm v-model:show="confirmShow" :text="confirmText" :loading="deleting" tone="danger" :ok-text="confirmKind === 'residue' ? '清理残留' : '删除会话'" @confirm="confirmOk">
     <label v-if="confirmShowVacuum" class="vac">
-      <n-checkbox v-model:checked="vacuum" :disabled="cursorRunning" />
+      <n-checkbox v-model:checked="vacuum" />
       同时回收磁盘
-      <span v-if="cursorRunning" class="hint">请先退出 Cursor</span>
     </label>
   </AhConfirm>
 </template>

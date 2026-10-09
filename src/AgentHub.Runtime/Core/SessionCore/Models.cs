@@ -53,16 +53,20 @@ public sealed record DeleteItemResult
 /// <summary>某 Agent 下的项目空间（给会话页 chip 用）。</summary>
 public sealed record SessionProject(string Path, string Label, int Count);
 
-/// <summary>单家残留清理：谁在跑就跳过谁，不挡别家。</summary>
-public sealed record ResidueSweepAgent(bool Ran, string? Skipped, int Count, string? Detail);
+/// <summary>清理残留的一家：清什么、是否在跑。没装的家（认自家落盘）不进这个列表。</summary>
+public sealed record ResidueTarget(string Id, string Name, string Detail, bool Running);
 
-/// <summary>会话页「清理残留」：ZCode 侧栏 / WorkBuddy 云端 / Cursor 空壳与孤儿，可带 VACUUM。</summary>
-public sealed record ResidueSweepResult(
-    ResidueSweepAgent Zcode,
-    ResidueSweepAgent WorkBuddy,
-    ResidueSweepAgent Cursor,
-    ResidueSweepAgent Codex,
-    CursorVacuum? Vacuum);
+/// <summary>会话页「清理残留」计划：按钮、跳过提示与确认文案都照它渲染，前端不写死家名。
+/// Targets 为空 = 本机没有可清的家，入口不显示。</summary>
+public sealed record ResiduePlan(IReadOnlyList<ResidueTarget> Targets, bool CursorVacuum = false);
+
+/// <summary>单家残留清理结果：谁在跑就跳过谁，不挡别家。
+/// Skipped=running/unavailable/error；Detail 是成功那家的明细；Warning 是非致命提示（如云端没删干净）。</summary>
+public sealed record ResidueSweepAgent(
+    string Id, string Name, bool Ran, string? Skipped, int Count, string? Detail, string? Warning = null);
+
+/// <summary>会话页「清理残留」结果（逐家，没装的家不出现），可带 VACUUM。</summary>
+public sealed record ResidueSweepResult(IReadOnlyList<ResidueSweepAgent> Targets, CursorVacuum? Vacuum);
 
 public sealed record CursorVacuum(bool Ok, string? Error);
 

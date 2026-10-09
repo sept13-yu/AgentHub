@@ -319,6 +319,10 @@ public static class SessionEndpoints
             }
         });
 
+        // 残留清理计划：按钮显示什么、清哪些家、谁在跑要跳过，全由后端按「本机确有这家落盘」给出，
+        // 前端不写死家名（没装的家不该出现，如只留下 skills 镜像的 WorkBuddy）。
+        app.MapGet("/api/sessions/residue", () => Results.Json(sessions.BuildResiduePlan()));
+
         app.MapPost("/api/sessions/residue-clean", async (HttpContext ctx) =>
         {
             if (!writeAuth(ctx)) return Forbidden();
@@ -334,11 +338,8 @@ public static class SessionEndpoints
                 var r = sessions.SweepResidues(vacuum);
                 return Results.Json(new
                 {
-                    ok = r.Zcode.Skipped != "error" && r.WorkBuddy.Skipped != "error" && r.Cursor.Skipped != "error" && r.Codex.Skipped != "error",
-                    zcode = r.Zcode,
-                    workbuddy = r.WorkBuddy,
-                    cursor = r.Cursor,
-                    codex = r.Codex,
+                    ok = r.Targets.All(t => t.Skipped != "error"),
+                    targets = r.Targets,
                     vacuum = r.Vacuum,
                 });
             }
