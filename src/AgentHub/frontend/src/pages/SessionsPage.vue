@@ -34,7 +34,6 @@ interface SessionPage {
   total: number
   offset: number
   limit: number
-  lockedCount?: number
   weekStart: string
   cursorAvailable: boolean
   cursorMissingReason: string | null
@@ -196,11 +195,12 @@ const filterHasCursor = computed(() =>
   agent.value === 'cursor'
   || agent.value === 'cursor-cloud'
   || (agent.value === 'all' && sources.value.some((s) => s.id === 'cursor')))
-const lockedInFilter = computed(() => page.value?.lockedCount ?? 0)
+// 后端只在批量时跳过锁定项（单条不跳）。跳过数按本次待删集合算，
+// 不用整个筛选范围的锁定数；锁定态以当前列表行为准，选中的 row 可能是筛选重读前的旧对象。
 const confirmSkip = computed(() => {
-  if (confirmKind.value !== 'delete') return 0
-  if (pendingRows.value.length === 1) return 0
-  return lockedInFilter.value
+  if (confirmKind.value !== 'delete' || pendingRows.value.length <= 1) return 0
+  const lockedNow = new Map(items.value.map((r) => [keyOf(r), r.locked]))
+  return pendingRows.value.filter((r) => lockedNow.get(keyOf(r)) ?? r.locked).length
 })
 const confirmText = computed(() => {
   if (confirmKind.value === 'residue') {

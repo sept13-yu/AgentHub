@@ -180,7 +180,7 @@ public sealed class SessionService
         string? agent, string? q, string range, int offset, int limit, string? project = null)
     {
         await EnsureIndexAsync();
-        return _index.Query(agent, q, range, offset, limit, project, AllowedAgents(), _locks.IsLocked);
+        return _index.Query(agent, q, range, offset, limit, project, AllowedAgents());
     }
 
     public async Task<IReadOnlyList<SessionProject>> ListProjectsAsync(string? agent)

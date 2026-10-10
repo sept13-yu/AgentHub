@@ -151,8 +151,7 @@ internal sealed class SessionIndex
 
     public SessionPage Query(
         string? agent, string? q, string range, int offset, int limit,
-        string? project, IReadOnlyCollection<string> allowedAgents,
-        Func<string, string, bool>? isLocked = null)
+        string? project, IReadOnlyCollection<string> allowedAgents)
     {
         List<ConversationSummary> snapshot;
         DateTimeOffset? at;
@@ -201,7 +200,6 @@ internal sealed class SessionIndex
         var list = seq.OrderByDescending(s => s.LastActivityUtc).ToList();
         offset = Math.Max(0, offset);
         limit = Math.Clamp(limit <= 0 ? 40 : limit, 1, 200);
-        var lockedCount = isLocked is null ? 0 : list.Count(s => isLocked(s.AgentId, s.Id));
         return new SessionPage
         {
             Items = list.Skip(offset).Take(limit).ToList(),
@@ -210,7 +208,6 @@ internal sealed class SessionIndex
             Limit = limit,
             IndexedCount = snapshot.Count,
             IndexedAt = at,
-            LockedCount = lockedCount,
         };
     }
 

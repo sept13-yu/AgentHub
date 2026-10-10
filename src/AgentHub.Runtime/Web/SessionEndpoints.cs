@@ -25,7 +25,6 @@ public static class SessionEndpoints
                 total = page.Total,
                 offset = page.Offset,
                 limit = page.Limit,
-                lockedCount = page.LockedCount,
                 indexedCount = page.IndexedCount,
                 indexedAt = page.IndexedAt?.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"),
                 weekStart = weekStart.ToString("yyyy-MM-dd"),

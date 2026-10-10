@@ -79,8 +79,6 @@ public sealed record SessionPage
     public int Limit { get; init; }
     public int IndexedCount { get; init; }
     public DateTimeOffset? IndexedAt { get; init; }
-    /// <summary>当前筛选下已锁条数，给删除确认「已跳过 M 条锁定」。</summary>
-    public int LockedCount { get; init; }
 }
 
 /// <summary>四源统一 Provider 接口（方案 §4.1）。删=全清理，不备份；Cursor 的 vacuum 单独走端点。</summary>
