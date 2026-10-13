@@ -1,7 +1,5 @@
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Interop;
 using AgentHub.Core.ProxyCore;
 using AgentHub.Web;
 using Microsoft.Web.WebView2.Core;
@@ -11,10 +9,7 @@ namespace AgentHub.Shell;
 /// <summary>常驻置顶的桌面额度窗。关闭只隐藏并记住，不退出应用。额度页走现有 /api/quotas。</summary>
 public partial class DesktopQuotaWindow : Window
 {
-    public const double CompactWidth = 320;
-    public const double CompactHeight = 144;
-    public const double ExpandedWidth = 360;
-    public const double ExpandedHeight = 340;
+    private const int ExpandedMinimumWidth = 360;
 
     private readonly WebHostService _web;
     private readonly AgentHubConfig _config;
@@ -32,10 +27,11 @@ public partial class DesktopQuotaWindow : Window
         InitializeComponent();
         _web = web;
         _config = config;
+        config.DesktopQuota.NormalizeDialAppearance();
         _theme = IsLight(config.App.Theme) ? "light" : "dark";
         ApplyChrome(_theme);
         RestorePlacement();
-        SourceInitialized += (_, _) => ApplyWindowChrome();
+        InitializeChrome();
         Loaded += OnLoaded;
         LocationChanged += (_, _) => PersistSoon();
     }
@@ -107,7 +103,9 @@ public partial class DesktopQuotaWindow : Window
                 "window.__AGENTHUB_THEME__=" + themeJson + ";" +
                 "(function(){try{var th=window.__AGENTHUB_THEME__||'dark';" +
                 "document.documentElement.setAttribute('data-theme',th);" +
-                "document.documentElement.style.background=th==='light'?'#F5F6F8':'#18181C';" +
+                "document.documentElement.style.setProperty('background','transparent','important');" +
+                "var s=document.createElement('style');s.textContent='html,body,#app,.n-config-provider{background:transparent!important}';" +
+                "(document.head||document.documentElement).appendChild(s);" +
                 "}catch(e){}})();");
 
             Web.CoreWebView2.WebMessageReceived += (_, args) =>
@@ -146,57 +144,11 @@ public partial class DesktopQuotaWindow : Window
         }
     }
 
-    private void HandleMessage(string msg)
-    {
-        if (msg == "dq:close")
-        {
-            HideFromUser();
-            return;
-        }
-        if (msg == "dq:expanded")
-        {
-            ApplyLayout(expanded: true, persist: true);
-            return;
-        }
-        if (msg == "dq:compact")
-        {
-            ApplyLayout(expanded: false, persist: true);
-            return;
-        }
-        const string windowsPrefix = "dq:windows:";
-        if (msg.StartsWith(windowsPrefix, StringComparison.Ordinal))
-        {
-            try
-            {
-                var ids = JsonSerializer.Deserialize<List<string>>(msg[windowsPrefix.Length..]);
-                _config.DesktopQuota.WindowIds = DesktopQuotaSettings.NormalizeWindowIds(ids);
-                PersistNow();
-            }
-            catch (JsonException) { }
-        }
-    }
-
-    private async System.Threading.Tasks.Task PushStateAsync()
-    {
-        if (!_coreReady) return;
-        var payload = JsonSerializer.Serialize(new Dictionary<string, object?>
-        {
-            ["expanded"] = _config.DesktopQuota.Expanded,
-            ["windowIds"] = _config.DesktopQuota.WindowIds,
-            ["theme"] = _theme,
-        });
-        await Web.CoreWebView2.ExecuteScriptAsync(
-            "window.__AGENTHUB_DQ_STATE__=" + payload + ";" +
-            "try{var s=window.__AGENTHUB_DQ_STATE__;" +
-            "if(s&&s.theme){document.documentElement.setAttribute('data-theme',s.theme);" +
-            "window.dispatchEvent(new CustomEvent('agenthub-theme',{detail:'theme:'+s.theme}));}" +
-            "window.dispatchEvent(new Event('agenthub-dq-state'));}catch(e){}");
-    }
-
     private void ApplyLayout(bool expanded, bool persist)
     {
-        var width = expanded ? ExpandedWidth : CompactWidth;
-        var height = expanded ? ExpandedHeight : CompactHeight;
+        var size = _config.DesktopQuota.DialSize;
+        var width = expanded ? Math.Max(ExpandedMinimumWidth, size) : size;
+        var height = expanded ? size + 250 : size;
         MinWidth = 0;
         MinHeight = 0;
         MaxWidth = double.PositiveInfinity;
@@ -207,6 +159,7 @@ public partial class DesktopQuotaWindow : Window
         MinHeight = MaxHeight = height;
         _config.DesktopQuota.Expanded = expanded;
         ClampToWorkArea();
+        UpdateWindowHitRegion();
         if (persist) PersistSoon();
     }
 
@@ -243,7 +196,7 @@ public partial class DesktopQuotaWindow : Window
         if (maxLeft < area.Left) maxLeft = area.Left;
         Left = Math.Clamp(Left, area.Left, maxLeft);
 
-        var maxTop = area.Bottom - Math.Min(32, Height);
+        var maxTop = area.Bottom - Math.Min(Height, area.Height);
         if (maxTop < area.Top) maxTop = area.Top;
         Top = Math.Clamp(Top, area.Top, maxTop);
     }
@@ -280,25 +233,10 @@ public partial class DesktopQuotaWindow : Window
     private void ApplyChrome(string theme)
     {
         var light = IsLight(theme);
-        var bg = light
-            ? System.Windows.Media.Color.FromRgb(0xF5, 0xF6, 0xF8)
-            : System.Windows.Media.Color.FromRgb(0x18, 0x18, 0x1C);
-        Background = new System.Windows.Media.SolidColorBrush(bg);
-        Web.DefaultBackgroundColor = light
-            ? System.Drawing.Color.FromArgb(255, 0xF5, 0xF6, 0xF8)
-            : System.Drawing.Color.FromArgb(255, 0x18, 0x18, 0x1C);
+        Background = System.Windows.Media.Brushes.Transparent;
+        Web.DefaultBackgroundColor = System.Drawing.Color.Transparent;
         try { Icon = AppIcon.CreateImageSource(light); }
         catch (Exception) { }
-    }
-
-    private void ApplyWindowChrome()
-    {
-        var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero) return;
-        var ex = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
-        SetWindowLongPtr(hwnd, GWL_EXSTYLE, new IntPtr(ex.ToInt64() | WS_EX_TOOLWINDOW));
-        int corner = DWMWCP_ROUND;
-        _ = DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref corner, sizeof(int));
     }
 
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -318,32 +256,4 @@ public partial class DesktopQuotaWindow : Window
 
     private static bool IsFinite(double? value) => value is double number && double.IsFinite(number);
 
-    private const int GWL_EXSTYLE = -20;
-    private const int WS_EX_TOOLWINDOW = 0x00000080;
-    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-    private const int DWMWCP_ROUND = 2;
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
-    private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
-
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongW")]
-    private static extern int SetWindowLong32(IntPtr hWnd, int nIndex, int dwNewLong);
-
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
-    private static extern IntPtr GetWindowLongPtr64(IntPtr hWnd, int nIndex);
-
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
-    private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
-
-    private static IntPtr GetWindowLongPtr(IntPtr hwnd, int index) =>
-        IntPtr.Size == 8 ? GetWindowLongPtr64(hwnd, index) : new IntPtr(GetWindowLong32(hwnd, index));
-
-    private static IntPtr SetWindowLongPtr(IntPtr hwnd, int index, IntPtr value)
-    {
-        if (IntPtr.Size == 8) return SetWindowLongPtr64(hwnd, index, value);
-        return new IntPtr(SetWindowLong32(hwnd, index, value.ToInt32()));
-    }
 }

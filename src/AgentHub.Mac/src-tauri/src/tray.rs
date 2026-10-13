@@ -9,12 +9,13 @@ const TRAY_ICON_PNG: &[u8] = include_bytes!("../../../AgentHub/wwwroot/icon.png"
 pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示 AgentHub", true, None::<&str>)?;
     let sync = MenuItem::with_id(app, "sync", "立即同步", true, None::<&str>)?;
+    let quota = MenuItem::with_id(app, "desktop-quota", "桌面额度", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
     let sep = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&show, &sync, &sep, &quit])?;
+    let menu = Menu::with_items(app, &[&show, &sync, &quota, &sep, &quit])?;
 
-    let icon = tauri::image::Image::from_bytes(TRAY_ICON_PNG)
-        .expect("embedded tray icon png must decode");
+    let icon =
+        tauri::image::Image::from_bytes(TRAY_ICON_PNG).expect("embedded tray icon png must decode");
 
     TrayIconBuilder::with_id("main-tray")
         .icon(icon)
@@ -32,9 +33,11 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                 // 先取出 token/port 再开线程，避免 MutexGuard 借用跨线程
                 let snapshot = {
                     let state = app.state::<AppState>();
-                    state.backend.lock().ok().and_then(|guard| {
-                        guard.as_ref().map(|b| (b.token.clone(), b.port))
-                    })
+                    state
+                        .backend
+                        .lock()
+                        .ok()
+                        .and_then(|guard| guard.as_ref().map(|b| (b.token.clone(), b.port)))
                 };
                 if let Some((token, port)) = snapshot {
                     std::thread::spawn(move || {
@@ -47,6 +50,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
                     });
                 }
             }
+            "desktop-quota" => crate::quota::toggle(app),
             "quit" => app.exit(0),
             _ => {}
         })

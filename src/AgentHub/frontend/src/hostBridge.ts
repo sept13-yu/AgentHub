@@ -8,6 +8,26 @@ export function host(): HostKind {
   return 'browser'
 }
 
+/** 桌面额度沿用同一份消息合同，由各平台壳负责窗口和持久化。 */
+export async function sendDesktopQuotaMessage(msg: string): Promise<void> {
+  switch (host()) {
+    case 'wpf': {
+      const bridge = window.chrome?.webview
+      if (!bridge) throw new Error('WebView2 bridge unavailable')
+      bridge.postMessage(msg)
+      return
+    }
+    case 'tauri': {
+      const bridge = window.__TAURI__?.core
+      if (!bridge) throw new Error('Tauri bridge unavailable')
+      await bridge.invoke('desktop_quota_message', { msg })
+      return
+    }
+    default:
+      return
+  }
+}
+
 export const IS_MAC =
   /Mac|iPhone|iPad/.test(navigator.platform) || navigator.userAgent.includes('Macintosh')
 

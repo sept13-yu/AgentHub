@@ -1,401 +1,116 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { ChevronDown, ChevronUp, X } from 'lucide-vue-next'
-import { get } from '../api'
-import { applyCssVars } from '../tokens'
-import { theme } from '../theme'
-import {
-  MAX_PINNED_WINDOWS,
-  formatResetCountdown,
-  formatResetExact,
-  nextPinnedIds,
-  normalizePinnedIds,
-  quotaPayloadStale,
-  reduceQuotaPoll,
-  remainBarColor,
-  toQuotaWindows,
-  togglePinned,
-  visiblePinnedIds,
-  type QuotaWindowRow,
-} from '../quotaWindows'
+import { ref } from 'vue'
+import { ChevronUp, RefreshCw, X } from 'lucide-vue-next'
+import QuotaDial from '../components/quota/QuotaDial.vue'
+import { formatResetCountdown, MAX_PINNED_WINDOWS } from '../quotaWindows'
+import { useDesktopQuota } from '../useDesktopQuota'
 
-const expanded = ref(false)
-const pinned = ref<string[] | null>(null)
-const rows = ref<QuotaWindowRow[]>([])
-const stale = ref(false)
-const ready = ref(false)
-const now = ref(Date.now())
-
-const shownIds = computed(() => visiblePinnedIds(pinned.value, rows.value))
-const shown = computed(() => {
-  const map = new Map(rows.value.map((row) => [row.id, row]))
-  return shownIds.value.map((id) => map.get(id)).filter((row): row is QuotaWindowRow => !!row)
-})
-const pinFull = computed(() => shownIds.value.length >= MAX_PINNED_WINDOWS)
-const staleTitle = '刷新失败，仍显示上次成功的额度'
-
-let timer = 0
-let clock = 0
-let staleTries = 0
-let stateReady = !window.__AGENTHUB_DESKTOP_QUOTA__
-let refreshFlight: Promise<void> | null = null
-// 卸载后旧响应不得写状态、发宿主消息或重新调度（C03）
-let disposed = false
-
-function post(msg: string) {
-  if (disposed) return
-  try { window.chrome?.webview?.postMessage(msg) } catch { /* 浏览器预览没有壳 */ }
-}
-
-function applyThemeName(next: string) {
-  if (next !== 'light' && next !== 'dark') return
-  theme.value = next
-  applyCssVars(document.documentElement, next)
-}
-
-function readState(): boolean {
-  const state = window.__AGENTHUB_DQ_STATE__
-  if (!state) return false
-  if (typeof state.expanded === 'boolean') expanded.value = state.expanded
-  if ('windowIds' in state) pinned.value = normalizePinnedIds(state.windowIds ?? null)
-  if (state.theme) applyThemeName(state.theme)
-  return true
-}
-
-function waitForState(): Promise<void> {
-  if (!window.__AGENTHUB_DESKTOP_QUOTA__ || readState()) {
-    stateReady = true
-    return Promise.resolve()
-  }
-  return new Promise((resolve) => {
-    let settled = false
-    const timerId = window.setTimeout(done, 1500)
-    function done() {
-      if (settled) return
-      settled = true
-      window.clearTimeout(timerId)
-      window.removeEventListener('agenthub-dq-state', done)
-      // 等待中卸载：不再读注入状态，resolve 后的 refresh 由 disposed 兜底
-      if (disposed) { resolve(); return }
-      readState()
-      stateReady = true
-      resolve()
-    }
-    window.addEventListener('agenthub-dq-state', done)
-  })
-}
-
-function applyHostData(data: unknown) {
-  if (data === 'theme:light' || data === 'theme:dark') applyThemeName(String(data).slice(6))
-}
-
-// WebView2 宿主消息的合同是 { data?: unknown }（T02）
-function onHostMessage(ev: { data?: unknown }) {
-  applyHostData(ev.data)
-}
-
-// agenthub-theme 是 DOM CustomEvent，载荷在 detail（T02）
-function onThemeEvent(event: Event) {
-  applyHostData((event as CustomEvent).detail)
-}
-
-async function load() {
-  let result: { ok: true; rows: QuotaWindowRow[]; stale: boolean } | { ok: false }
-  try {
-    const raw = await get('/api/quotas')
-    result = { ok: true, rows: toQuotaWindows(raw), stale: quotaPayloadStale(raw) }
-  } catch {
-    result = { ok: false }
-  }
-  // C03：卸载后旧响应直接丢弃，不写状态、不发宿主消息、不参与重试计数
-  if (disposed) return
-  const next = reduceQuotaPoll(rows.value, result)
-  rows.value = next.rows
-  stale.value = next.stale
-  ready.value = true
-  const fresh = result.ok && !result.stale
-  const pin = nextPinnedIds(pinned.value, next.rows, fresh)
-  pinned.value = pin.pinned
-  if (pin.changed && pin.pinned) post('dq:windows:' + JSON.stringify(pin.pinned))
-  if (fresh) staleTries = 0
-  else staleTries++
-}
-
-function schedule(ms: number) {
-  if (disposed) return
-  window.clearTimeout(timer)
-  timer = window.setTimeout(() => { void refresh() }, ms)
-}
-
-async function refresh() {
-  if (disposed || !stateReady) return
-  if (refreshFlight) return refreshFlight
-  refreshFlight = (async () => {
-    await load()
-    const delay = stale.value ? (staleTries <= 2 ? 1500 * staleTries : 8000) : 60_000
-    schedule(delay)
-  })().finally(() => { refreshFlight = null })
-  return refreshFlight
-}
-
-function setExpanded(next: boolean) {
-  if (expanded.value === next) return
-  expanded.value = next
-  post(next ? 'dq:expanded' : 'dq:compact')
-}
-
-function closeWidget() {
-  post('dq:close')
-}
-
-function onToggle(id: string) {
-  const next = togglePinned(pinned.value, rows.value, id)
-  if (pinned.value && next.length === pinned.value.length && next.every((item, i) => item === pinned.value![i])) return
-  pinned.value = next
-  post('dq:windows:' + JSON.stringify(next))
-}
-
-function isPinned(id: string): boolean {
-  return shownIds.value.includes(id)
-}
-
-function onPushRefresh() {
-  void refresh()
-}
-
-function onVisible() {
-  if (document.visibilityState === 'visible') void refresh()
-}
-
-onMounted(() => {
-  window.chrome?.webview?.addEventListener?.('message', onHostMessage)
-  window.addEventListener('agenthub-theme', onThemeEvent)
-  window.addEventListener('agenthub-refresh', onPushRefresh)
-  document.addEventListener('visibilitychange', onVisible)
-  clock = window.setInterval(() => { now.value = Date.now() }, 30_000)
-  void waitForState().then(() => refresh())
-})
-
-onUnmounted(() => {
-  disposed = true
-  window.clearTimeout(timer)
-  window.clearInterval(clock)
-  window.chrome?.webview?.removeEventListener?.('message', onHostMessage)
-  window.removeEventListener('agenthub-theme', onThemeEvent)
-  window.removeEventListener('agenthub-refresh', onPushRefresh)
-  document.removeEventListener('visibilitychange', onVisible)
-})
+const { expanded, rows, shown, shownIds, unavailable, pinFull, stale, staleTitle, ready, now, appearance, hostError, startDrag, setAppearance, refresh, setExpanded, closeWidget, onToggle, isPinned } = useDesktopQuota()
+const settingsTab = ref<'quota' | 'appearance'>('quota')
 </script>
 
 <template>
-  <div class="dq" :class="expanded ? 'is-expanded' : 'is-compact'" :data-stale="stale || undefined">
-    <header class="dq-head">
-      <strong v-if="expanded">桌面额度</strong>
-      <span v-else class="dq-grab">桌面额度</span>
-      <span v-if="stale" class="dq-stale" :title="staleTitle">
-        <i />
-        <span v-if="expanded">未更新</span>
-      </span>
-      <span class="dq-spacer" />
-      <button type="button" class="dq-icon" :aria-label="expanded ? '收起' : '展开'" @click="setExpanded(!expanded)">
-        <ChevronUp v-if="expanded" :size="16" :stroke-width="1.8" />
-        <ChevronDown v-else :size="16" :stroke-width="1.8" />
-      </button>
-      <button type="button" class="dq-icon" aria-label="关闭桌面额度" @click="closeWidget">
-        <X :size="16" :stroke-width="1.8" />
-      </button>
-    </header>
-
-    <section class="dq-pinned" :aria-label="expanded ? '已固定额度' : '额度剩余'">
-      <p v-if="ready && !shown.length" class="dq-empty">
-        {{ stale && !rows.length ? '额度暂时读不到' : '暂无可查询的额度窗口' }}
-      </p>
-      <article v-for="row in shown" :key="row.id" class="dq-card">
-        <template v-if="expanded">
-          <div class="dq-line">
+  <main class="dq" :style="{ width: (expanded ? Math.max(360, appearance.size) : appearance.size) + 'px' }" @keydown.esc="expanded ? setExpanded(false) : closeWidget()">
+    <QuotaDial :rows="shown" :slot-ids="shownIds" :appearance="appearance" :stale="stale" :ready="ready" :now="now" :expanded="expanded" @toggle="setExpanded(!expanded)" @drag="startDrag" />
+    <section v-if="expanded" id="quota-options" class="dq-options" aria-label="桌面额度设置">
+      <header class="dq-head">
+        <strong>桌面额度</strong>
+        <span v-if="hostError" class="dq-stale" role="status" :title="hostError">操作失败，请重试</span>
+        <span v-if="stale" class="dq-stale" :title="staleTitle">未更新</span>
+        <span class="dq-spacer" />
+        <button type="button" aria-label="刷新额度" title="刷新额度" @click="refresh"><RefreshCw :size="15" /></button>
+        <button type="button" aria-label="收起额度选择" title="收起" @click="setExpanded(false)"><ChevronUp :size="17" /></button>
+        <button type="button" aria-label="关闭桌面额度" title="关闭桌面额度" @click="closeWidget"><X :size="16" /></button>
+      </header>
+      <div class="dq-tabs" aria-label="额度设置分类">
+        <button type="button" :aria-pressed="settingsTab === 'quota'" @click="settingsTab = 'quota'">额度</button>
+        <button type="button" :aria-pressed="settingsTab === 'appearance'" @click="settingsTab = 'appearance'">外观</button>
+      </div>
+      <template v-if="settingsTab === 'quota'">
+      <div class="dq-hint">
+        <span>选择两侧显示的额度</span>
+        <span>{{ shownIds.length }} / {{ MAX_PINNED_WINDOWS }}</span>
+      </div>
+      <div class="dq-list">
+        <label v-for="missing in unavailable" :key="missing.id" class="dq-opt" :title="missing.id">
+          <input type="checkbox" checked @change="onToggle(missing.id)" />
+          <span class="dq-detail"><span class="dq-name">{{ missing.name }}</span><span class="dq-when">暂不可用，保留选择等待恢复</span></span>
+          <b>—</b>
+        </label>
+        <p v-if="!ready" class="dq-empty">正在读取额度…</p>
+        <p v-else-if="!rows.length" class="dq-empty">{{ stale ? '额度暂时读不到，可稍后刷新' : '暂无可查询的额度窗口' }}</p>
+        <label v-for="row in rows" :key="row.id" class="dq-opt" :class="{ off: pinFull && !isPinned(row.id) }">
+          <input type="checkbox" :checked="isPinned(row.id)" :disabled="pinFull && !isPinned(row.id)" @change="onToggle(row.id)" />
+          <span class="dq-detail">
             <span class="dq-name" :title="row.name">{{ row.name }}</span>
-          </div>
-          <p class="dq-hero num">
-            <b :class="{ hot: row.remain < 10 }">{{ Math.round(row.remain) }}</b>
-            <small>% 剩余</small>
-          </p>
-          <div class="dq-bar" role="meter" :aria-valuenow="Math.round(row.remain)" aria-valuemin="0" aria-valuemax="100" :aria-label="`${row.name} 剩余 ${Math.round(row.remain)}%`">
-            <i :style="{ width: row.remain + '%', background: remainBarColor(row.remain) }" />
-          </div>
-          <p class="dq-when">{{ formatResetExact(row.resetMs, now, row.period) }}</p>
-        </template>
-        <template v-else>
-          <div class="dq-line">
-            <span class="dq-name" :title="row.name">{{ row.name }}</span>
-            <b class="dq-pct num" :class="{ hot: row.remain < 10 }">{{ Math.round(row.remain) }}<small>%</small></b>
-          </div>
-          <p class="dq-count">{{ formatResetCountdown(row.resetMs, now, row.period) }}</p>
-          <div class="dq-bar" role="meter" :aria-valuenow="Math.round(row.remain)" aria-valuemin="0" aria-valuemax="100" :aria-label="`${row.name} 剩余 ${Math.round(row.remain)}%`">
-            <i :style="{ width: row.remain + '%', background: remainBarColor(row.remain) }" />
-          </div>
-        </template>
-      </article>
+            <span class="dq-when">{{ formatResetCountdown(row.resetMs, now, row.period) }}</span>
+          </span>
+          <span class="dq-side" :class="shownIds.indexOf(row.id) === 0 ? 'left' : 'right'">{{ isPinned(row.id) ? (shownIds.indexOf(row.id) === 0 ? '左' : '右') : '' }}</span>
+          <b class="num">{{ Math.round(row.remain) }}%</b>
+        </label>
+      </div>
+      <footer>显示剩余额度 · {{ pinFull ? '取消一项后可更换' : '按选择顺序从左到右显示' }}</footer>
+      </template>
+      <div v-else class="dq-appearance">
+        <label class="dq-range">
+          <span>显示尺寸 <b>{{ appearance.size }} px</b></span>
+          <input aria-label="显示尺寸" type="range" min="260" max="460" step="10" :value="appearance.size" @input="setAppearance({ size: Number(($event.target as HTMLInputElement).value) })" />
+        </label>
+        <label class="dq-range">
+          <span>弧线柔光 <b>{{ Math.round(appearance.glow / .6 * 100) }}%</b></span>
+          <input aria-label="弧线柔光" type="range" min="0" max="0.6" step="0.02" :value="appearance.glow" @input="setAppearance({ glow: Number(($event.target as HTMLInputElement).value) })" />
+        </label>
+        <label class="dq-mode">弧线模式
+          <select aria-label="弧线模式" :value="appearance.arcMode" @change="setAppearance({ arcMode: ($event.target as HTMLSelectElement).value as 'quota' | 'full' })">
+            <option value="quota">按剩余额度</option>
+            <option value="full">完整装饰弧</option>
+          </select>
+        </label>
+        <button type="button" class="dq-reset" @click="setAppearance({ size: 360, glow: .12, arcMode: 'quota' })">恢复默认</button>
+      </div>
     </section>
-
-    <section v-if="expanded" class="dq-pick" aria-label="选择固定窗口">
-      <h2>固定窗口 <span>最多 {{ MAX_PINNED_WINDOWS }} 个</span></h2>
-      <p v-if="ready && !rows.length" class="dq-empty">暂无可选窗口</p>
-      <label v-for="row in rows" :key="row.id" class="dq-opt" :class="{ off: pinFull && !isPinned(row.id) }">
-        <input
-          type="checkbox"
-          :checked="isPinned(row.id)"
-          :disabled="pinFull && !isPinned(row.id)"
-          @change="onToggle(row.id)"
-        />
-        <span class="dq-name" :title="row.name">{{ row.name }}</span>
-        <b class="num">{{ Math.round(row.remain) }}%</b>
-      </label>
-    </section>
-  </div>
+  </main>
 </template>
 
+<style>
+html.desktop-quota, html.desktop-quota body, html.desktop-quota #app { background: transparent !important; }
+</style>
+
 <style scoped>
-.dq {
-  box-sizing: border-box;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  background: var(--bg, #18181c);
-  color: var(--text, #f1f3f5);
-  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", "Noto Sans SC", sans-serif;
-  user-select: none;
-  overflow: hidden;
-}
-:root[data-theme="light"] .dq {
-  background: var(--bg, #f5f6f8);
-  color: var(--text, #1b1f24);
-}
-.dq-head, .dq-head * { app-region: drag; -webkit-app-region: drag; }
-.dq.is-compact .dq-pinned, .dq.is-compact .dq-pinned * { app-region: drag; -webkit-app-region: drag; }
-.dq-head button, .dq-head button * { app-region: no-drag; -webkit-app-region: no-drag; }
-.dq-pick, .dq-pick * { app-region: no-drag; -webkit-app-region: no-drag; }
-.dq-head {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 4px 0 12px;
-  cursor: grab;
-}
-.dq-head strong, .dq-grab {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-.dq.is-compact .dq-grab {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-}
+.dq { max-width: 100%; height: 100%; display: flex; flex-direction: column; color: var(--text); background: transparent; user-select: none; }
+.dq-options { height: 250px; min-height: 0; flex: 0 0 250px; margin: -10px 12px 10px; background: var(--surface); border: 1px solid var(--stroke); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+.dq-head { display: flex; align-items: center; gap: 4px; padding: 8px 8px 5px 12px; flex: 0 0 auto; }
+.dq-head strong { font-size: 13px; font-weight: 600; }
 .dq-spacer { flex: 1; }
-.dq-stale {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--warn, #f0a020);
-  font-size: 12px;
-  font-weight: 500;
-}
-.dq-stale i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.dq-icon {
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--dim, #b7bdc6);
-  cursor: pointer;
-}
-.dq-icon:hover { background: var(--wash, rgba(255, 255, 255, 0.06)); color: var(--text, #f1f3f5); }
-.dq-pinned {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 12px 8px;
-  min-height: 0;
-}
-.dq.is-compact .dq-pinned { flex: 1; gap: 4px; padding-bottom: 8px; }
-.dq-card { min-width: 0; }
-.dq.is-expanded .dq-card + .dq-card {
-  border-top: 1px solid var(--stroke, #2e2e36);
-  padding-top: 8px;
-}
-.dq-line { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.dq-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 600;
-}
-.dq-pct { font-size: 22px; font-weight: 600; line-height: 1; color: var(--text, #f1f3f5); }
-.dq-pct.hot, .dq-hero b.hot { color: var(--danger, #e85a73); }
-.dq-pct small, .dq-hero small { font-size: 12px; font-weight: 500; margin-left: 2px; color: var(--dim, #b7bdc6); }
-.dq-count, .dq-when {
-  margin: 0 0 3px;
-  color: var(--dim, #b7bdc6);
-  font-size: 12px;
-  line-height: 1.25;
-}
-.dq-hero { margin: 2px 0 6px; line-height: 1; }
-.dq-hero b { font-size: 28px; font-weight: 600; letter-spacing: -0.03em; }
-.dq-bar {
-  height: 4px;
-  border-radius: 99px;
-  background: var(--stroke, #2e2e36);
-  overflow: hidden;
-}
-.dq-bar i { display: block; height: 100%; border-radius: inherit; }
-.dq-empty { margin: 8px 0; color: var(--dim, #b7bdc6); font-size: 12px; }
-.dq-pick {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  border-top: 1px solid var(--stroke, #2e2e36);
-  padding: 8px 8px 10px;
-}
-.dq-pick h2 {
-  position: sticky;
-  top: 0;
-  margin: 0 4px 6px;
-  padding-bottom: 4px;
-  background: var(--bg, #18181c);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--dim, #b7bdc6);
-}
-.dq-pick h2 span { font-weight: 400; }
-.dq-opt {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 0 4px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.dq-opt:hover { background: var(--wash, rgba(255, 255, 255, 0.06)); }
-.dq-opt.off { opacity: 0.45; cursor: default; }
-.dq-opt input { margin: 0; accent-color: var(--accent-solid, #2ec4b6); }
-.dq-opt b { font-size: 12px; font-weight: 600; color: var(--dim, #b7bdc6); }
+.dq-stale { color: var(--warn); font-size: 11px; margin-left: 4px; }
+.dq-head button { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: var(--dim); cursor: pointer; }
+.dq-head button:hover { background: var(--wash); color: var(--text); }
+.dq-hint { display: flex; justify-content: space-between; gap: 8px; padding: 0 12px 7px; color: var(--dim); font-size: 12px; }
+.dq-list { flex: 1; min-height: 0; overflow: auto; padding: 0 6px; }
+.dq-opt { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 5px 6px; border-radius: 7px; cursor: pointer; }
+.dq-opt:hover { background: var(--wash); }
+.dq-opt.off { opacity: .5; cursor: default; }
+.dq-opt input { flex: 0 0 auto; margin: 0; accent-color: var(--accent-solid); }
+.dq-detail { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; }
+.dq-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
+.dq-when { color: var(--dim); font-size: 11px; }
+.dq-opt b { font-size: 13px; font-weight: 500; min-width: 34px; text-align: right; }
+.dq-side { width: 12px; font-size: 11px; }
+.dq-side.left { color: var(--dial-left-value); }
+.dq-side.right { color: var(--dial-right-value); }
+:root[data-theme='light'] .dq-side.left, :root[data-theme='light'] .dq-side.right { color: var(--dim); }
+.dq-empty { margin: 16px 6px; color: var(--dim); font-size: 12px; }
+.dq-options footer { flex: 0 0 auto; color: var(--dim); font-size: 11px; padding: 6px 12px 8px; border-top: 1px solid var(--stroke); }
+.dq-tabs { display: flex; gap: 14px; padding: 0 12px 7px; }
+.dq-tabs button { border: 0; padding: 2px 0; background: transparent; color: var(--dim); font: inherit; font-size: 12px; cursor: pointer; }
+.dq-tabs button[aria-pressed='true'] { color: var(--text); box-shadow: 0 1px 0 var(--accent-solid); }
+.dq-appearance { flex: 1; min-height: 0; overflow: auto; padding: 0 12px 10px; display: flex; flex-direction: column; gap: 9px; font-size: 12px; }
+.dq-range { display: flex; flex-direction: column; gap: 3px; }
+.dq-range span { display: flex; justify-content: space-between; }
+.dq-range b { font-weight: 400; color: var(--dim); }
+.dq-range input { margin: 0; width: 100%; accent-color: var(--accent-solid); }
+.dq-mode { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.dq-mode select { color: var(--text); background: var(--surface-hi); border: 1px solid var(--stroke-strong); border-radius: 5px; padding: 3px 5px; }
+.dq-reset { align-self: flex-start; background: transparent; color: var(--dim); border: 0; font: inherit; padding: 0; cursor: pointer; }
+.dq-reset:hover { color: var(--text); }
 </style>

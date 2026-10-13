@@ -398,12 +398,24 @@ public sealed class AppSettings
 public sealed class DesktopQuotaSettings
 {
     public const int MaxWindows = 2;
+    public const int MinDialSize = 260;
+    public const int MaxDialSize = 460;
 
     public bool Visible { get; set; }
     public bool Expanded { get; set; }
+    public int DialSize { get; set; } = 360;
+    public double DialGlow { get; set; } = 0.12;
+    public string DialArcMode { get; set; } = "quota";
     public double? Left { get; set; }
     public double? Top { get; set; }
     public List<string>? WindowIds { get; set; }
+
+    public void NormalizeDialAppearance()
+    {
+        DialSize = Math.Clamp(DialSize, MinDialSize, MaxDialSize);
+        DialGlow = double.IsFinite(DialGlow) ? Math.Clamp(DialGlow, 0d, 0.6d) : 0.12d;
+        if (DialArcMode is not ("quota" or "full")) DialArcMode = "quota";
+    }
 
     public static List<string> NormalizeWindowIds(IEnumerable<string>? raw)
     {

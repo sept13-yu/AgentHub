@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Manager, Theme, WebviewWindow};
 
 #[tauri::command]
-pub fn set_theme(window: WebviewWindow, theme: String) -> Result<(), String> {
+pub fn set_theme(app: AppHandle, window: WebviewWindow, theme: String) -> Result<(), String> {
     if window.label() != "main" {
         return Err("set_theme 仅允许主窗".into());
     }
@@ -12,7 +12,9 @@ pub fn set_theme(window: WebviewWindow, theme: String) -> Result<(), String> {
         "dark" => Theme::Dark,
         _ => return Err("theme 只能是 light/dark".into()),
     };
-    window.set_theme(Some(t)).map_err(|e| e.to_string())
+    window.set_theme(Some(t)).map_err(|e| e.to_string())?;
+    crate::quota::set_theme(&app, &theme);
+    Ok(())
 }
 
 #[tauri::command]

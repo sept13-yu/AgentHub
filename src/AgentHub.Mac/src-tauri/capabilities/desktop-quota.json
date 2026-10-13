@@ -1,0 +1,7 @@
+{
+  "identifier": "desktop-quota",
+  "description": "Commands for the local desktop quota webview",
+  "windows": ["desktop-quota"],
+  "remote": { "urls": ["http://127.0.0.1:18780/app/*"] },
+  "permissions": ["allow-desktop-quota-message"]
+}

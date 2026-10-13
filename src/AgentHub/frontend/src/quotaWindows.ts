@@ -36,11 +36,13 @@ export function toQuotaWindows(raw: unknown): QuotaWindowRow[] {
     if (str(rec.kind) !== 'remain') continue
     const id = str(rec.id)
     if (!id) continue
+    const remain = num(rec.remainPercent)
+    if (remain === null) continue
     const period = str(rec.period)
     rows.push({
       id,
       name: windowTitle(rec, id),
-      remain: clamp(num(rec.remainPercent), 0, 100),
+      remain: clamp(remain, 0, 100),
       period,
       resetMs: parseQuotaReset(period),
     })
@@ -58,7 +60,7 @@ export function reduceQuotaPoll(
   return { rows: result.rows, stale: false }
 }
 
-/** null = 还没选过。新鲜结果才落默认或丢掉已不可查询的窗口。 */
+/** null = 还没选过。新鲜结果只为首次选择落默认；已选 ID 保留到用户主动取消。 */
 export function nextPinnedIds(
   pinned: string[] | null,
   rows: QuotaWindowRow[],
@@ -69,8 +71,7 @@ export function nextPinnedIds(
     if (rows.length === 0) return { pinned: null, changed: false }
     return { pinned: rows.slice(0, MAX_PINNED_WINDOWS).map((row) => row.id), changed: true }
   }
-  const live = new Set(rows.map((row) => row.id))
-  const next = pinned.filter((id) => live.has(id)).slice(0, MAX_PINNED_WINDOWS)
+  const next = normalizePinnedIds(pinned) ?? []
   const changed = next.length !== pinned.length || next.some((id, index) => id !== pinned[index])
   return { pinned: next, changed }
 }
@@ -176,11 +177,11 @@ function str(v: unknown): string {
   return typeof v === 'string' ? v : ''
 }
 
-function num(v: unknown): number {
+function num(v: unknown): number | null {
   if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (typeof v === 'string' && v) {
+  if (typeof v === 'string' && v.trim()) {
     const n = Number(v)
-    return Number.isFinite(n) ? n : 0
+    return Number.isFinite(n) ? n : null
   }
-  return 0
+  return null
 }
