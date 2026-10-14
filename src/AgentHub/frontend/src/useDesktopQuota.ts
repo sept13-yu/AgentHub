@@ -25,6 +25,7 @@ export function useDesktopQuota() {
   const now = ref(Date.now())
   const appearance = ref(normalizeQuotaDialAppearance())
   const hostError = ref('')
+  const refreshing = ref(false)
   const knownNames = new Map<string, string>()
 
   const shownIds = computed(() => visiblePinnedIds(pinned.value, rows.value))
@@ -164,15 +165,21 @@ export function useDesktopQuota() {
     timer = window.setTimeout(() => { void refresh() }, ms)
   }
 
-  async function refresh() {
+  async function refresh(manual = false) {
     if (disposed || !stateReady) return
-    if (refreshFlight) return refreshFlight
-    refreshFlight = (async () => {
-      await load()
-      const delay = stale.value ? (staleTries <= 2 ? 1500 * staleTries : 8000) : 60_000
-      schedule(delay)
-    })().finally(() => { refreshFlight = null })
-    return refreshFlight
+    if (manual) refreshing.value = true
+    try {
+      if (!refreshFlight) {
+        refreshFlight = (async () => {
+          await load()
+          const delay = stale.value ? (staleTries <= 2 ? 1500 * staleTries : 8000) : 60_000
+          schedule(delay)
+        })().finally(() => { refreshFlight = null })
+      }
+      await refreshFlight
+    } finally {
+      if (manual && !disposed) refreshing.value = false
+    }
   }
 
   function setExpanded(next: boolean) {
@@ -232,5 +239,5 @@ export function useDesktopQuota() {
     document.removeEventListener('visibilitychange', onVisible)
   })
 
-  return { expanded, rows, shown, shownIds, unavailable, pinFull, stale, staleTitle, ready, now, appearance, hostError, startDrag, setAppearance, refresh, setExpanded, closeWidget, onToggle, isPinned }
+  return { expanded, rows, shown, shownIds, unavailable, pinFull, stale, staleTitle, ready, now, appearance, hostError, refreshing, startDrag, setAppearance, refresh, setExpanded, closeWidget, onToggle, isPinned }
 }

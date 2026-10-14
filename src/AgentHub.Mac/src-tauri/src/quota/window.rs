@@ -1,4 +1,4 @@
-use super::model::{hit_test, position_is_visible, Preferences};
+use super::model::{hit_test, outer_size, position_is_visible, Preferences};
 use super::store::{self, State};
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -18,13 +18,7 @@ pub fn create(app: &AppHandle) -> Result<WebviewWindow, String> {
             .unwrap(),
     );
     let script = init_script(&prefs);
-    let size = prefs.appearance.size as f64;
-    let width = if prefs.expanded {
-        360.0_f64.max(size)
-    } else {
-        size
-    };
-    let height = size + if prefs.expanded { 250.0 } else { 0.0 };
+    let (width, height) = outer_size(prefs.appearance.size as f64, prefs.expanded);
     let win = WebviewWindowBuilder::new(app, "desktop-quota", url)
         .title("桌面额度")
         .transparent(true)
@@ -95,13 +89,7 @@ pub fn create(app: &AppHandle) -> Result<WebviewWindow, String> {
 }
 
 pub fn resize(win: &WebviewWindow, prefs: &Preferences) -> Result<(), String> {
-    let size = prefs.appearance.size as f64;
-    let width = if prefs.expanded {
-        360.0_f64.max(size)
-    } else {
-        size
-    };
-    let height = size + if prefs.expanded { 250.0 } else { 0.0 };
+    let (width, height) = outer_size(prefs.appearance.size as f64, prefs.expanded);
     win.set_size(Size::Logical(tauri::LogicalSize::new(width, height)))
         .map_err(|e| e.to_string())
 }
@@ -202,11 +190,7 @@ fn start_pointer_watch(app: AppHandle) {
             } else {
                 let scale = win.scale_factor().unwrap_or(1.0);
                 let origin = win.inner_position().unwrap_or(PhysicalPosition::new(0, 0));
-                let width = if prefs.expanded {
-                    360.0_f64.max(prefs.appearance.size as f64)
-                } else {
-                    prefs.appearance.size as f64
-                };
+                let (width, _) = outer_size(prefs.appearance.size as f64, prefs.expanded);
                 let primary_scale = win
                     .primary_monitor()
                     .ok()

@@ -72,8 +72,9 @@ public partial class DesktopQuotaWindow
             PxX(offsetX + 410 * scale), PxY(251 * scale), PxX(22 * scale), PxY(22 * scale));
         if (_config.DesktopQuota.Expanded)
         {
-            AddRoundedRegion(region, PxX(12), PxY(dialSize - 10), PxX(ActualWidth - 12),
-                PxY(dialSize + 240), PxX(28), PxY(28));
+            var panelTop = dialSize * (1 - SettingsTuck);
+            AddRoundedRegion(region, PxX(12), PxY(panelTop), PxX(ActualWidth - 12),
+                PxY(panelTop + SettingsBody), PxX(28), PxY(28));
         }
 
         if (SetWindowRgn(hwnd, region, true) == 0) DeleteObject(region);
@@ -98,6 +99,8 @@ public partial class DesktopQuotaWindow
         var radius = 173d * scale;
         var dx = point.X - centerX;
         var dy = point.Y - centerY;
+        if (InRefreshSlot(point, offsetX, scale) || InSettingsPlate(point, dialSize)) return;
+
         var inDial = dx * dx + dy * dy <= radius * radius;
         var inCrown = point.X >= offsetX + 368d * scale && point.X <= offsetX + 410d * scale &&
                       point.Y >= 176d * scale && point.Y <= 251d * scale;
@@ -106,6 +109,63 @@ public partial class DesktopQuotaWindow
         e.Handled = true;
         try { DragMove(); }
         catch (InvalidOperationException) { /* 鼠标可能已在拖动开始前松开。 */ }
+    }
+
+    /// <summary>12 点方向的刷新键在表盘圆内，拖动逻辑必须让开，否则点不到。</summary>
+    private static bool InRefreshSlot(System.Windows.Point point, double offsetX, double scale)
+    {
+        if (scale <= 0) return false;
+        var x = (point.X - offsetX) / scale;
+        var y = point.Y / scale;
+        return x is >= 176 and <= 236 && y is >= 48 and <= 96;
+    }
+
+    private bool InSettingsPlate(System.Windows.Point point, double dialSize)
+    {
+        if (!_config.DesktopQuota.Expanded) return false;
+        var top = dialSize * (1 - SettingsTuck);
+        return point.X >= 12 && point.X <= ActualWidth - 12
+            && point.Y >= top && point.Y <= top + SettingsBody;
+    }
+
+    private const uint MonitorDefaultToNearest = 2;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoZOrder = 0x0004;
+    private const uint SwpNoActivate = 0x0010;
+
+    /// <summary>
+    /// 工作区用窗口当前显示器的物理像素。SystemParameters.WorkArea 只有主屏，
+    /// 副屏上展开设置会被夹回第一块屏。
+    /// </summary>
+    private bool TryGetPlacement(out RECT window, out RECT work)
+    {
+        window = default;
+        work = default;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out window)) return false;
+        var monitor = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+        var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info)) return false;
+        work = info.rcWork;
+        return work.Right > work.Left && work.Bottom > work.Top;
+    }
+
+    private void HoldPhysicalPosition(RECT anchor, RECT work)
+    {
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out var now)) return;
+        var width = now.Right - now.Left;
+        var height = now.Bottom - now.Top;
+        var workWidth = work.Right - work.Left;
+        var workHeight = work.Bottom - work.Top;
+        var maxLeft = work.Right - Math.Min(width, workWidth);
+        var maxTop = work.Bottom - Math.Min(height, workHeight);
+        if (maxLeft < work.Left) maxLeft = work.Left;
+        if (maxTop < work.Top) maxTop = work.Top;
+        var x = Math.Clamp(anchor.Left, work.Left, maxLeft);
+        var y = Math.Clamp(anchor.Top, work.Top, maxTop);
+        if (x == now.Left && y == now.Top) return;
+        SetWindowPos(hwnd, IntPtr.Zero, x, y, 0, 0, SwpNoSize | SwpNoZOrder | SwpNoActivate);
     }
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
@@ -119,6 +179,18 @@ public partial class DesktopQuotaWindow
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
     private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hwnd, out RECT rect);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetMonitorInfoW")]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
 
     [DllImport("user32.dll")]
     private static extern int GetClientRect(IntPtr hwnd, out RECT rect);
@@ -145,6 +217,15 @@ public partial class DesktopQuotaWindow
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct MONITORINFO
+    {
+        public int cbSize;
+        public RECT rcMonitor;
+        public RECT rcWork;
+        public uint dwFlags;
     }
 
     private static IntPtr GetWindowLongPtr(IntPtr hwnd, int index) =>

@@ -15,7 +15,6 @@ const teeth = Array.from({ length: 164 }, (_, i) => {
   }
 })
 const grooves = Array.from({ length: 13 }, (_, i) => 189 + i * 4.1)
-const vents = Array.from({ length: 8 }, (_, i) => ({ x: 193 + i % 4 * 8, y: 64 + Math.floor(i / 4) * 8 }))
 </script>
 
 <template>
@@ -57,13 +56,10 @@ const vents = Array.from({ length: 8 }, (_, i) => ({ x: 193 + i % 4 * 8, y: 64 +
           <circle cx="205" cy="211" r="156.4" fill="none" stroke="var(--dial-hardware-10)" stroke-opacity=".065" stroke-width=".8"/>
           <path d="M 64 117 A 170 170 0 0 1 244 46" fill="none" stroke="var(--dial-hardware-11)" stroke-width="1.05" stroke-opacity=".5"/>
 
-          <g aria-hidden="true">
+          <g class="cr-slot" aria-hidden="true">
             <rect x="182" y="55" width="47" height="29" rx="6" fill="url(#cr-slot-edge)"/>
             <rect x="184" y="55" width="43" height="26" rx="5" fill="url(#cr-slot-face)"/>
             <path d="M 188 56 H 223" stroke="var(--dial-hardware-12)" stroke-opacity=".26" stroke-width=".7"/>
-            <g>
-              <circle v-for="vent in vents" :key="vent.x + ':' + vent.y" :cx="vent.x" :cy="vent.y" r="1.7" fill="var(--dial-vent)" stroke="var(--dial-vent-rim)" stroke-opacity=".22" stroke-width=".6" />
-            </g>
           </g>
 
   </g>

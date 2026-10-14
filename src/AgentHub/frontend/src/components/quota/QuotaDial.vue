@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { RefreshCw } from 'lucide-vue-next'
 import QuotaDialDefs from './QuotaDialDefs.vue'
 import QuotaDialCase from './QuotaDialCase.vue'
 import { quotaDialBrand, quotaDialLabel, quotaDialReset, type QuotaDialAppearance } from '../../quotaDial'
 import { formatResetExact, type QuotaWindowRow } from '../../quotaWindows'
 
-const props = defineProps<{ rows: (QuotaWindowRow | undefined)[]; slotIds: string[]; appearance: QuotaDialAppearance; stale: boolean; ready: boolean; now: number; expanded: boolean }>()
-defineEmits<{ toggle: []; drag: [event: MouseEvent] }>()
+const props = defineProps<{ rows: (QuotaWindowRow | undefined)[]; slotIds: string[]; appearance: QuotaDialAppearance; stale: boolean; ready: boolean; now: number; expanded: boolean; refreshing: boolean }>()
+defineEmits<{ toggle: []; refresh: []; drag: [event: MouseEvent] }>()
 const available = computed(() => props.rows.filter((row): row is QuotaWindowRow => !!row))
 const brand = computed(() => quotaDialBrand(available.value))
 const slots = computed(() => [props.rows[0], props.rows[1]])
@@ -78,7 +79,10 @@ function arcStyle(index: number) {
         </g>
       </g>
     </svg>
-    <button class="cr-crown-hit" type="button" :aria-label="expanded ? '收起额度选择' : '选择额度'" :aria-expanded="expanded" aria-controls="quota-options" :title="expanded ? '收起额度选择' : '选择额度、刷新或关闭'" @click="$emit('toggle')" />
+    <button class="cr-refresh-hit" :class="{ busy: refreshing }" type="button" aria-label="刷新额度" title="刷新额度" :aria-busy="refreshing" @mousedown.stop @click.stop="$emit('refresh')">
+      <RefreshCw :size="14" />
+    </button>
+    <button class="cr-crown-hit" type="button" :aria-label="expanded ? '收起设置' : '打开设置'" :aria-expanded="expanded" aria-controls="quota-options" :title="expanded ? '收起设置' : '打开设置'" @click="$emit('toggle')" />
   </div>
 </template>
 
@@ -103,9 +107,20 @@ function arcStyle(index: number) {
 .cr-time-long { font-size: 21px; }
 .cr-halo { opacity: var(--dial-glow-opacity); }
 .cr-progress { stroke-dasharray: 100 100; transition: stroke-dashoffset 650ms cubic-bezier(.2,.65,.3,1); }
-.cr-crown-hit { position: absolute; left: 84%; top: 40%; width: 10%; height: 17%; background: transparent; border: 0; padding: 0; border-radius: 8px; cursor: pointer; app-region: no-drag; -webkit-app-region: no-drag; }
+.cr-refresh-hit, .cr-crown-hit { position: absolute; border: 0; padding: 0; background: transparent; cursor: pointer; app-region: no-drag; -webkit-app-region: no-drag; }
+.cr-refresh-hit { left: 41.36%; top: 12.5%; width: 10.68%; height: 6.59%; display: flex; align-items: center; justify-content: center; border-radius: 5px; color: var(--dial-hardware-3); }
+.cr-refresh-hit :deep(svg) { width: 78%; height: 78%; }
+.cr-refresh-hit:hover { color: var(--dial-text); }
+.cr-refresh-hit.busy { color: var(--dial-left-value); }
+.cr-refresh-hit.busy :deep(svg) { animation: cr-spin 700ms linear infinite; }
+.quota-dial:has(.cr-refresh-hit:hover) :deep(.cr-slot) { filter: brightness(1.18); }
+.cr-crown-hit { left: 84%; top: 40%; width: 10%; height: 17%; border-radius: 8px; }
 .quota-dial:has(.cr-crown-hit:hover) :deep(.cr-crown-art) { filter: brightness(1.12); }
 .quota-dial:has(.cr-crown-hit:active) :deep(.cr-crown-art) { transform: translateX(-1px); }
-.cr-crown-hit:focus-visible { outline: 2px solid var(--dial-focus); outline-offset: 2px; box-shadow: none; }
-@media (prefers-reduced-motion: reduce) { .cr-progress { transition: none; } }
+.cr-refresh-hit:focus-visible, .cr-crown-hit:focus-visible { outline: 2px solid var(--dial-focus); outline-offset: 2px; box-shadow: none; }
+@keyframes cr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .cr-progress { transition: none; }
+  .cr-refresh-hit.busy :deep(svg) { animation: none; }
+}
 </style>

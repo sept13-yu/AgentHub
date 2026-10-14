@@ -103,6 +103,21 @@ impl Preferences {
     }
 }
 
+const SETTINGS_TUCK: f64 = 0.10;
+const SETTINGS_BODY: f64 = 250.0;
+const SETTINGS_BOTTOM: f64 = 12.0;
+
+/// 与前端 margin、Windows 命中区同一套：设置板高 250，底边 12，上方按表盘尺寸收回 10%。
+pub fn outer_size(size: f64, expanded: bool) -> (f64, f64) {
+    let width = if expanded { 360.0_f64.max(size) } else { size };
+    let height = if expanded {
+        size * (1.0 - SETTINGS_TUCK) + SETTINGS_BODY + SETTINGS_BOTTOM
+    } else {
+        size
+    };
+    (width, height)
+}
+
 pub fn valid_window_id(id: &str) -> bool {
     !id.trim().is_empty()
         && id.len() <= 128
@@ -143,9 +158,10 @@ pub fn hit_test(
     let vy = y * 440.0 / size;
     let circle = (vx - 205.0).powi(2) + (vy - 211.0).powi(2) <= 174.0_f64.powi(2);
     let crown = (368.0..=410.0).contains(&vx) && (176.0..=251.0).contains(&vy);
+    let panel_top = size * (1.0 - SETTINGS_TUCK);
     let panel = expanded
         && (12.0..=window_width - 12.0).contains(&x)
-        && (size - 10.0..=size + 240.0).contains(&y);
+        && (panel_top..=panel_top + SETTINGS_BODY).contains(&y);
     circle || crown || panel
 }
 
@@ -212,6 +228,23 @@ mod tests {
         let corner = PhysicalPosition::new(100.0 + 15.0 * 2.0, 50.0 + 15.0 * 2.0);
         assert!(!hit_test(
             corner,
+            PhysicalPosition::new(100, 50),
+            2.0,
+            360.0,
+            360.0,
+            false
+        ));
+        let tucked = PhysicalPosition::new(100.0 + 180.0 * 2.0, 50.0 + 340.0 * 2.0);
+        assert!(hit_test(
+            tucked,
+            PhysicalPosition::new(100, 50),
+            2.0,
+            360.0,
+            360.0,
+            true
+        ));
+        assert!(!hit_test(
+            tucked,
             PhysicalPosition::new(100, 50),
             2.0,
             360.0,

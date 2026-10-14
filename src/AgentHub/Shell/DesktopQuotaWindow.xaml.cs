@@ -10,6 +10,10 @@ namespace AgentHub.Shell;
 public partial class DesktopQuotaWindow : Window
 {
     private const int ExpandedMinimumWidth = 360;
+    // 与前端 margin、Mac hit_test 同一套：设置板高 250，底边 12，上方按表盘尺寸收回 10%。
+    private const double SettingsTuck = 0.10;
+    private const double SettingsBody = 250;
+    private const double SettingsBottom = 12;
 
     private readonly WebHostService _web;
     private readonly AgentHubConfig _config;
@@ -18,6 +22,8 @@ public partial class DesktopQuotaWindow : Window
     private bool _allowClose;
     private bool _restoring;
     private bool _persistQueued;
+    private int _layoutGeneration;
+    private int _layoutLock;
 
     /// <summary>用户点关闭或 Alt+F4：已写入 Visible=false。</summary>
     public event Action? Dismissed;
@@ -82,6 +88,9 @@ public partial class DesktopQuotaWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        // 句柄已经落在用户放下的那块屏上，只在这块屏里把露出的部分收回来。
+        if (TryGetPlacement(out var anchor, out var work))
+            HoldPhysicalPosition(anchor, work);
         try
         {
             await _web.Ready;
@@ -146,9 +155,35 @@ public partial class DesktopQuotaWindow : Window
 
     private void ApplyLayout(bool expanded, bool persist)
     {
+        // 改尺寸前记住窗口所在显示器。WPF 改 Width/Height 时会把副屏窗口甩回主屏。
+        var anchored = TryGetPlacement(out var anchor, out var work);
+        var generation = ++_layoutGeneration;
+        _layoutLock++;
+        SetFixedSize(expanded);
+        if (anchored) HoldPhysicalPosition(anchor, work);
+        UpdateWindowHitRegion();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, () =>
+        {
+            try
+            {
+                if (generation != _layoutGeneration) return;
+                if (anchored) HoldPhysicalPosition(anchor, work);
+                UpdateWindowHitRegion();
+            }
+            finally
+            {
+                _layoutLock = Math.Max(0, _layoutLock - 1);
+                if (generation == _layoutGeneration && persist)
+                    PersistSoon();
+            }
+        });
+    }
+
+    private void SetFixedSize(bool expanded)
+    {
         var size = _config.DesktopQuota.DialSize;
         var width = expanded ? Math.Max(ExpandedMinimumWidth, size) : size;
-        var height = expanded ? size + 250 : size;
+        var height = expanded ? size * (1 - SettingsTuck) + SettingsBody + SettingsBottom : size;
         MinWidth = 0;
         MinHeight = 0;
         MaxWidth = double.PositiveInfinity;
@@ -158,9 +193,6 @@ public partial class DesktopQuotaWindow : Window
         MinWidth = MaxWidth = width;
         MinHeight = MaxHeight = height;
         _config.DesktopQuota.Expanded = expanded;
-        ClampToWorkArea();
-        UpdateWindowHitRegion();
-        if (persist) PersistSoon();
     }
 
     private void RestorePlacement()
@@ -168,7 +200,7 @@ public partial class DesktopQuotaWindow : Window
         _restoring = true;
         try
         {
-            ApplyLayout(_config.DesktopQuota.Expanded, persist: false);
+            SetFixedSize(_config.DesktopQuota.Expanded);
             var area = SystemParameters.WorkArea;
             var dq = _config.DesktopQuota;
             if (IsFinite(dq.Left) && IsFinite(dq.Top))
@@ -181,7 +213,6 @@ public partial class DesktopQuotaWindow : Window
                 Left = area.Right - Width - 24;
                 Top = area.Bottom - Height - 24;
             }
-            ClampToWorkArea();
         }
         finally
         {
@@ -189,21 +220,9 @@ public partial class DesktopQuotaWindow : Window
         }
     }
 
-    private void ClampToWorkArea()
-    {
-        var area = SystemParameters.WorkArea;
-        var maxLeft = area.Right - Math.Min(Width, area.Width);
-        if (maxLeft < area.Left) maxLeft = area.Left;
-        Left = Math.Clamp(Left, area.Left, maxLeft);
-
-        var maxTop = area.Bottom - Math.Min(Height, area.Height);
-        if (maxTop < area.Top) maxTop = area.Top;
-        Top = Math.Clamp(Top, area.Top, maxTop);
-    }
-
     private void PersistSoon()
     {
-        if (_restoring || !IsVisible || _persistQueued) return;
+        if (_restoring || _layoutLock > 0 || !IsVisible || _persistQueued) return;
         _persistQueued = true;
         Dispatcher.BeginInvoke(() =>
         {
