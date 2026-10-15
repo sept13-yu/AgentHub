@@ -12,6 +12,7 @@ const settingsTab = ref<'quota' | 'appearance'>('quota')
 <template>
   <main class="dq" :style="{ width: (expanded ? Math.max(360, appearance.size) : appearance.size) + 'px', '--dq-size': appearance.size + 'px' }" @keydown.esc="expanded ? setExpanded(false) : closeWidget()">
     <QuotaDial :rows="shown" :slot-ids="shownIds" :appearance="appearance" :stale="stale" :ready="ready" :now="now" :expanded="expanded" :refreshing="refreshing" @toggle="setExpanded(!expanded)" @refresh="refresh(true)" @drag="startDrag" />
+    <p v-if="hostError && !expanded" class="dq-host-error" role="status">{{ hostError }}</p>
     <section v-if="expanded" id="quota-options" class="dq-options" aria-label="桌面额度设置">
       <header class="dq-head">
         <strong>桌面额度</strong>
@@ -79,7 +80,8 @@ html.desktop-quota, html.desktop-quota body, html.desktop-quota #app { backgroun
 </style>
 
 <style scoped>
-.dq { max-width: 100%; height: 100%; display: flex; flex-direction: column; color: var(--dial-text); background: transparent; user-select: none; }
+.dq { position: relative; max-width: 100%; height: 100%; display: flex; flex-direction: column; color: var(--dial-text); background: transparent; user-select: none; }
+.dq-host-error { position: absolute; inset: auto 12px 12px; margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--dial-face-2); color: var(--warn); font-size: 12px; text-align: center; }
 .dq-options { position: relative; z-index: 2; height: 250px; min-height: 0; flex: 0 0 250px; margin: calc(var(--dq-size) * -0.10) 12px 12px; background: var(--dial-face-2); color: var(--dial-text); border: 1px solid var(--dial-hardware-6); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; color-scheme: dark; app-region: no-drag; -webkit-app-region: no-drag; }
 .dq-options, .dq-options * { app-region: no-drag; -webkit-app-region: no-drag; }
 .dq-head { display: flex; align-items: center; gap: 4px; padding: 8px 8px 5px 12px; flex: 0 0 auto; }

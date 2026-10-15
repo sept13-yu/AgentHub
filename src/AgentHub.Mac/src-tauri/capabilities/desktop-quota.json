@@ -1,7 +1,7 @@
 {
   "identifier": "desktop-quota",
-  "description": "Commands for the local desktop quota webview",
+  "description": "Commands for the local desktop quota webview. IPC matches the backend origin; the command validates the page path.",
   "windows": ["desktop-quota"],
-  "remote": { "urls": ["http://127.0.0.1:18780/app/*"] },
+  "remote": { "urls": ["http://127.0.0.1:18780"] },
   "permissions": ["allow-desktop-quota-message"]
 }
