@@ -8,6 +8,7 @@ pub struct State {
     pub prefs: Mutex<Preferences>,
     pub generation: AtomicU64,
     pub dragging: AtomicBool,
+    pub pointer_mode_dirty: AtomicBool,
     path: PathBuf,
     corrupt: AtomicBool,
 }
@@ -36,6 +37,7 @@ pub fn initialize(app: &AppHandle) -> Result<(), String> {
         prefs: Mutex::new(prefs),
         generation: AtomicU64::new(0),
         dragging: AtomicBool::new(false),
+        pointer_mode_dirty: AtomicBool::new(false),
         path,
         corrupt: AtomicBool::new(corrupt),
     });

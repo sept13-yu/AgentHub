@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { RefreshCw } from 'lucide-vue-next'
+import { host } from '../../hostBridge'
 import QuotaDialDefs from './QuotaDialDefs.vue'
 import QuotaDialCase from './QuotaDialCase.vue'
 import { quotaDialBrand, quotaDialLabel, quotaDialReset, type QuotaDialAppearance } from '../../quotaDial'
@@ -8,6 +9,7 @@ import { formatResetExact, type QuotaWindowRow } from '../../quotaWindows'
 
 const props = defineProps<{ rows: (QuotaWindowRow | undefined)[]; slotIds: string[]; appearance: QuotaDialAppearance; stale: boolean; ready: boolean; now: number; expanded: boolean; refreshing: boolean }>()
 defineEmits<{ toggle: []; refresh: []; drag: [event: MouseEvent] }>()
+const windowsHost = host() === 'wpf'
 const available = computed(() => props.rows.filter((row): row is QuotaWindowRow => !!row))
 const brand = computed(() => quotaDialBrand(available.value))
 const slots = computed(() => [props.rows[0], props.rows[1]])
@@ -39,7 +41,7 @@ function arcStyle(index: number) {
 </script>
 
 <template>
-  <div class="quota-dial" :data-stale="stale || undefined" :style="{ width: appearance.size + 'px', height: appearance.size + 'px', flexBasis: appearance.size + 'px', '--dial-glow-opacity': appearance.glow }">
+  <div class="quota-dial" :data-windows="windowsHost || undefined" :data-stale="stale || undefined" :style="{ width: appearance.size + 'px', height: appearance.size + 'px', flexBasis: appearance.size + 'px', '--dial-glow-opacity': appearance.glow }">
     <svg class="cr-dial" viewBox="0 0 440 440" role="img" :aria-label="accessible" @mousedown="$emit('drag', $event)">
       <QuotaDialDefs />
       <g>
@@ -91,6 +93,8 @@ function arcStyle(index: number) {
 .cr-dial { display: block; width: 100%; height: auto; overflow: visible; cursor: grab; }
 .cr-dial, .cr-dial * { app-region: drag; -webkit-app-region: drag; }
 .cr-lettering { font-family: var(--font); font-weight: 400; }
+/* Windows 的透明合成图像不再对整组文字额外套阴影滤镜。 */
+.quota-dial[data-windows] .cr-lettering { filter: none; }
 .cr-brand { font-size: 23px; font-weight: 400; fill: var(--dial-text); }
 .cr-brand-wide { font-size: 19px; }
 .cr-plan { font-size: 13px; fill: var(--dial-plan); }

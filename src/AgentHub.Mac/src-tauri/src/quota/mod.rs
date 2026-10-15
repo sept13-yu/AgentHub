@@ -1,5 +1,6 @@
 mod command;
 mod model;
+mod pointer;
 mod store;
 mod window;
 
@@ -57,6 +58,10 @@ pub fn toggle(app: &AppHandle) {
     if win.is_visible().unwrap_or(false) {
         let _ = hide(&win);
     } else if let Ok(prefs) = store::update(app, |p| p.visible = true) {
+        app.state::<State>()
+            .pointer_mode_dirty
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        let _ = win.set_ignore_cursor_events(false);
         let _ = window::resize(&win, &prefs);
         window::push_state(&win, &prefs);
         let _ = win.show();

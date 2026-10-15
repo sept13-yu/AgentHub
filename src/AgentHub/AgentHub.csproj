@@ -10,6 +10,9 @@
     <Description>Local control center for desktop coding agents</Description>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <ApplicationIcon>assets\agenthub.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- WPF 是应用入口，WinForms 只用于托盘等组件；DPI 在创建窗口前由 manifest 声明。 -->
+    <NoWarn>$(NoWarn);WFO0003</NoWarn>
     <StartupObject>AgentHub.Program</StartupObject>
   </PropertyGroup>
 

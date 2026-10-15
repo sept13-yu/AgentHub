@@ -153,6 +153,18 @@ pub fn hit_test(
     }
     let x = (cursor.x - origin.x as f64) / scale;
     let y = (cursor.y - origin.y as f64) / scale;
+    hit_test_logical(x, y, window_width, size, expanded)
+}
+
+pub fn hit_test_logical(x: f64, y: f64, window_width: f64, size: f64, expanded: bool) -> bool {
+    if !x.is_finite()
+        || !y.is_finite()
+        || !window_width.is_finite()
+        || !size.is_finite()
+        || size <= 0.0
+    {
+        return false;
+    }
     let offset = (window_width - size) / 2.0;
     let vx = (x - offset) * 440.0 / size;
     let vy = y * 440.0 / size;
@@ -224,6 +236,13 @@ mod tests {
             360.0,
             360.0,
             false
+        ));
+        assert!(hit_test_logical(
+            389.0 * 360.0 / 440.0,
+            200.0 * 360.0 / 440.0,
+            360.0,
+            360.0,
+            false,
         ));
         let corner = PhysicalPosition::new(100.0 + 15.0 * 2.0, 50.0 + 15.0 * 2.0);
         assert!(!hit_test(
