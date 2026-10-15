@@ -1,21 +1,21 @@
 {
-  "version": "1.1.20",
-  "releaseUrl": "https://github.com/sept13-yu/AgentHub/releases/tag/v1.1.20",
+  "version": "1.1.21",
+  "releaseUrl": "https://github.com/sept13-yu/AgentHub/releases/tag/v1.1.21",
   "assets": {
     "winX64": {
-      "fileName": "AgentHub-1.1.20-win-x64.exe",
-      "size": 68320368,
-      "sha256": "ef5c152067a1426d5187f4a7e3c4a7809745a91fd146c8389b44a0acd2eaacdc"
+      "fileName": "AgentHub-1.1.21-win-x64.exe",
+      "size": 68321712,
+      "sha256": "3f9035ffbb870d605948438dad593e1469b65db417616491be65f1f5c78c7973"
     },
     "macArm64": {
-      "fileName": "AgentHub-1.1.20-mac-arm64.dmg",
-      "size": 53455320,
-      "sha256": "eeec04667dbc58350bdf01bb54728ebe043ca416830efcf9e1fb4a407b68975d"
+      "fileName": "AgentHub-1.1.21-mac-arm64.dmg",
+      "size": 53462219,
+      "sha256": "18db13f79a3aa3c891e504d3f09d5898877ca5b03882caa2e28b53523e97b353"
     },
     "macX64": {
-      "fileName": "AgentHub-1.1.20-mac-x64.dmg",
-      "size": 56400369,
-      "sha256": "bdcb7702a278aad6529663c721440e95013813ebc1a6b311932d0e3f64b9cf91"
+      "fileName": "AgentHub-1.1.21-mac-x64.dmg",
+      "size": 56397138,
+      "sha256": "bc7be578376803a0c8844fb72e5776d6f51371d2e02e86a94a4da31f5125b0d0"
     }
   }
 }
