@@ -210,12 +210,13 @@ public partial class App : Application
         MainWindow.Focus();
     }
 
-    /// <summary>托盘「退出」：停止本地服务；若退出路径卡住，约 8 秒后强制结束。</summary>
-    private void ExitApp()
+    /// <summary>托盘「退出」：异步停止本地服务，让 WPF 继续处理退出续体；8 秒兜底。</summary>
+    private async void ExitApp()
     {
         if (Interlocked.Exchange(ref _exiting, 1) != 0) return;
         if (_exitReason == "unknown") _exitReason = "user-exit";
         HubLog.Write("[exit] " + _exitReason);
+        var started = Stopwatch.GetTimestamp();
 
         // 先挂硬退出，再拆服务，避免 Close / Kestrel 堵住 UI 线程。
         _ = System.Threading.Tasks.Task.Run(() =>
@@ -227,8 +228,11 @@ public partial class App : Application
 
         if (MainWindow is MainWindow win) win.ReallyExit = true;
         try { MainWindow?.Close(); } catch { }
-        try { _rt?.Stop(); } catch { }
+        HubLog.Write($"[exit] main-closed elapsed={Stopwatch.GetElapsedTime(started).TotalMilliseconds:0}ms");
+        try { if (_rt is not null) await _rt.StopAsync(); } catch { }
+        HubLog.Write($"[exit] runtime-stopped elapsed={Stopwatch.GetElapsedTime(started).TotalMilliseconds:0}ms");
         try { _desktopQuota?.Shutdown(); } catch { }
+        HubLog.Write($"[exit] quota-closed elapsed={Stopwatch.GetElapsedTime(started).TotalMilliseconds:0}ms");
         try { _tray?.Dispose(); } catch { }
         Shutdown();
     }

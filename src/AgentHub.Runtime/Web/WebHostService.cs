@@ -35,6 +35,8 @@ public sealed class WebHostService
     private readonly McpSyncService? _mcp;
     private WebApplication? _app;
     private Task? _runTask;
+    private readonly object _stopGate = new();
+    private Task? _stopTask;
     private readonly TaskCompletionSource _ready = new();
 
     /// <summary>写 API 鉴权 token（每次启动随机；仅注入壳内 WebView2）。
@@ -150,20 +152,33 @@ public sealed class WebHostService
         lifetime.ApplicationStarted.Register(() => _ready.TrySetResult());
 
         _app = app;
-        _runTask = app.RunAsync();
+        // RunAsync 的停止及 DisposeAsync 续体不能捕获 WPF Dispatcher，
+        // 否则同步入口等待退出时会和 UI 线程互相等待。
+        _runTask = Task.Run(() => app.RunAsync());
         _ = _runTask.ContinueWith(
             t => _ready.TrySetException(
                 t.Exception?.GetBaseException() ?? new InvalidOperationException("Web 服务异常退出")),
             TaskContinuationOptions.OnlyOnFaulted);
     }
 
-    public void Stop()
+    public Task StopAsync()
     {
+        lock (_stopGate)
+            return _stopTask ??= StopCoreAsync();
+    }
+
+    private async Task StopCoreAsync()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
         try
         {
-            _app?.StopAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
-            _runTask?.Wait(TimeSpan.FromSeconds(3));
+            if (_app is not null)
+                await _app.StopAsync(timeout.Token).ConfigureAwait(false);
+            if (_runTask is not null)
+                await _runTask.WaitAsync(timeout.Token).ConfigureAwait(false);
         }
         catch (Exception) { /* 退出路径尽力而为，不阻塞关机 */ }
     }
+
+    public void Stop() => StopAsync().GetAwaiter().GetResult();
 }

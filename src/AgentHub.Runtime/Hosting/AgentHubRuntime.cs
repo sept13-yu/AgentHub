@@ -125,11 +125,13 @@ public sealed class AgentHubRuntime : IDisposable
         }
     });
 
-    public void Stop()
+    public async Task StopAsync()
     {
         try { Scan.Dispose(); } catch { }
-        try { Web.Stop(); } catch { }
+        try { await Web.StopAsync().ConfigureAwait(false); } catch { }
     }
+
+    public void Stop() => StopAsync().GetAwaiter().GetResult();
 
     public void Dispose() => Stop();
 }
