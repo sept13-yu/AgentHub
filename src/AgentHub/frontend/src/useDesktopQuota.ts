@@ -43,6 +43,7 @@ export function useDesktopQuota() {
   let staleTries = 0
   let stateReady = !window.__AGENTHUB_DESKTOP_QUOTA__
   let refreshFlight: Promise<void> | null = null
+  let refreshFlightForced = false
   let hostFlight = Promise.resolve()
   let pendingHostMessages = 0
   // 卸载后旧响应不得写状态、发宿主消息或重新调度（C03）
@@ -136,10 +137,10 @@ export function useDesktopQuota() {
     applyHostData((event as CustomEvent).detail)
   }
 
-  async function load() {
+  async function load(force = false) {
     let result: { ok: true; rows: QuotaWindowRow[]; stale: boolean } | { ok: false }
     try {
-      const raw = await get('/api/quotas')
+      const raw = await get(force ? '/api/quotas?force=true' : '/api/quotas')
       result = { ok: true, rows: toQuotaWindows(raw), stale: quotaPayloadStale(raw) }
     } catch {
       result = { ok: false }
@@ -169,12 +170,16 @@ export function useDesktopQuota() {
     if (disposed || !stateReady) return
     if (manual) refreshing.value = true
     try {
+      // 手动刷新不能被正在进行的普通轮询吞掉，等它结束后再强制查询。
+      if (manual && refreshFlight && !refreshFlightForced) await refreshFlight
+      if (disposed) return
       if (!refreshFlight) {
+        refreshFlightForced = manual
         refreshFlight = (async () => {
-          await load()
+          await load(manual)
           const delay = stale.value ? (staleTries <= 2 ? 1500 * staleTries : 8000) : 60_000
           schedule(delay)
-        })().finally(() => { refreshFlight = null })
+        })().finally(() => { refreshFlight = null; refreshFlightForced = false })
       }
       await refreshFlight
     } finally {

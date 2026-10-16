@@ -37,7 +37,7 @@ public sealed class QuotaService
     // 否则用户改完凭据后点「!」还要等 TTL 过期。
     private Dictionary<string, object?>? _expiryCache;
     private long _expiryCacheAt;
-    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan ErrorTtl = TimeSpan.FromSeconds(3);
 
     /// <summary>上次额度结果落盘：下次启动先秒回旧值再后台刷新（stale-while-revalidate）。</summary>
