@@ -30,13 +30,13 @@ export function useCodexActions(snapshot: CodexSnapshotState, busy: Ref<boolean>
     if (!row) return ''
     return [`从「${snapshot.currentLabel.value}」切换到「${row.title}」。`,
       row.rowKind === 'relay' ? '将连接写入 Codex 配置文件。' : '将保存的登录副本写回 Codex，并切到官方连接。',
-      snapshot.liveUnarchived.value ? '当前登录尚未保存副本，切换可能覆盖该登录；可取消后先保存当前登录。' : '当前登录副本状态见当前配置。',
+      snapshot.liveUnarchived.value ? '当前登录尚未保存副本，切换可能覆盖该登录；可取消后在当前配置保存。' : '当前登录副本状态见当前配置。',
       runningText.value].join('\n')
   })
   const prepareText = computed(() => [`当前连接：「${snapshot.currentLabel.value}」；登录：${snapshot.authLoginText.value}。`,
     '确认后将清空 Codex 当前登录，并写入官方连接。已保存的登录副本不会删除。',
-    snapshot.liveUnarchived.value ? '当前登录尚未保存副本，建议先保存当前登录。' : '',
-    runningText.value, '随后在 Codex 登录新账号，登录完成后可保存新登录副本。'].filter(Boolean).join('\n'))
+    snapshot.liveUnarchived.value ? '当前登录尚未保存副本，可先保存再清空。' : '',
+    runningText.value, '随后在 Codex 登录新账号。完成后回到此页，在当前配置保存登录副本。'].filter(Boolean).join('\n'))
   const deleteText = computed(() => pendingDelete.value?.rowKind === 'official-account'
     ? `删除「${pendingDelete.value.title}」的登录副本？Codex 当前登录文件不会被清空。`
     : `删除中转连接「${pendingDelete.value?.title || ''}」？`)
@@ -131,7 +131,7 @@ export function useCodexActions(snapshot: CodexSnapshotState, busy: Ref<boolean>
       const result = await post<WriteResult>('/api/codex-config/official/prepare-blank')
       requireOk(result)
       recordWrite('当前登录已清空，官方连接已写入', !!result.restartRequired,
-        '请在 Codex 登录新账号，完成后回到此页保存当前登录副本。')
+        '请在 Codex 登录新账号。完成后回到此页，在当前配置保存登录副本。')
       prepareShow.value = false
       success('已准备新登录，请在 Codex 登录')
     } catch (error) {

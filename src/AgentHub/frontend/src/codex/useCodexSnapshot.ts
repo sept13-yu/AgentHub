@@ -22,8 +22,12 @@ export function useCodexSnapshot(pageLoading?: Ref<boolean>) {
   const writeDisabled = computed(() => !WRITABLE || !status.value || status.value.configBroken)
   const official = computed(() => connections.value.find(c => c.kind === 'official'))
   const officialActive = computed(() => !!official.value?.active)
-  const liveUnarchived = computed(() => !!profileLive.value?.importable && !profiles.value.some(p => p.active))
-  const archiveLabel = computed(() => profiles.value.some(p => p.active) ? '更新登录副本' : '保存当前登录')
+  const liveMatchesSaved = computed(() => profiles.value.some(p => p.active))
+  const liveUnarchived = computed(() => !!profileLive.value?.importable && !liveMatchesSaved.value)
+  const archiveLabel = computed(() => liveMatchesSaved.value ? '更新登录副本' : '保存登录副本')
+  const archiveText = computed(() => liveMatchesSaved.value
+    ? '当前登录已有副本。保存会用这次登录更新该副本，供以后切换。可修改名称。'
+    : '将当前 ChatGPT 登录保存为副本，供以后切换使用。可填写便于辨认的名称。')
   const authLoginText = computed(() => {
     if (status.value?.authType === 'chatgpt') return profileLive.value?.email || 'ChatGPT 已登录'
     if (status.value?.authType === 'apikey') return 'API Key'
@@ -104,7 +108,7 @@ export function useCodexSnapshot(pageLoading?: Ref<boolean>) {
     }
   }
   return { status, connections, profiles, profileLive, loadError, lastReadAt, loading, writeDisabled, official,
-    officialActive, liveUnarchived, archiveLabel, authLoginText, currentLabel, officialRows, relayRows, load, invalidate, startPoll }
+    officialActive, liveUnarchived, archiveLabel, archiveText, authLoginText, currentLabel, officialRows, relayRows, load, invalidate, startPoll }
 }
 
 export type CodexSnapshotState = ReturnType<typeof useCodexSnapshot>

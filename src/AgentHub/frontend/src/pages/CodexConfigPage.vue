@@ -17,7 +17,7 @@ import { useCodexSessionNotice } from '../codex/useCodexSessionNotice'
 const message = useMessage()
 const busy = ref(false)
 const snapshot = useCodexSnapshot(inject<Ref<boolean>>('page-loading'))
-const { status, loadError, lastReadAt, loading, writeDisabled, liveUnarchived, archiveLabel,
+const { status, loadError, lastReadAt, loading, writeDisabled, liveUnarchived, archiveLabel, archiveText,
   authLoginText, currentLabel, officialRows, relayRows, profileLive } = snapshot
 const actions = useCodexActions(snapshot, busy, () => editor.show.value, text => message.success(text))
 const editor = useCodexRelayForm(snapshot, busy, () => actions.modalOpen.value, text => message.success(text))
@@ -32,15 +32,13 @@ const newOptions = [
 ]
 function create(key: string | number) {
   if (writeDisabled.value || busy.value || anyModal()) return
-  if (key === 'official') {
-    if (profileLive.value?.importable) actions.openArchive()
-    else actions.openPrepare()
-  } else if (key === 'relay') editor.open()
+  // 新建官方账号只准备下一次登录。当前这次登录的归档在当前配置上，不从这里更新副本。
+  if (key === 'official') actions.openPrepare()
+  else if (key === 'relay') editor.open()
 }
-function prepareOther() {
-  if (writeDisabled.value || busy.value || !archiveShow.value) return
-  archiveShow.value = false
-  actions.openPrepare()
+function saveLiveLogin() {
+  if (writeDisabled.value || busy.value || anyModal()) return
+  actions.openArchive()
 }
 async function refresh() {
   if (busy.value || loading.value || anyModal()) return
@@ -80,7 +78,9 @@ onUnmounted(() => {
       读取失败：{{ loadError }}{{ status ? '。保留上次成功读取的数据（' + lastReadAt + '），请重试。' : '。请点击刷新重试。' }}
     </p>
     <CodexCurrentStatus v-if="status" :status="status" :current-label="currentLabel"
-      :auth-login-text="authLoginText" :live-unarchived="liveUnarchived" :notice="notice" />
+      :auth-login-text="authLoginText" :live-unarchived="liveUnarchived" :notice="notice"
+      :show-archive="!!profileLive?.importable" :archive-label="archiveLabel"
+      :archive-disabled="writeDisabled || busy || anyModal()" @archive="saveLiveLogin" />
     <p v-else-if="loading" class="empty">正在读取 Codex 连接…</p>
     <div v-if="status" class="connection-groups">
       <CodexConnectionList kind="official" :rows="officialRows" :busy="busy" :write-disabled="writeDisabled"
@@ -97,10 +97,9 @@ onUnmounted(() => {
       ok-text="清空登录并切到官方" tone="danger" :loading="busy" :disabled="writeDisabled" :error="prepareError"
       :alt-text="liveUnarchived ? '先保存当前登录副本' : undefined"
       @alt="actions.openArchive(true)" @confirm="actions.doPrepare" />
-    <AhConfirm v-model:show="archiveShow" :title="archiveLabel"
-      text="将当前 ChatGPT 登录保存为副本，供以后切换使用。可填写便于辨认的名称。"
-      ok-text="保存登录副本" alt-text="登录其他账号…" :loading="busy" :disabled="writeDisabled" :error="archiveError"
-      @alt="prepareOther" @confirm="actions.doArchive">
+    <AhConfirm v-model:show="archiveShow" :title="archiveLabel" :text="archiveText"
+      :ok-text="archiveLabel" :loading="busy" :disabled="writeDisabled" :error="archiveError"
+      @confirm="actions.doArchive">
       <label class="archive-name" for="codex-archive-name">副本名称（可选）</label>
       <n-input :input-props="{ id: 'codex-archive-name', name: 'profileName', autocomplete: 'off', spellcheck: false }" v-model:value="archiveName" :disabled="busy || writeDisabled"
         placeholder="默认使用账号邮箱" @keydown.enter.prevent="actions.doArchive" />

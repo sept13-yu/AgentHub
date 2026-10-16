@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NButton } from 'naive-ui'
 import type { CodexStatus } from '../../codex/types'
 
 defineProps<{
@@ -7,7 +8,12 @@ defineProps<{
   authLoginText: string
   liveUnarchived: boolean
   notice: string
+  showArchive: boolean
+  archiveLabel: string
+  archiveDisabled: boolean
 }>()
+
+defineEmits<{ archive: [] }>()
 </script>
 
 <template>
@@ -27,6 +33,8 @@ defineProps<{
             <p v-if="authLoginText && authLoginText !== currentLabel" class="login-text">{{ authLoginText }}</p>
             <p v-if="liveUnarchived" class="unarchived">登录副本未保存</p>
           </div>
+          <n-button v-if="showArchive" class="archive-action" :type="liveUnarchived ? 'primary' : 'default'"
+            :disabled="archiveDisabled" @click="$emit('archive')">{{ archiveLabel }}</n-button>
         </div>
         <dl v-if="status.liveModel" class="facts">
           <div v-if="status.liveModel"><dt>配置模型</dt><dd>{{ status.liveModel }}</dd></div>
@@ -55,6 +63,7 @@ h2 { font-size: var(--fs-card); font-weight: 600; }
 .current-body { padding: var(--sp-4) var(--sp-5); }
 .configuration { display: flex; align-items: flex-start; gap: var(--sp-4); justify-content: space-between; }
 .configuration-main { min-width: 0; }
+.archive-action { flex-shrink: 0; }
 .current-label { font-size: var(--fs-title); font-weight: 600; overflow-wrap: anywhere; }
 .address, .path { font-family: var(--mono); overflow-wrap: anywhere; }
 .address { color: var(--dim); font-size: var(--fs-small); margin-top: var(--sp-1); }
