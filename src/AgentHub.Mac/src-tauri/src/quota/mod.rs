@@ -82,3 +82,33 @@ pub fn hide(win: &WebviewWindow) -> Result<(), String> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use tauri::utils::acl::RemoteUrlPattern;
+
+    #[test]
+    fn capability_matches_ipc_origin_without_page_path() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../../capabilities/desktop-quota.json")).unwrap();
+        let patterns: Vec<RemoteUrlPattern> = capability["remote"]["urls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|url| url.as_str().unwrap().parse().unwrap())
+            .collect();
+        let allows = |url: &str| {
+            patterns
+                .iter()
+                .any(|pattern| pattern.test(&url.parse().unwrap()))
+        };
+
+        // The fetch IPC transport supplies the Origin header, which has no /app/ path.
+        assert!(allows("http://127.0.0.1:18780/"));
+        assert!(allows("http://127.0.0.1:18780/app/#/desktop-quota"));
+        assert!(!allows("http://127.0.0.1:18781/"));
+        assert!(!allows("http://localhost:18780/"));
+        assert!(!allows("https://127.0.0.1:18780/"));
+        assert!(!allows("https://example.com/"));
+    }
+}
