@@ -8,7 +8,7 @@ export interface QuotaDialAppearance {
 
 export function normalizeQuotaDialAppearance(value: Partial<QuotaDialAppearance> = {}): QuotaDialAppearance {
   return {
-    size: Number.isFinite(value.size) ? Math.max(260, Math.min(460, Math.round(value.size!))) : 360,
+    size: Number.isFinite(value.size) ? Math.max(180, Math.min(460, Math.round(value.size!))) : 360,
     glow: Number.isFinite(value.glow) ? Math.max(0, Math.min(.6, value.glow!)) : .12,
     arcMode: value.arcMode === 'full' ? 'full' : 'quota',
   }

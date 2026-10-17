@@ -398,7 +398,7 @@ public sealed class AppSettings
 public sealed class DesktopQuotaSettings
 {
     public const int MaxWindows = 2;
-    public const int MinDialSize = 260;
+    public const int MinDialSize = 180;
     public const int MaxDialSize = 460;
 
     public bool Visible { get; set; }

@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use tauri::PhysicalPosition;
 
 pub const DEFAULT_SIZE: u32 = 360;
-pub const MIN_SIZE: u32 = 260;
+pub const MIN_SIZE: u32 = 180;
 pub const MAX_SIZE: u32 = 460;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -41,7 +41,7 @@ impl Appearance {
             || size.fract() != 0.0
             || !(MIN_SIZE as f64..=MAX_SIZE as f64).contains(&size)
         {
-            return Err("size must be an integer from 260 to 460".into());
+            return Err("size must be an integer from 180 to 460".into());
         }
         if !glow.is_finite() || !(0.0..=0.6).contains(&glow) {
             return Err("glow must be from 0 to 0.6".into());
@@ -183,9 +183,9 @@ mod tests {
 
     #[test]
     fn validates_appearance_bounds_and_modes() {
-        assert!(Appearance::validate_message(260.0, 0.0, "quota").is_ok());
+        assert!(Appearance::validate_message(180.0, 0.0, "quota").is_ok());
         assert!(Appearance::validate_message(460.0, 0.6, "full").is_ok());
-        assert!(Appearance::validate_message(259.0, 0.12, "quota").is_err());
+        assert!(Appearance::validate_message(179.0, 0.12, "quota").is_err());
         assert!(Appearance::validate_message(360.5, 0.12, "quota").is_err());
         assert!(Appearance::validate_message(360.0, f64::NAN, "quota").is_err());
         assert!(Appearance::validate_message(360.0, 0.12, "other").is_err());

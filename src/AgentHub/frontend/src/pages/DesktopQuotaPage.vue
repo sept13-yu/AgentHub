@@ -53,7 +53,7 @@ const settingsTab = ref<'quota' | 'appearance'>('quota')
       <div v-else class="dq-appearance">
         <label class="dq-range">
           <span>显示尺寸 <b>{{ appearance.size }} px</b></span>
-          <input aria-label="显示尺寸" type="range" min="260" max="460" step="10" :value="appearance.size" @input="setAppearance({ size: Number(($event.target as HTMLInputElement).value) })" />
+          <input aria-label="显示尺寸" type="range" min="180" max="460" step="10" :value="appearance.size" @input="setAppearance({ size: Number(($event.target as HTMLInputElement).value) })" />
         </label>
         <label class="dq-range">
           <span>弧线柔光 <b>{{ Math.round(appearance.glow / .6 * 100) }}%</b></span>
