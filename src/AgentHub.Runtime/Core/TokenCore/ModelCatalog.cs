@@ -231,7 +231,7 @@ public sealed class ModelCatalogSnapshot
         return false;
     }
 
-    /// <summary>包装候选：逐层剥冒号/斜杠前缀；不砍任意 -- 后缀，档位身份仍靠 alias 精确命中。</summary>
+    /// <summary>包装候选：逐层剥冒号/斜杠前缀与 @上下文标记；不砍任意 -- 后缀，档位身份仍靠 alias 精确命中。</summary>
     internal static IEnumerable<string> WrapperCandidates(string raw)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { raw };
@@ -254,6 +254,9 @@ public sealed class ModelCatalogSnapshot
     private static IEnumerable<string> UnwrapOnce(string name)
     {
         foreach (var candidate in UnwrapPrefixOnce(name)) yield return candidate;
+        var withoutContext = ModelNameNormalizer.StripContext(name);
+        if (!withoutContext.Equals(name, StringComparison.Ordinal) && withoutContext.Length > 0)
+            yield return withoutContext;
     }
 
     /// <summary>未知身份 ID：逐段可逆转义（下划线、斜杠、冒号、中文互不同码），合法 modelId 不含冒号故不冲突。</summary>
