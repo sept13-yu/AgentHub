@@ -159,6 +159,13 @@ public sealed class QuotaService
             {
                 ["updatedAt"] = DateTime.UtcNow.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'"),
                 ["items"] = QuotaPresenter.Flatten(sources, dash.ResolvedQuotaOrder()),
+                ["aliases"] = CodexAccountQuota.HiddenLiveAliases()
+                    .Select(alias => new Dictionary<string, string>
+                    {
+                        ["from"] = alias.FromId,
+                        ["to"] = alias.ToId,
+                    })
+                    .ToList(),
             };
             _cacheAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             _cacheUnhealthy = IsUnhealthy(sources);

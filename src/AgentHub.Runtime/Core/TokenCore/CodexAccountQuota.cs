@@ -85,6 +85,63 @@ public static class CodexAccountQuota
         return list;
     }
 
+    /// <summary>
+    /// 被当前登录挤掉的档案窗口。同一 Identity 只保留 live，
+    /// 但桌面额度仍可能记着旧的 codex:auth-… 窗口。
+    /// </summary>
+    public readonly record struct HiddenWindowAlias(string FromId, string ToId);
+
+    public static List<HiddenWindowAlias> HiddenLiveAliases(CodexAuthProfileStore? store = null)
+    {
+        store ??= new CodexAuthProfileStore();
+        var list = new List<HiddenWindowAlias>();
+        CodexQuotaAccount? live;
+        try
+        {
+            live = LoadLive();
+        }
+        catch (Exception)
+        {
+            return list;
+        }
+        if (live is null || live.Key != "live" || live.Identity.Length == 0) return list;
+
+        CodexAuthProfileIndex index;
+        try
+        {
+            index = store.LoadIndex();
+        }
+        catch (InvalidOperationException)
+        {
+            return list;
+        }
+
+        var owners = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var meta in index.Profiles)
+        {
+            if (meta is null || !CodexAuthProfileStore.IsSafeId(meta.Id)) continue;
+            if (!string.Equals(meta.Identity, live.Identity, StringComparison.Ordinal)) continue;
+            foreach (var window in new[] { "5h", "7d" })
+            {
+                var from = $"codex:{meta.Id}:{window}";
+                if (owners.TryGetValue(window, out var owner) && owner != from)
+                {
+                    owners[window] = "";
+                    continue;
+                }
+                owners[window] = from;
+            }
+        }
+
+        foreach (var (window, from) in owners)
+        {
+            if (from.Length == 0) continue;
+            list.Add(new HiddenWindowAlias(from, $"codex:live:{window}"));
+        }
+        list.Sort((a, b) => string.CompareOrdinal(a.FromId, b.FromId));
+        return list;
+    }
+
     private static CodexQuotaAccount? LoadLive()
     {
         try

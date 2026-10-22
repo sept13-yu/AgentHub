@@ -8,7 +8,9 @@ import {
   MAX_PINNED_WINDOWS,
   nextPinnedIds,
   normalizePinnedIds,
+  migratePinnedIds,
   quotaPayloadStale,
+  quotaWindowAliases,
   reduceQuotaPoll,
   toQuotaWindows,
   togglePinned,
@@ -138,10 +140,10 @@ export function useDesktopQuota() {
   }
 
   async function load(force = false) {
-    let result: { ok: true; rows: QuotaWindowRow[]; stale: boolean } | { ok: false }
+    let result: { ok: true; raw: unknown; rows: QuotaWindowRow[]; stale: boolean } | { ok: false }
     try {
       const raw = await get(force ? '/api/quotas?force=true' : '/api/quotas')
-      result = { ok: true, rows: toQuotaWindows(raw), stale: quotaPayloadStale(raw) }
+      result = { ok: true, raw, rows: toQuotaWindows(raw), stale: quotaPayloadStale(raw) }
     } catch {
       result = { ok: false }
     }
@@ -152,10 +154,14 @@ export function useDesktopQuota() {
     next.rows.forEach(row => knownNames.set(row.id, row.name))
     stale.value = next.stale
     ready.value = true
-    const fresh = result.ok && !result.stale
+    // 宿主状态未到时不能把 null 当成「用户还没选过」，否则会写回默认窗口。
+    const fresh = stateReady && result.ok && !result.stale
     const pin = nextPinnedIds(pinned.value, next.rows, fresh)
-    pinned.value = pin.pinned
-    if (pin.changed && pin.pinned) post('dq:windows:' + JSON.stringify(pin.pinned))
+    const moved = stateReady && result.ok && !result.stale
+      ? migratePinnedIds(pin.pinned, next.rows, quotaWindowAliases(result.raw))
+      : { pinned: pin.pinned, changed: false }
+    pinned.value = moved.pinned
+    if ((pin.changed || moved.changed) && moved.pinned) post('dq:windows:' + JSON.stringify(moved.pinned))
     if (fresh) staleTries = 0
     else staleTries++
   }

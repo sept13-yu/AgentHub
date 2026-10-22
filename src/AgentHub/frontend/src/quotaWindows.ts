@@ -30,6 +30,53 @@ export function quotaPayloadStale(raw: unknown): boolean {
   return !!raw && typeof raw === 'object' && !Array.isArray(raw) && (raw as { stale?: boolean }).stale === true
 }
 
+export interface QuotaWindowAlias {
+  from: string
+  to: string
+}
+
+/** 服务端已确认的窗口替代关系。前端不按名字猜测，只接受唯一的 from → to。 */
+export function quotaWindowAliases(raw: unknown): QuotaWindowAlias[] {
+  const body = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : null
+  if (!Array.isArray(body?.aliases)) return []
+  const seen = new Set<string>()
+  const out: QuotaWindowAlias[] = []
+  for (const item of body.aliases) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue
+    const rec = item as Record<string, unknown>
+    const from = str(rec.from).trim()
+    const to = str(rec.to).trim()
+    if (!from || !to || from === to || seen.has(from)) continue
+    seen.add(from)
+    out.push({ from, to })
+  }
+  return out
+}
+
+/**
+ * 已固定的旧窗口被唯一的当前窗口替代时改写 ID。
+ * 目标已经被选中、不在本次结果中，或两个旧 ID 指向同一目标时保持原值。
+ */
+export function migratePinnedIds(
+  pinned: string[] | null,
+  rows: QuotaWindowRow[],
+  aliases: QuotaWindowAlias[],
+): { pinned: string[] | null; changed: boolean } {
+  if (pinned == null || aliases.length === 0) return { pinned, changed: false }
+  const live = new Set(rows.map(row => row.id))
+  const aliasOf = new Map(aliases.map(alias => [alias.from, alias.to]))
+  const next: string[] = []
+  let changed = false
+  for (const id of pinned) {
+    const target = aliasOf.get(id)
+    const canMove = !!target && live.has(target) && !pinned.includes(target) && !next.includes(target)
+    const chosen = canMove ? target : id
+    if (chosen !== id) changed = true
+    if (!next.includes(chosen)) next.push(chosen)
+  }
+  return { pinned: next, changed }
+}
+
 export function toQuotaWindows(raw: unknown): QuotaWindowRow[] {
   const rows: QuotaWindowRow[] = []
   for (const rec of quotaItems(raw)) {
