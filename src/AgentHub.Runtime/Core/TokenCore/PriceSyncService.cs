@@ -243,12 +243,16 @@ public static class PriceSyncService
         return v;
     }
 
-    /// <summary>基线择一：远程有效目录 → 本地缓存 → 内嵌种子；缓存损坏/读失败都回退，不抛给调用方。
-    /// 同时报告实际采用的数据来源，供设置页如实展示（R17）。</summary>
+    /// <summary>基线择一：远程有效目录 → 本地缓存 → 内嵌种子；若远程/缓存版本早于内嵌种子则保留内嵌种子。
+    /// 缓存损坏/读失败都回退，不抛给调用方；同时报告实际采用的数据来源，供设置页如实展示（R17）。</summary>
     private static bool TryResolveBaseline(out CatalogFile baseline, out BaselineOrigin origin)
     {
         origin = BaselineOrigin.Seed;
-        if (_remoteCatalog is { } remote)
+        CatalogFile? seed = ModelCatalogLoader.TryParseFull(ModelCatalog.EmbeddedSeed(), out var parsedSeed, out _)
+            ? parsedSeed
+            : null;
+
+        if (_remoteCatalog is { } remote && IsAtLeastAsNew(remote, seed))
         {
             baseline = remote;
             origin = BaselineOrigin.Remote;
@@ -257,7 +261,8 @@ public static class PriceSyncService
         try
         {
             if (File.Exists(CatalogCachePath)
-                && ModelCatalogLoader.TryParseFull(File.ReadAllText(CatalogCachePath), out var cached, out _))
+                && ModelCatalogLoader.TryParseFull(File.ReadAllText(CatalogCachePath), out var cached, out _)
+                && IsAtLeastAsNew(cached, seed))
             {
                 baseline = cached;
                 origin = BaselineOrigin.Cache;
@@ -266,13 +271,23 @@ public static class PriceSyncService
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
-        if (ModelCatalogLoader.TryParseFull(ModelCatalog.EmbeddedSeed(), out baseline, out _))
+        if (seed is not null)
         {
+            baseline = seed;
             origin = BaselineOrigin.Seed;
             return true;
         }
         baseline = new CatalogFile(1, "", "", []);
         return false;
+    }
+
+    /// <summary>比较 yyyy-MM-dd 日期，避免旧缓存或尚未同步的远程目录覆盖随新版本发布的内嵌目录。</summary>
+    private static bool IsAtLeastAsNew(CatalogFile candidate, CatalogFile? seed)
+    {
+        if (seed is null) return true;
+        if (!DateOnly.TryParseExact(seed.UpdatedAt, "yyyy-MM-dd", out var seedDate)) return true;
+        if (!DateOnly.TryParseExact(candidate.UpdatedAt, "yyyy-MM-dd", out var candDate)) return false;
+        return candDate >= seedDate;
     }
 
     /// <summary>当前生效基线来自哪里。</summary>

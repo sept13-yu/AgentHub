@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-09-30",
+  "updatedAt": "2026-11-18",
   "note": "模型目录：modelId 稳定身份，display 仅展示；Fast 独立，思考等级合并；跨版本借价不进身份别名。",
   "models": [
     {
@@ -48,6 +48,9 @@
           "agents": [
             "mimocode"
           ]
+        },
+        {
+          "name": "qoder-cn/dfmodel"
         }
       ],
       "liteLlmKey": "deepseek-v4-flash",
@@ -79,6 +82,9 @@
           "agents": [
             "qoder-cn"
           ]
+        },
+        {
+          "name": "qoder-cn/dmodel"
         }
       ],
       "liteLlmKey": "deepseek-v4-pro",
@@ -336,6 +342,9 @@
           ]
         },
         {
+          "name": "qoder-cn/gmodel"
+        },
+        {
           "name": "traework/glm-5.3"
         }
       ],
@@ -360,6 +369,9 @@
           "agents": [
             "qoder-cn"
           ]
+        },
+        {
+          "name": "qoder-cn/gfmodel"
         },
         {
           "name": "stealth/ox-alpha"
@@ -420,6 +432,9 @@
           "agents": [
             "qoder-cn"
           ]
+        },
+        {
+          "name": "qoder-cn/kmodel_latest"
         }
       ],
       "liteLlmKey": "azure_ai/kimi-k2.6",
@@ -443,6 +458,9 @@
           "agents": [
             "qoder-cn"
           ]
+        },
+        {
+          "name": "qoder-cn/kmodel"
         }
       ],
       "legacyPriceKeys": [
@@ -466,6 +484,12 @@
             "qoder-cn",
             "qoder"
           ]
+        },
+        {
+          "name": "qoder-cn/qmodel_38max"
+        },
+        {
+          "name": "qoder/qmodel_38max"
         }
       ],
       "liteLlmKey": "dashscope/qwen3.8-max",
@@ -490,6 +514,12 @@
             "qoder-cn",
             "qoder"
           ]
+        },
+        {
+          "name": "qoder-cn/qfmodel"
+        },
+        {
+          "name": "qoder/qfmodel"
         },
         {
           "name": "qoder/qwen3.8-flash"
@@ -519,6 +549,9 @@
           "agents": [
             "qoder-cn"
           ]
+        },
+        {
+          "name": "qoder-cn/qmodel_latest"
         }
       ],
       "price": null
@@ -532,6 +565,9 @@
           "agents": [
             "qoder-cn"
           ]
+        },
+        {
+          "name": "qoder-cn/qmodel"
         }
       ],
       "price": null
@@ -775,6 +811,178 @@
         "outputPer1m": 20,
         "cacheReadPer1m": 0.2,
         "cacheWritePer1m": 5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6.1-terra",
+      "display": "GPT-6.1 Terra",
+      "aliases": [
+        {
+          "name": "gpt-6.1-terra-high"
+        },
+        {
+          "name": "gpt-6.1-terra-medium"
+        },
+        {
+          "name": "gpt-6.1-terra-low"
+        },
+        {
+          "name": "gpt-6.1-terra-xhigh"
+        },
+        {
+          "name": "gpt-6.1-terra-max"
+        },
+        {
+          "name": "openai/gpt-6.1-terra"
+        }
+      ],
+      "liteLlmKey": "gpt-6.1-terra",
+      "legacyPriceKeys": [
+        "gpt-6.1-terra"
+      ],
+      "price": {
+        "inputPer1m": 1,
+        "outputPer1m": 5,
+        "cacheReadPer1m": 0.05,
+        "cacheWritePer1m": 1.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6.1-terra-fast",
+      "display": "GPT-6.1 Terra Fast",
+      "aliases": [
+        {
+          "name": "gpt-6.1-terra-high-fast"
+        },
+        {
+          "name": "gpt-6.1-terra-medium-fast"
+        },
+        {
+          "name": "gpt-6.1-terra-low-fast"
+        },
+        {
+          "name": "gpt-6.1-terra-xhigh-fast"
+        },
+        {
+          "name": "gpt-6.1-terra-max-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-6.1-terra",
+      "legacyPriceKeys": [
+        "gpt-6.1-terra-fast"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.1,
+        "cacheWritePer1m": 2.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6.2-sol",
+      "display": "GPT-6.2 Sol",
+      "aliases": [
+        {
+          "name": "gpt-6.2-sol-high"
+        },
+        {
+          "name": "gpt-6.2-sol-medium"
+        },
+        {
+          "name": "gpt-6.2-sol-low"
+        },
+        {
+          "name": "gpt-6.2-sol-xhigh"
+        },
+        {
+          "name": "gpt-6.2-sol-max"
+        },
+        {
+          "name": "openai/gpt-6.2-sol"
+        }
+      ],
+      "liteLlmKey": "gpt-6.2-sol",
+      "legacyPriceKeys": [
+        "gpt-6.2-sol"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.1,
+        "cacheWritePer1m": 2.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6.2-sol-fast",
+      "display": "GPT-6.2 Sol Fast",
+      "aliases": [
+        {
+          "name": "gpt-6.2-sol-high-fast"
+        },
+        {
+          "name": "gpt-6.2-sol-medium-fast"
+        },
+        {
+          "name": "gpt-6.2-sol-low-fast"
+        },
+        {
+          "name": "gpt-6.2-sol-xhigh-fast"
+        },
+        {
+          "name": "gpt-6.2-sol-max-fast"
+        }
+      ],
+      "liteLlmKey": "gpt-6.2-sol",
+      "legacyPriceKeys": [
+        "gpt-6.2-sol-fast"
+      ],
+      "price": {
+        "inputPer1m": 4,
+        "outputPer1m": 20,
+        "cacheReadPer1m": 0.2,
+        "cacheWritePer1m": 5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gpt-6.2-astra",
+      "display": "GPT-6.2 Astra",
+      "aliases": [
+        {
+          "name": "gpt-6.2-astra-high"
+        },
+        {
+          "name": "gpt-6.2-astra-medium"
+        },
+        {
+          "name": "gpt-6.2-astra-low"
+        },
+        {
+          "name": "gpt-6.2-astra-xhigh"
+        },
+        {
+          "name": "gpt-6.2-astra-max"
+        },
+        {
+          "name": "gpt-6.2-astra-ultra"
+        },
+        {
+          "name": "openai/gpt-6.2-astra"
+        }
+      ],
+      "liteLlmKey": "gpt-6.2-astra",
+      "legacyPriceKeys": [
+        "gpt-6.2-astra"
+      ],
+      "price": {
+        "inputPer1m": 8,
+        "outputPer1m": 40,
+        "cacheReadPer1m": 0.4,
+        "cacheWritePer1m": 10,
         "currency": "USD"
       }
     },
@@ -1114,6 +1322,79 @@
       }
     },
     {
+      "modelId": "claude-sonnet-5",
+      "display": "Claude Sonnet 5",
+      "aliases": [
+        {
+          "name": "claude-sonnet-5-thinking-high"
+        },
+        {
+          "name": "claude-sonnet-5-thinking-medium"
+        },
+        {
+          "name": "claude-sonnet-5-thinking-low"
+        },
+        {
+          "name": "claude-sonnet-5-high"
+        },
+        {
+          "name": "claude-sonnet-5-medium"
+        },
+        {
+          "name": "anthropic/claude-sonnet-5"
+        }
+      ],
+      "liteLlmKey": "claude-sonnet-5",
+      "legacyPriceKeys": [
+        "claude-sonnet-5"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.2,
+        "cacheWritePer1m": 2.5,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-sonnet-5.5",
+      "display": "Claude Sonnet 5.5",
+      "aliases": [
+        {
+          "name": "claude-sonnet-5-5"
+        },
+        {
+          "name": "claude-sonnet-5-5-thinking-high"
+        },
+        {
+          "name": "claude-sonnet-5-5-thinking-medium"
+        },
+        {
+          "name": "claude-sonnet-5-5-thinking-low"
+        },
+        {
+          "name": "claude-sonnet-5-5-high"
+        },
+        {
+          "name": "claude-sonnet-5-5-medium"
+        },
+        {
+          "name": "anthropic/claude-sonnet-5-5"
+        }
+      ],
+      "liteLlmKey": "claude-sonnet-5-5",
+      "legacyPriceKeys": [
+        "claude-sonnet-5-5"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.1,
+        "cacheWritePer1m": 2.5,
+        "currency": "USD"
+      }
+    },
+    {
       "modelId": "claude-opus-4-6",
       "display": "Claude Opus 4.6",
       "aliases": [
@@ -1127,6 +1408,29 @@
       "liteLlmKey": "claude-opus-4-6",
       "legacyPriceKeys": [
         "claude-opus-4-6"
+      ],
+      "price": {
+        "inputPer1m": 5,
+        "outputPer1m": 25,
+        "cacheReadPer1m": 0.5,
+        "cacheWritePer1m": 6.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-opus-4-7",
+      "display": "Claude Opus 4.7",
+      "aliases": [
+        {
+          "name": "claude-opus-4-7-thinking-high"
+        },
+        {
+          "name": "claude-4.7-opus-high-thinking"
+        }
+      ],
+      "liteLlmKey": "claude-opus-4-7",
+      "legacyPriceKeys": [
+        "claude-opus-4-7"
       ],
       "price": {
         "inputPer1m": 5,
@@ -1246,6 +1550,75 @@
       }
     },
     {
+      "modelId": "claude-fable-5-2",
+      "display": "Claude Fable 5.2",
+      "aliases": [
+        {
+          "name": "claude-fable-5-2-thinking-high"
+        },
+        {
+          "name": "claude-fable-5-2-high"
+        }
+      ],
+      "liteLlmKey": "claude-fable-5-2",
+      "legacyPriceKeys": [
+        "claude-fable-5-2"
+      ],
+      "price": {
+        "inputPer1m": 8,
+        "outputPer1m": 40,
+        "cacheReadPer1m": 0.2,
+        "cacheWritePer1m": 10,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-haiku-4-5",
+      "display": "Claude Haiku 4.5",
+      "aliases": [
+        {
+          "name": "claude-4.5-haiku"
+        },
+        {
+          "name": "anthropic/claude-haiku-4-5"
+        }
+      ],
+      "liteLlmKey": "claude-haiku-4-5",
+      "legacyPriceKeys": [
+        "claude-haiku-4-5"
+      ],
+      "price": {
+        "inputPer1m": 1,
+        "outputPer1m": 5,
+        "cacheReadPer1m": 0.1,
+        "cacheWritePer1m": 1.25,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "claude-haiku-5-5",
+      "display": "Claude Haiku 5.5",
+      "aliases": [
+        {
+          "name": "claude-haiku-5.5"
+        },
+        {
+          "name": "anthropic/claude-haiku-5-5"
+        }
+      ],
+      "liteLlmKey": "claude-haiku-5-5",
+      "legacyPriceKeys": [
+        "claude-haiku-5-5"
+      ],
+      "price": {
+        "inputPer1m": 0.1,
+        "outputPer1m": 0.5,
+        "cacheReadPer1m": 0.01,
+        "cacheWritePer1m": 0.125,
+        "currency": "USD"
+      }
+    },
+    {
       "modelId": "composer-2.5",
       "display": "Composer 2.5",
       "aliases": [],
@@ -1316,6 +1689,147 @@
       }
     },
     {
+      "modelId": "gemini-4-hydrogen",
+      "display": "Gemini 4 Hydrogen",
+      "aliases": [
+        {
+          "name": "gemini-4-hydrogen-high"
+        },
+        {
+          "name": "gemini-4-hydrogen-medium"
+        },
+        {
+          "name": "gemini-4-hydrogen-low"
+        },
+        {
+          "name": "gemini-4-hydrogen-xhigh"
+        },
+        {
+          "name": "gemini/gemini-4-hydrogen"
+        },
+        {
+          "name": "google/gemini-4-hydrogen"
+        }
+      ],
+      "liteLlmKey": "gemini/gemini-4-hydrogen",
+      "legacyPriceKeys": [
+        "gemini-4-hydrogen"
+      ],
+      "price": {
+        "inputPer1m": 1.5,
+        "outputPer1m": 7.5,
+        "cacheReadPer1m": 0.075,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-4-argon",
+      "display": "Gemini 4 Argon",
+      "aliases": [
+        {
+          "name": "gemini-4-argon-high"
+        },
+        {
+          "name": "gemini-4-argon-medium"
+        },
+        {
+          "name": "gemini-4-argon-low"
+        },
+        {
+          "name": "gemini-4-argon-xhigh"
+        },
+        {
+          "name": "gemini/gemini-4-argon"
+        },
+        {
+          "name": "google/gemini-4-argon"
+        }
+      ],
+      "liteLlmKey": "gemini/gemini-4-argon",
+      "legacyPriceKeys": [
+        "gemini-4-argon"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.1,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-4-carbon",
+      "display": "Gemini 4 Carbon",
+      "aliases": [
+        {
+          "name": "gemini-4-carbon-high"
+        },
+        {
+          "name": "gemini-4-carbon-medium"
+        },
+        {
+          "name": "gemini-4-carbon-low"
+        },
+        {
+          "name": "gemini-4-carbon-xhigh"
+        },
+        {
+          "name": "gemini/gemini-4-carbon"
+        },
+        {
+          "name": "google/gemini-4-carbon"
+        }
+      ],
+      "liteLlmKey": "gemini/gemini-4-carbon",
+      "legacyPriceKeys": [
+        "gemini-4-carbon"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.1,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-3.8-flash",
+      "display": "Gemini 3.8 Flash",
+      "aliases": [
+        {
+          "name": "gemini-3.8-flash-n"
+        },
+        {
+          "name": "gemini-3.8-flash-high"
+        },
+        {
+          "name": "gemini-3.8-flash-medium"
+        },
+        {
+          "name": "gemini-3.8-flash-low"
+        },
+        {
+          "name": "gemini/gemini-3.8-flash"
+        },
+        {
+          "name": "google/gemini-3.8-flash"
+        }
+      ],
+      "liteLlmKey": "gemini-3.8-flash",
+      "legacyPriceKeys": [
+        "gemini-3.8-flash",
+        "gemini-3.8-flash-n"
+      ],
+      "price": {
+        "inputPer1m": 0.75,
+        "outputPer1m": 3.75,
+        "cacheReadPer1m": 0.075,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
       "modelId": "gemini-3.7-flash",
       "display": "Gemini 3.7 Flash",
       "aliases": [
@@ -1336,10 +1850,169 @@
       }
     },
     {
+      "modelId": "gemini-3.6-flash",
+      "display": "Gemini 3.6 Flash",
+      "aliases": [
+        {
+          "name": "gemini-3.6-flash-high"
+        },
+        {
+          "name": "gemini-3.6-flash-medium"
+        },
+        {
+          "name": "gemini-3.6-flash-low"
+        },
+        {
+          "name": "gemini/gemini-3.6-flash"
+        },
+        {
+          "name": "google/gemini-3.6-flash"
+        }
+      ],
+      "liteLlmKey": "gemini-3.6-flash",
+      "legacyPriceKeys": [
+        "gemini-3.6-flash"
+      ],
+      "price": {
+        "inputPer1m": 0.75,
+        "outputPer1m": 3.75,
+        "cacheReadPer1m": 0.075,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-3.5-flash",
+      "display": "Gemini 3.5 Flash",
+      "aliases": [
+        {
+          "name": "gemini-3.5-flash-high"
+        },
+        {
+          "name": "gemini-3.5-flash-medium"
+        },
+        {
+          "name": "gemini-3.5-flash-low"
+        },
+        {
+          "name": "gemini/gemini-3.5-flash"
+        },
+        {
+          "name": "google/gemini-3.5-flash"
+        }
+      ],
+      "liteLlmKey": "gemini-3.5-flash",
+      "legacyPriceKeys": [
+        "gemini-3.5-flash"
+      ],
+      "price": {
+        "inputPer1m": 1.5,
+        "outputPer1m": 9,
+        "cacheReadPer1m": 0.15,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-3.1-pro",
+      "display": "Gemini 3.1 Pro",
+      "aliases": [
+        {
+          "name": "gemini-3.1-pro-preview"
+        },
+        {
+          "name": "gemini-3.1-pro-high"
+        },
+        {
+          "name": "gemini-3.1-pro-low"
+        },
+        {
+          "name": "gemini/gemini-3.1-pro-preview"
+        },
+        {
+          "name": "google/gemini-3.1-pro"
+        }
+      ],
+      "liteLlmKey": "gemini-3.1-pro-preview",
+      "legacyPriceKeys": [
+        "gemini-3.1-pro"
+      ],
+      "price": {
+        "inputPer1m": 2,
+        "outputPer1m": 12,
+        "cacheReadPer1m": 0.2,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-3-flash",
+      "display": "Gemini 3 Flash",
+      "aliases": [
+        {
+          "name": "gemini-3-flash-preview"
+        },
+        {
+          "name": "gemini/gemini-3-flash-preview"
+        }
+      ],
+      "liteLlmKey": "gemini-3-flash-preview",
+      "legacyPriceKeys": [
+        "gemini-3-flash"
+      ],
+      "price": {
+        "inputPer1m": 0.5,
+        "outputPer1m": 3,
+        "cacheReadPer1m": 0.05,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
+      "modelId": "gemini-2.5-pro",
+      "display": "Gemini 2.5 Pro",
+      "aliases": [
+        {
+          "name": "gemini/gemini-2.5-pro"
+        },
+        {
+          "name": "google/gemini-2.5-pro"
+        }
+      ],
+      "liteLlmKey": "gemini-2.5-pro",
+      "legacyPriceKeys": [
+        "gemini-2.5-pro"
+      ],
+      "price": {
+        "inputPer1m": 1.25,
+        "outputPer1m": 10,
+        "cacheReadPer1m": 0.125,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
+    },
+    {
       "modelId": "gemini-2.5-flash",
       "display": "Gemini 2.5 Flash",
-      "aliases": [],
-      "price": null
+      "aliases": [
+        {
+          "name": "gemini/gemini-2.5-flash"
+        },
+        {
+          "name": "google/gemini-2.5-flash"
+        }
+      ],
+      "liteLlmKey": "gemini-2.5-flash",
+      "legacyPriceKeys": [
+        "gemini-2.5-flash"
+      ],
+      "price": {
+        "inputPer1m": 0.3,
+        "outputPer1m": 2.5,
+        "cacheReadPer1m": 0.03,
+        "cacheWritePer1m": null,
+        "currency": "USD"
+      }
     },
     {
       "modelId": "minimax-m3",
@@ -1350,6 +2023,9 @@
           "agents": [
             "qoder-cn"
           ]
+        },
+        {
+          "name": "qoder-cn/mmodel"
         }
       ],
       "price": null
@@ -1362,6 +2038,22 @@
           "name": "cmodel",
           "agents": [
             "qoder-cn"
+          ]
+        },
+        {
+          "name": "qoder-cn/cmodel"
+        }
+      ],
+      "price": null
+    },
+    {
+      "modelId": "cursor-agent-review",
+      "display": "Cursor Agent Review",
+      "aliases": [
+        {
+          "name": "agent_review",
+          "agents": [
+            "cursor"
           ]
         }
       ],

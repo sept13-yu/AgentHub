@@ -38,7 +38,21 @@ public static class LiteLlmPriceMap
 
 
 
-            ["gemini-3.7-flash-high"] = "gemini-3.7-flash",
+            ["gemini-3.7-flash-high"] = "gemini-3.7-flash",
+
+            ["gemini-3.8-flash"] = "gemini-3.8-flash",
+
+            ["gemini-3.8-flash-n"] = "gemini-3.8-flash",
+
+            ["gemini-4-hydrogen"] = "gemini/gemini-4-hydrogen",
+
+            ["gemini-4-argon"] = "gemini/gemini-4-argon",
+
+            ["gemini-4-carbon"] = "gemini/gemini-4-carbon",
+
+            ["gemini-2.5-flash"] = "gemini-2.5-flash",
+
+            ["gemini-2.5-pro"] = "gemini-2.5-pro",
 
 
 
@@ -113,7 +127,21 @@ public static class LiteLlmPriceMap
 
             ["gpt-6-luna"] = "gpt-6-luna",
 
-            ["gpt-6-luna-fast"] = "gpt-6-luna",
+            ["gpt-6-luna-fast"] = "gpt-6-luna",
+
+            ["gpt-6.1-sol"] = "gpt-6.1-sol",
+
+            ["gpt-6.1-sol-fast"] = "gpt-6.1-sol",
+
+            ["gpt-6.1-terra"] = "gpt-6.1-terra",
+
+            ["gpt-6.1-terra-fast"] = "gpt-6.1-terra",
+
+            ["gpt-6.2-sol"] = "gpt-6.2-sol",
+
+            ["gpt-6.2-sol-fast"] = "gpt-6.2-sol",
+
+            ["gpt-6.2-astra"] = "gpt-6.2-astra",
 
             ["claude-sonnet-4-6"] = "claude-sonnet-4-6",
 
@@ -125,7 +153,19 @@ public static class LiteLlmPriceMap
 
             ["claude-fable-5"] = "claude-fable-5",
 
-            ["claude-fable-5-1"] = "claude-fable-5-1",
+            ["claude-fable-5-1"] = "claude-fable-5-1",
+
+            ["claude-fable-5-2"] = "claude-fable-5-2",
+
+            ["claude-sonnet-5"] = "claude-sonnet-5",
+
+            ["claude-sonnet-5-5"] = "claude-sonnet-5-5",
+
+            ["claude-opus-4-7"] = "claude-opus-4-7",
+
+            ["claude-haiku-4-5"] = "claude-haiku-4-5",
+
+            ["claude-haiku-5-5"] = "claude-haiku-5-5",
 
         };
 
