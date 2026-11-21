@@ -19,6 +19,8 @@ public static class JsonMcpFile
         if (!File.Exists(path))
             return new JsonObject();
         var text = File.ReadAllText(path);
+        if (string.IsNullOrWhiteSpace(text))
+            return new JsonObject();
         return JsonNode.Parse(text) as JsonObject ?? throw new InvalidOperationException("MCP 配置根节点无效");
     }
 

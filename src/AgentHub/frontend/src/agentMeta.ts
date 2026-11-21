@@ -9,6 +9,7 @@ import relay from './assets/agents/relay.svg'
 import qoder from './assets/agents/qoder.svg'
 import qoderCn from './assets/agents/qoder-cn.svg'
 import grok from './assets/agents/grok.svg'
+import antigravity from './assets/agents/antigravity.svg'
 
 export const AGENT_ICON: Record<string, string> = {
   dsh,
@@ -24,6 +25,7 @@ export const AGENT_ICON: Record<string, string> = {
   relay,
   qoder,
   'qoder-cn': qoderCn,
+  antigravity,
 }
 
 export const AGENT_COLOR: Record<string, string> = {

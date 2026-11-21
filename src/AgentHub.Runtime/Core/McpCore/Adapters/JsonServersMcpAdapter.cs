@@ -47,12 +47,18 @@ public abstract class JsonServersMcpAdapter : IMcpAdapter
         foreach (var (id, node) in servers)
         {
             if (node is not JsonObject obj) throw new InvalidOperationException("MCP 条目格式无效");
-            list.Add(JsonMcpFile.ParseServer(id, obj, ReadEnabled));
+            list.Add(ParseEntry(id, obj));
         }
         return list;
     }
 
     public void Upsert(McpServerSpec spec)
+    {
+        BeforeUpsert(spec);
+        UpsertCore(spec);
+    }
+
+    private void UpsertCore(McpServerSpec spec)
     {
         Backup();
         var root = File.Exists(ConfigPath) ? JsonMcpFile.LoadRoot(ConfigPath) : new JsonObject();
@@ -76,11 +82,14 @@ public abstract class JsonServersMcpAdapter : IMcpAdapter
                 existing.Remove("headers");
                 if (!_workBuddyHttp) existing.Remove("type");
             }
+            AfterBuildNode(spec, existing);
             servers[spec.Id] = existing;
         }
         else
         {
-            servers[spec.Id] = JsonMcpFile.ToServerNode(spec, WriteEnabled, _workBuddyHttp);
+            var node = JsonMcpFile.ToServerNode(spec, WriteEnabled, _workBuddyHttp);
+            AfterBuildNode(spec, node);
+            servers[spec.Id] = node;
         }
         JsonMcpFile.SaveRoot(ConfigPath, root);
     }
@@ -108,6 +117,13 @@ public abstract class JsonServersMcpAdapter : IMcpAdapter
         if (servers is null || !servers.Remove(id)) return;
         JsonMcpFile.SaveRoot(ConfigPath, root);
     }
+
+    protected virtual McpServerSpec ParseEntry(string id, JsonObject node) =>
+        JsonMcpFile.ParseServer(id, node, ReadEnabled);
+
+    protected virtual void BeforeUpsert(McpServerSpec spec) { }
+
+    protected virtual void AfterBuildNode(McpServerSpec spec, JsonObject node) { }
 
     protected virtual bool ReadEnabled(JsonObject node)
     {

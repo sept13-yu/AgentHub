@@ -35,4 +35,23 @@ public static class PlatformPaths
             return Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         }
     }
+
+    /// <summary>Gemini / Antigravity 数据根：遵循 GEMINI_HOME，否则回退至 ~/.gemini。</summary>
+    public static string GeminiHome(string? userProfile = null)
+    {
+        var baseHome = string.IsNullOrWhiteSpace(userProfile) ? Home : userProfile;
+        if (string.Equals(Path.GetFullPath(baseHome).TrimEnd('\\', '/'),
+                Path.GetFullPath(Home).TrimEnd('\\', '/'),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            var env = Environment.GetEnvironmentVariable("GEMINI_HOME");
+            if (!string.IsNullOrWhiteSpace(env))
+                return Environment.ExpandEnvironmentVariables(env.Trim());
+        }
+        return Path.Combine(baseHome, ".gemini");
+    }
+
+    /// <summary>Antigravity 全局自定义配置目录（~/.gemini/config）。</summary>
+    public static string AntigravityConfigDir(string? userProfile = null) =>
+        Path.Combine(GeminiHome(userProfile), "config");
 }

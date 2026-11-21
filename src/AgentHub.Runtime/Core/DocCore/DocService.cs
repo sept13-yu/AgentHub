@@ -181,6 +181,7 @@ public sealed class DocService
         "workbuddy" => "workbuddy",
         "zcode" => "zcode",
         "mimocode" or "mimo" => "mimocode",
+        "antigravity" or "agy" => "antigravity",
         _ => null,
     };
 

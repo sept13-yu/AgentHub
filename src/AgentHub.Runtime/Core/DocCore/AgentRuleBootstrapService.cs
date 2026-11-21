@@ -44,6 +44,7 @@ public sealed class AgentRuleBootstrapService
         var master = ResolveMaster(libraryRoot, out var source);
         var shared = File.Exists(SharedRulesPath) ? AgentRuleStatus.Current : AgentRuleStatus.Missing;
         var agents = Descriptors().Select(d => InspectAgent(d, libraryRoot, master)).ToList();
+        source = WithAgentWarnings(source, libraryRoot, master, agents);
         var hasChanges = agents.Any(x => x.CanWrite && x.Status is AgentRuleStatus.Missing or AgentRuleStatus.NeedsSync);
         var hasConflicts = agents.Any(x => x.Status == AgentRuleStatus.Conflict);
         return new(libraryRoot, Directory.Exists(libraryRoot), SharedRulesPath, shared, agents,
@@ -401,7 +402,7 @@ public sealed class AgentRuleBootstrapService
             seen.Add(managed.Path);
             yield return managed.Path;
         }
-        if (descriptor.Kind == RuleKind.Markdown)
+        if (descriptor.Kind is RuleKind.Markdown or RuleKind.Antigravity)
         {
             var fixedPath = Path.Combine(descriptor.Root, "AGENTS.md");
             if (seen.Add(fixedPath) && File.Exists(fixedPath)
@@ -422,9 +423,15 @@ public sealed class AgentRuleBootstrapService
     private AgentRuleItem InspectAgent(Descriptor descriptor, string libraryRoot, string master)
     {
         // 判「装没装」只认 App 自己写的条目：skills 镜像和指针文件都是我们落的，卸载后根目录还在。
+        // Antigravity 的配置目录 ~/.gemini/config 与安装足迹 ~/.gemini/antigravity* 分离，必须分开探。
         // WorkBuddy 的进程是唯一旁证——首次启动时 app-config.json 还没生成，根里只剩托管 skills。
-        if (!AgentPresence.HasOwnFootprint(descriptor.Root)
-            && !(descriptor.Kind == RuleKind.WorkBuddy && IsWorkBuddyRunning()))
+        var detected = descriptor.Kind switch
+        {
+            RuleKind.Antigravity => AgentPresence.IsAntigravityInstalled(_home),
+            RuleKind.WorkBuddy => AgentPresence.HasOwnFootprint(descriptor.Root) || IsWorkBuddyRunning(),
+            _ => AgentPresence.HasOwnFootprint(descriptor.Root),
+        };
+        if (!detected)
             return Item(descriptor, false, AgentRuleStatus.NotDetected, null, "未发现", false);
         return descriptor.Kind switch
         {
@@ -618,7 +625,7 @@ public sealed class AgentRuleBootstrapService
     {
         RuleKind.Cursor => Path.Combine(descriptor.Root, "rules"),
         RuleKind.Trae => Path.Combine(descriptor.Root, "user_rules"),
-        RuleKind.Markdown => descriptor.Root,
+        RuleKind.Markdown or RuleKind.Antigravity => descriptor.Root,
         _ => null,
     };
 
@@ -647,6 +654,50 @@ public sealed class AgentRuleBootstrapService
         yield return new("zcode", "ZCode", Path.Combine(_home, ".zcode"), RuleKind.Markdown);
         yield return new("mimocode", "MiMo", Path.Combine(_home, ".config", "mimocode"), RuleKind.Markdown);
         yield return new("qoder-cn", "Qoder CN", Path.Combine(_home, ".qoder-cn"), RuleKind.Markdown);
+        yield return new("antigravity", "Antigravity", PlatformPaths.AntigravityConfigDir(_home), RuleKind.Antigravity);
+    }
+
+    private SharedSourceInfo WithAgentWarnings(
+        SharedSourceInfo source,
+        string libraryRoot,
+        string master,
+        IReadOnlyList<AgentRuleItem> agents)
+    {
+        var antigravity = agents.FirstOrDefault(x => x.AgentId == "antigravity" && x.Detected);
+        if (antigravity is null) return source;
+
+        var warnings = new List<string>(source.Warnings);
+        var rendered = AgentRuleTemplates.RenderReference("antigravity", libraryRoot, master);
+        var bytes = Utf8.GetByteCount(rendered);
+        if (bytes > AgentRuleTemplates.AntigravityMaxBytes)
+        {
+            warnings.Add($"Antigravity 规则产物共 {bytes:N0} 字节，超过 {AgentRuleTemplates.AntigravityMaxBytes:N0} 字节单文件上限，尾部会被截断");
+        }
+
+        var geminiHome = PlatformPaths.GeminiHome(_home);
+        var configDir = PlatformPaths.AntigravityConfigDir(_home);
+        var legacyCandidates = new[]
+        {
+            Path.Combine(geminiHome, "GEMINI.md"),
+            Path.Combine(geminiHome, "AGENTS.md"),
+            Path.Combine(configDir, "GEMINI.md"),
+        };
+        var found = legacyCandidates
+            .Where(p => File.Exists(p) && LooksLikeManualSharedPointer(ReadText(p)))
+            .ToList();
+        if (found.Count > 0)
+        {
+            warnings.Add($"检测到 Antigravity 旧版手写规则指针（{string.Join("、", found)}），建议移除以免与 {Path.Combine(configDir, "AGENTS.md")} 重复注入");
+        }
+
+        return warnings.Count == source.Warnings.Count ? source : source with { Warnings = warnings };
+    }
+
+    private static bool LooksLikeManualSharedPointer(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var norm = text.Replace('\\', '/');
+        return norm.Contains(".agents/AGENTS.md", StringComparison.OrdinalIgnoreCase);
     }
 
     private static AgentRuleItem Item(Descriptor d, bool detected, AgentRuleStatus status,
@@ -873,7 +924,7 @@ public sealed class AgentRuleBootstrapService
     }
 
     private sealed record Descriptor(string Id, string DisplayName, string Root, RuleKind Kind);
-    private enum RuleKind { Markdown, Cursor, Trae, WorkBuddy }
+    private enum RuleKind { Markdown, Cursor, Trae, WorkBuddy, Antigravity }
     private sealed record PlannedWrite(string AgentId, string Path, byte[] Content, string? BeforeHash, bool Delete = false);
     private sealed record WritePlan(List<PlannedWrite> Writes, List<string> Skips);
 }

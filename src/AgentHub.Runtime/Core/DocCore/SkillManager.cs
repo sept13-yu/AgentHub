@@ -4,7 +4,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using AgentHub.Core.Platform;
 using AgentHub.Core.ProxyCore;
@@ -24,6 +26,11 @@ public sealed class SkillManager
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
+    };
+    private static readonly JsonSerializerOptions AntigravityJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _updateGate = new(1, 1);
@@ -55,6 +62,8 @@ public sealed class SkillManager
     public string WorkbuddyHomeRoot => Path.Combine(_userProfile, ".workbuddy");
     /// <summary>Workbuddy 全局 skills；启用时自动 junction 到此，与其它 agent 共用同一套开关。</summary>
     public string WorkbuddySkillsRoot => Path.Combine(WorkbuddyHomeRoot, "skills");
+    /// <summary>Antigravity 全局 skills 声明式清单；通过 entries[].path 挂载 ActiveRoot。</summary>
+    public string AntigravitySkillsConfigPath => Path.Combine(PlatformPaths.AntigravityConfigDir(_userProfile), "skills.json");
     public string StoreRoot => Path.Combine(_localDataRoot, "SkillStore");
     public string StatePath => Path.Combine(_localDataRoot, "skills-state.json");
     public string StagingRoot => Path.Combine(_localDataRoot, "SkillStaging");
@@ -67,6 +76,7 @@ public sealed class SkillManager
     public IReadOnlyList<ManagedSkillItem> List(string? query = null)
     {
         ReconcileWorkbuddyMirrors();
+        ReconcileAntigravityConfig();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         AddSkillDirs(ActiveRoot, names);
         AddSkillDirs(StoreRoot, names);
@@ -125,7 +135,7 @@ public sealed class SkillManager
             LastDeployedHash = HashDirectory(active),
         };
         SaveState(state);
-        EnsureWorkbuddyMirror(name);
+        SyncEnabledAgents(name);
         return Success(name, "已收进仓库");
     }
 
@@ -141,7 +151,7 @@ public sealed class SkillManager
         var state = LoadState();
         state.Skills[name] = new SkillStateEntry { Enabled = true, LastDeployedHash = hash };
         SaveState(state);
-        EnsureWorkbuddyMirror(name);
+        SyncEnabledAgents(name);
         return Success(name, "已启用真实副本");
     });
 
@@ -310,7 +320,7 @@ public sealed class SkillManager
         var state = LoadState();
         state.Skills[name] = new SkillStateEntry { Enabled = true, LastDeployedHash = hash };
         SaveState(state);
-        EnsureWorkbuddyMirror(name);
+        SyncEnabledAgents(name);
         return Success(name, resolution == ModifiedResolution.KeepLocalAsStore
             ? "已保留本地版本并备份旧仓库"
             : "已恢复仓库版本并备份本地版本");
@@ -551,7 +561,7 @@ public sealed class SkillManager
             LastDeployedHash = HashDirectory(store),
         };
         SaveState(state);
-        EnsureWorkbuddyMirror(name);
+        SyncEnabledAgents(name);
         return Success(name, "已启用");
     });
 
@@ -580,7 +590,7 @@ public sealed class SkillManager
             LastUpdatedUtc = DateTime.UtcNow,
         };
         SaveState(state);
-        EnsureWorkbuddyMirror(name);
+        SyncEnabledAgents(name);
         return true;
     }
 
@@ -998,6 +1008,109 @@ public sealed class SkillManager
     {
         try { if (Directory.Exists(path) && !IsReparsePoint(path)) Directory.Delete(path, true); }
         catch (Exception) { }
+    }
+
+    private void SyncEnabledAgents(string name)
+    {
+        EnsureWorkbuddyMirror(name);
+        ReconcileAntigravityConfig();
+    }
+
+    /// <summary>
+    /// 仅在已安装 Antigravity 时对账 ~/.gemini/config/skills.json：
+    /// 确保 entries[] 中挂载 ~/.agents/skills，不破坏用户既有 inherits/entries/exclude。
+    /// </summary>
+    private void ReconcileAntigravityConfig()
+    {
+        try
+        {
+            if (!AgentPresence.IsAntigravityInstalled(_userProfile)) return;
+
+            var path = AntigravitySkillsConfigPath;
+            JsonObject root;
+            if (File.Exists(path))
+            {
+                var raw = File.ReadAllText(path, Encoding.UTF8);
+                if (string.IsNullOrWhiteSpace(raw))
+                {
+                    root = new JsonObject();
+                }
+                else
+                {
+                    if (JsonNode.Parse(raw) is not JsonObject obj)
+                    {
+                        _log?.Invoke($"[skills] Antigravity skills.json 根节点不是对象，已跳过：{path}");
+                        return;
+                    }
+                    root = obj;
+                }
+            }
+            else
+            {
+                root = new JsonObject();
+            }
+
+            JsonArray entries;
+            if (!root.TryGetPropertyValue("entries", out var rawEntries) || rawEntries is null)
+            {
+                entries = new JsonArray();
+                root["entries"] = entries;
+            }
+            else if (rawEntries is JsonArray arr)
+            {
+                entries = arr;
+            }
+            else
+            {
+                _log?.Invoke($"[skills] Antigravity skills.json entries 不是数组，已跳过：{path}");
+                return;
+            }
+
+            foreach (var entry in entries)
+            {
+                if (entry is not JsonObject item) continue;
+                var entryPath = item["path"]?.GetValue<string>();
+                if (IsSameActiveSkillsPath(entryPath)) return;
+            }
+
+            entries.Add(new JsonObject
+            {
+                ["path"] = ActiveRoot.Replace('\\', '/'),
+            });
+
+            var dir = Path.GetDirectoryName(path)!;
+            Directory.CreateDirectory(dir);
+            var temp = path + ".tmp-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                File.WriteAllText(temp, root.ToJsonString(AntigravityJsonOptions) + Environment.NewLine, new UTF8Encoding(false));
+                File.Move(temp, path, overwrite: true);
+            }
+            finally { if (File.Exists(temp)) try { File.Delete(temp); } catch (Exception) { } }
+            _log?.Invoke($"[skills] 已挂载 Antigravity skills.json：{ActiveRoot}");
+        }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[skills] Antigravity 对账失败：{ex.Message}");
+        }
+    }
+
+    private bool IsSameActiveSkillsPath(string? candidate)
+    {
+        if (string.IsNullOrWhiteSpace(candidate)) return false;
+        var expanded = candidate.Trim();
+        if (expanded == "~")
+            expanded = _userProfile;
+        else if (expanded.StartsWith("~/", StringComparison.Ordinal) || expanded.StartsWith(@"~\", StringComparison.Ordinal))
+            expanded = Path.Combine(_userProfile, expanded[2..]);
+        try
+        {
+            return SamePath(expanded, ActiveRoot);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>

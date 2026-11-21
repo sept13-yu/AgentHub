@@ -63,7 +63,7 @@ public static class AgentPresence
         ("cursor-cloud", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".cursor"))),
         ("codex", () => HasOwnFootprint(Path.Combine(PlatformPaths.Home, ".codex"))),
         ("minimax", () => AnyFootprint(UsagePaths.MiniMaxHomes())),
-        ("antigravity", () => AnyFootprint(UsagePaths.AntigravityVariantHomes())),
+        ("antigravity", () => IsAntigravityInstalled()),
         ("reasonix", () => AnyFootprint(UsagePaths.ReasonixHomes())),
         ("devin", () => AnyFootprint(UsagePaths.DevinProbeRoots())),
         ("opencode", () => AnyFootprint(UsagePaths.OpenCodeDataDirs())),
@@ -114,6 +114,14 @@ public static class AgentPresence
             if (string.Equals(probe.Id, agentId, StringComparison.OrdinalIgnoreCase))
                 return probe.Installed();
         return false;
+    }
+
+    public static bool IsAntigravityInstalled(string? userProfile = null)
+    {
+        var gemini = PlatformPaths.GeminiHome(userProfile);
+        return HasOwnFootprint(Path.Combine(gemini, "antigravity"))
+            || HasOwnFootprint(Path.Combine(gemini, "antigravity-ide"))
+            || HasOwnFootprint(Path.Combine(gemini, "antigravity-cli"));
     }
 
     private static bool AnyFootprint(IEnumerable<string> roots)

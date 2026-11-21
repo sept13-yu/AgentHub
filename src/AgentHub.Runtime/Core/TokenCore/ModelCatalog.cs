@@ -297,8 +297,9 @@ public sealed class ModelCatalogSnapshot
         "qoder" => "Qoder",
         "qoder-cn" => "Qoder CN",
         "grok" => "Grok",
+        "antigravity" => "Antigravity",
         "relay" => "Sub2API",
-        _ => tool,
+        _ => ProxyCore.DashboardSettings.AgentDisplayName(tool),
     };
 }
 

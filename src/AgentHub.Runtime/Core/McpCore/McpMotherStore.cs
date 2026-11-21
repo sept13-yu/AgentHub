@@ -195,7 +195,7 @@ public sealed class McpMotherStore
 
     private static void EnsureDefaultTargets(McpMotherDocument doc)
     {
-        foreach (var id in new[] { "cursor", "codex", "trae", "workbuddy", "zcode", "mimocode", "dsh" })
+        foreach (var id in new[] { "cursor", "codex", "trae", "workbuddy", "zcode", "mimocode", "dsh", "antigravity" })
             if (!doc.Targets.ContainsKey(id))
                 doc.Targets[id] = true;
     }

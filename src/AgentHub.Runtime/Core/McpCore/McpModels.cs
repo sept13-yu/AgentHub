@@ -18,6 +18,9 @@ public enum McpPresence
     Error,
 }
 
+/// <summary>适配器可安全透传给前端的安全业务错误（不含任何配置原文或凭据）。</summary>
+public sealed class McpSafeException(string message) : InvalidOperationException(message);
+
 public sealed class McpServerSpec
 {
     public string Id { get; set; } = "";
@@ -85,6 +88,7 @@ public sealed class McpMotherDocument
         ["zcode"] = true,
         ["mimocode"] = true,
         ["dsh"] = true,
+        ["antigravity"] = true,
     };
     public List<string> ExcludeNames { get; set; } = ["node_repl", "cua_repl"];
 }

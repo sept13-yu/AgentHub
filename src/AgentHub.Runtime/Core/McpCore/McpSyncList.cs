@@ -24,8 +24,8 @@ public sealed partial class McpSyncService
             }
             catch (Exception ex)
             {
-                // DSH 适配器只抛安全消息；其它适配器异常可能携带配置原文。
-                var error = adapter is DshMcpAdapter && !string.IsNullOrWhiteSpace(ex.Message)
+                // DSH 与 McpSafeException 只抛安全业务消息；其它适配器异常可能携带配置原文。
+                var error = (adapter is DshMcpAdapter || ex is McpSafeException) && !string.IsNullOrWhiteSpace(ex.Message)
                     ? ex.Message
                     : $"读取配置失败（{ex.GetType().Name}）";
                 reads[adapter.AgentId] = new AdapterRead([], error);

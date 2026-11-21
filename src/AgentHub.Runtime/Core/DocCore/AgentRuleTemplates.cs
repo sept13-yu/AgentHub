@@ -20,9 +20,12 @@ internal static class AgentRuleTemplates
     internal const string MasterManagedComment =
         "<!-- " + MasterMarker + "：本文件是各家 Agent 共用规则的唯一母本，正文与尾部 extra 差异块由 AgentHub 渲染进各家本机规则文件；改规则改这里，再到 AgentHub 规则页点「更新」。 -->";
 
+    /// <summary>Antigravity 单条全局规则文件上限（超过尾部会被宿主截断）。</summary>
+    internal const int AntigravityMaxBytes = 24_000;
+
     /// <summary>与 Descriptors() 顺序一致；结构化拼装只按此序输出已知 extra。</summary>
     internal static readonly string[] KnownAgentIds =
-        ["codex", "cursor", "dsh", "trae", "workbuddy", "zcode", "mimocode", "qoder-cn"];
+        ["codex", "cursor", "dsh", "trae", "workbuddy", "zcode", "mimocode", "qoder-cn", "antigravity"];
 
     private const string SlugLine = "- 当前 `<Agent>` = `{{slug}}`";
     private const string ShellHeading = "# 全局共用规则";
@@ -330,6 +333,7 @@ internal static class AgentRuleTemplates
         "workbuddy" => ("WorkBuddy", "WorkBuddy"),
         "mimocode" => ("MiMo", "MiMoCode"),
         "qoder-cn" => ("Qoder CN", "QoderCN"),
+        "antigravity" => ("Antigravity", "Antigravity"),
         _ => throw new ArgumentOutOfRangeException(nameof(agentId)),
     };
 

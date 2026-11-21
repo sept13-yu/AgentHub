@@ -31,6 +31,7 @@ public sealed partial class McpSyncService
         new ZcodeMcpAdapter(),
         new MimocodeMcpAdapter(),
         new DshMcpAdapter(),
+        new AntigravityMcpAdapter(),
     ];
 
     /// <summary>编辑统一配置：标准优先；尚未纳管时读取已有端作为起点。</summary>
@@ -139,7 +140,10 @@ public sealed partial class McpSyncService
                 result.Ok = false;
                 result.Items.Add(new McpSyncItemResult
                 {
-                    Name = name, Agent = adapter.AgentId, Ok = false, Error = "同步到该端失败，请检查配置并重试",
+                    Name = name,
+                    Agent = adapter.AgentId,
+                    Ok = false,
+                    Error = ex is McpSafeException ? ex.Message : "同步到该端失败，请检查配置并重试",
                 });
                 Log($"upsert failed {adapter.AgentId}: {ex.GetType().Name}");
             }
