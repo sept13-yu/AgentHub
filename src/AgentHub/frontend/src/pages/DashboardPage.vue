@@ -148,6 +148,7 @@ function errMessage(e: unknown): string {
 let usageGeneration = 0
 let disposed = false
 let usageLoadOwners = 0
+let latestUsagePromise: Promise<boolean> | null = null
 
 function beginUsageLoading() {
   usageLoadOwners++
@@ -159,22 +160,32 @@ function endUsageLoading() {
   if (!disposed) setLoading(usageLoadOwners > 0)
 }
 
-async function loadUsage(): Promise<boolean> {
-  if (disposed) return false
+function loadUsage(): Promise<boolean> {
+  if (disposed) return Promise.resolve(false)
   const gen = ++usageGeneration
   const rangeAtStart = range.value
-  try {
-    const view = toUsageView(await get(`/api/usage?range=${rangeAtStart}`), rangeAtStart)
-    if (gen !== usageGeneration || disposed) return false
-    usage.value = view
-    persist()
-    return true
-  } catch (e) {
-    if (gen !== usageGeneration || disposed) return false
-    usage.value = usageErrorView(errMessage(e))
-    persist()
-    return false
-  }
+  const p = (async (): Promise<boolean> => {
+    try {
+      const view = toUsageView(await get(`/api/usage?range=${rangeAtStart}`), rangeAtStart)
+      if (disposed) return false
+      if (gen !== usageGeneration) {
+        return latestUsagePromise && latestUsagePromise !== p ? latestUsagePromise : true
+      }
+      usage.value = view
+      persist()
+      return true
+    } catch (e) {
+      if (disposed) return false
+      if (gen !== usageGeneration) {
+        return latestUsagePromise && latestUsagePromise !== p ? latestUsagePromise : false
+      }
+      usage.value = usageErrorView(errMessage(e))
+      persist()
+      return false
+    }
+  })()
+  latestUsagePromise = p
+  return p
 }
 
 async function loadQuotas(force = false) {
