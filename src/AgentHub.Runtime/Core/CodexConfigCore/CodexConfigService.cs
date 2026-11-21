@@ -243,7 +243,7 @@ public sealed class CodexConfigService
 
 
 
-    /// <summary>把 live [model_providers.OpenAI] 表导入为新中转连接；Key 复用已保存的 Sub2API Key 密文。</summary>
+    /// <summary>把 live [model_providers.openai] 表导入为新中转连接；Key 复用已保存的 Sub2API Key 密文。</summary>
 
     public CodexConnection ImportCurrent()
 
@@ -255,7 +255,7 @@ public sealed class CodexConfigService
 
             throw new InvalidOperationException(
 
-                "当前 config.toml 没有 [model_providers.OpenAI].base_url，无需或无法导入为中转连接");
+                "当前 config.toml 没有 [model_providers.openai].base_url，无需或无法导入为中转连接");
 
         var existing = Connections.FirstOrDefault(c => !c.IsOfficial
 
@@ -595,11 +595,17 @@ public sealed class CodexConfigService
 
         var live = CodexToml.Read(liveText);
 
+        // 期望的 provider id 随当前生效连接变化：官方走内置 openai，中转走自定义 OpenAI。
+        var active = Connections.FirstOrDefault(c => c.Id == State.ActiveConnectionId);
+        var expectedProviderId = active is null || active.IsOfficial
+            ? CodexConnection.BuiltInProviderId
+            : CodexConnection.FixedProviderId;
+
         return new CodexStatus
 
         {
 
-            ProviderId = CodexConnection.FixedProviderId,
+            ProviderId = expectedProviderId,
 
             ConfigPath = ConfigPath,
 
@@ -609,7 +615,7 @@ public sealed class CodexConfigService
 
             LiveProvider = live.ModelProvider,
 
-            LiveProviderMatches = live.ProviderMatches,
+            LiveProviderMatches = string.Equals(live.ModelProvider, expectedProviderId, StringComparison.Ordinal),
 
             LiveModel = live.Model,
 
@@ -661,7 +667,9 @@ public sealed class CodexConfigService
 
             rows = CodexToml.Diff(liveText, conn, _exePath),
 
-            liveProviderMatches = live.ProviderMatches,
+            liveProviderMatches = string.Equals(live.ModelProvider,
+                conn.IsOfficial ? CodexConnection.BuiltInProviderId : CodexConnection.FixedProviderId,
+                StringComparison.Ordinal),
 
             liveHybrid = live.IsHybridForm,
 

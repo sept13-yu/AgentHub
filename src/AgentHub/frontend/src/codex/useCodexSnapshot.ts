@@ -22,6 +22,8 @@ export function useCodexSnapshot(pageLoading?: Ref<boolean>) {
   const writeDisabled = computed(() => !WRITABLE || !status.value || status.value.configBroken)
   const official = computed(() => connections.value.find(c => c.kind === 'official'))
   const officialActive = computed(() => !!official.value?.active)
+  // live 与当前生效连接不一致（config.toml 被外部改过）时，当前行也要能重新应用一次
+  const liveDrifted = computed(() => !!status.value?.externalChanged || status.value?.liveProviderMatches === false)
   const liveMatchesSaved = computed(() => profiles.value.some(p => p.active))
   const liveUnarchived = computed(() => !!profileLive.value?.importable && !liveMatchesSaved.value)
   const archiveLabel = computed(() => liveMatchesSaved.value ? '更新登录副本' : '保存登录副本')
@@ -44,6 +46,7 @@ export function useCodexSnapshot(pageLoading?: Ref<boolean>) {
     key: 'profile:' + p.id, rowKind: 'official-account', title: p.name || p.email || '官方账号',
     subtitle: [p.email, p.plan].filter(Boolean).join(' · ') || '已保存的 ChatGPT 登录副本',
     isCurrent: p.active && officialActive.value, canDelete: true, profileId: p.id, connectionId: official.value?.id,
+    needsApply: p.active && officialActive.value && liveDrifted.value,
   })))
   const relayRows = computed<ConfigRow[]>(() => connections.value.filter(c => c.kind === 'relay').map(c => ({
     key: 'relay:' + c.id, rowKind: 'relay', title: c.name || '未命名中转', subtitle: c.baseUrl || '地址未设置',

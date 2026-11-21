@@ -42,7 +42,7 @@ export function useCodexActions(snapshot: CodexSnapshotState, busy: Ref<boolean>
     : `删除中转连接「${pendingDelete.value?.title || ''}」？`)
 
   function askApply(row: ConfigRow) {
-    if (!canStart() || (row.isCurrent && !row.savedUnapplied)) return
+    if (!canStart() || (row.isCurrent && !row.savedUnapplied && !row.needsApply)) return
     pendingApply.value = row
     writtenProfileId = ''
     applyError.value = ''

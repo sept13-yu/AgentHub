@@ -28,7 +28,7 @@ public sealed class CodexLiveInfo
     public bool HasBearerToken { get; set; }
     public List<string> ForeignKeys { get; } = [];
 
-    public bool ProviderMatches => string.Equals(ModelProvider, CodexConnection.FixedProviderId, StringComparison.Ordinal);
+    /// <summary>表里同时有 requires_openai_auth 与 base_url：官方与中转的混合形态，Codex 也不接受。</summary>
     public bool IsHybridForm => TableExists && RequiresOpenaiAuth && !string.IsNullOrEmpty(BaseUrl);
 }
 
@@ -36,15 +36,16 @@ public sealed class CodexLiveInfo
 /// Codex config.toml 的受管读写。
 /// 编辑用文本手术：只替换顶层 model_provider/model 行与 [model_providers.OpenAI] 表块，
 /// 其余字节原样保留；每次产出后用 Tomlyn 完整解析做语法与语义校验，失败即拒绝写入。
+/// 表头匹配忽略大小写：写错的 [model_providers.openai]（内置 id 不允许覆盖）也能被识别并清掉。
 /// </summary>
 public static partial class CodexToml
 {
     private const string TableHeader = $"[model_providers.{CodexConnection.FixedProviderId}]";
     private const string AuthHeader = $"[model_providers.{CodexConnection.FixedProviderId}.auth]";
 
-    [GeneratedRegex(@"^\[model_providers\.OpenAI\]\s*(#.*)?$")]
+    [GeneratedRegex(@"^\[model_providers\.openai\]\s*(#.*)?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TableHeaderLine();
-    [GeneratedRegex(@"^\[model_providers\.OpenAI\..+\]\s*(#.*)?$")]
+    [GeneratedRegex(@"^\[model_providers\.openai\..+\]\s*(#.*)?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex TableSubHeaderLine();
     [GeneratedRegex(@"^\s*(\w[\w-]*)\s*=\s*(.*?)\s*(#.*)?$")]
     private static partial Regex KeyValueLine();
@@ -58,9 +59,11 @@ public static partial class CodexToml
         var root = ParseModel(text);
         info.ModelProvider = Str(root, "model_provider");
         info.Model = Str(root, "model");
-        if (Table(root, "model_providers") is not { } providers
-            || Table(providers, CodexConnection.FixedProviderId) is not { } table)
+        if (Table(root, "model_providers") is not { } providers)
             return info;
+        var table = Table(providers, CodexConnection.FixedProviderId)
+            ?? Table(providers, CodexConnection.BuiltInProviderId);
+        if (table is null) return info;
         info.TableExists = true;
         info.Name = Str(table, "name");
         info.BaseUrl = Str(table, "base_url");
@@ -104,16 +107,16 @@ public static partial class CodexToml
         if (lines.Count > 0 && lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
         var firstHeader = lines.FindIndex(l => AnyHeaderLine().IsMatch(l));
 
-        var (tableStart, tableEnd) = FindManagedTableSpan(lines);
         var modelProviderIdx = FindTopLevelKey(lines, firstHeader, "model_provider");
-        var modelIdx = FindTopLevelKey(lines, firstHeader, "model");
+        // 官方订阅切到 Codex 内置 provider（不允许覆盖，不能写表）；中转写自定义 provider。
+        var providerId = conn.IsOfficial ? CodexConnection.BuiltInProviderId : CodexConnection.FixedProviderId;
 
         if (modelProviderIdx >= 0)
-            lines[modelProviderIdx] = $"model_provider = \"{CodexConnection.FixedProviderId}\"";
+            lines[modelProviderIdx] = $"model_provider = \"{providerId}\"";
         else if (firstHeader >= 0)
-            lines.Insert(firstHeader, $"model_provider = \"{CodexConnection.FixedProviderId}\"");
+            lines.Insert(firstHeader, $"model_provider = \"{providerId}\"");
         else
-            lines.Add($"model_provider = \"{CodexConnection.FixedProviderId}\"");
+            lines.Add($"model_provider = \"{providerId}\"");
         firstHeader = lines.FindIndex(l => AnyHeaderLine().IsMatch(l));
 
         if (!string.IsNullOrWhiteSpace(conn.DefaultModel))
@@ -128,11 +131,20 @@ public static partial class CodexToml
             }
         }
 
+        // 受管表区间必须在顶层行插入之后再算：model_provider/model 若插在表前，整张表会下移一行，
+        // 沿用插入前的下标会让 RemoveRange 少删最后一行（旧的 base_url / auth.args 残留），
+        // 并把刚插入的 model_provider 一起删掉，投影结果随即过不了 Validate。
+        // 表头忽略大小写匹配，写错成内置 id 的表也会被整段清掉。
+        var spans = FindManagedTableSpans(lines);
+        for (var i = spans.Count - 1; i >= 0; i--)
+            lines.RemoveRange(spans[i].Start, spans[i].End - spans[i].Start);
+        // 官方订阅不留表：内置 provider 已带 requires_openai_auth，写表反而被 Codex 拒绝加载。
+        if (conn.IsOfficial) return string.Join(newline, lines) + newline;
+
         var tableLines = RenderTable(conn, credentialExePath);
-        if (tableStart >= 0)
+        if (spans.Count > 0)
         {
-            lines.RemoveRange(tableStart, tableEnd - tableStart);
-            lines.InsertRange(tableStart, tableLines);
+            lines.InsertRange(spans[0].Start, tableLines);
         }
         else
         {
@@ -155,19 +167,23 @@ public static partial class CodexToml
         {
             return "TOML 语法无效：" + ex.Message;
         }
-        if (!string.Equals(Str(root, "model_provider"), CodexConnection.FixedProviderId, StringComparison.Ordinal))
-            return "顶层 model_provider 必须是 " + CodexConnection.FixedProviderId;
-        if (Table(root, "model_providers") is not { } providers
-            || Table(providers, CodexConnection.FixedProviderId) is not { } table)
-            return "缺少 [model_providers.OpenAI] 表";
+        // 官方订阅切到内置 provider，不写表；中转写自定义 provider 表。
+        var expectedId = conn.IsOfficial ? CodexConnection.BuiltInProviderId : CodexConnection.FixedProviderId;
+        if (!string.Equals(Str(root, "model_provider"), expectedId, StringComparison.Ordinal))
+            return "顶层 model_provider 必须是 " + expectedId;
+        var providers = Table(root, "model_providers");
+        // 大小写变体都算：写成内置 id 的表会被 Codex 直接拒绝加载。
+        var table = providers is null
+            ? null
+            : Table(providers, CodexConnection.FixedProviderId) ?? Table(providers, CodexConnection.BuiltInProviderId);
         if (conn.IsOfficial)
         {
-            if (table.ContainsKey("base_url")) return "官方订阅不得写 base_url";
-            if (table.ContainsKey("auth")) return "官方订阅不得写 auth 表";
-            if (!Bool(table, "requires_openai_auth")) return "官方订阅必须 requires_openai_auth = true";
+            if (table is not null)
+                return "官方订阅不得写 [model_providers.*] 表：内置 provider 不可覆盖";
         }
         else
         {
+            if (table is null) return $"缺少 [model_providers.{CodexConnection.FixedProviderId}] 表";
             if (Bool(table, "requires_openai_auth")) return "中转连接不得写 requires_openai_auth";
             if (table.ContainsKey("env_key") || table.ContainsKey("experimental_bearer_token"))
                 return "中转连接不得残留 env_key / experimental_bearer_token";
@@ -188,20 +204,26 @@ public static partial class CodexToml
         return null;
     }
 
-    /// <summary>受管表在原文中的行区间（含 [model_providers.OpenAI.*] 子表）。未找到时 start&lt;0。</summary>
-    public static (int Start, int End) FindManagedTableSpan(List<string> lines)
+    /// <summary>受管表在原文中的所有行区间（含 [model_providers.openai.*] 子表，表头忽略大小写）。
+    /// 同时存在旧版大写表与本版小写表时返回多段，调用方按区间倒序删除。</summary>
+    public static List<(int Start, int End)> FindManagedTableSpans(List<string> lines)
     {
-        var start = lines.FindIndex(l => TableHeaderLine().IsMatch(l));
-        if (start < 0) return (-1, -1);
-        var end = lines.Count;
-        for (var k = start + 1; k < lines.Count; k++)
+        var spans = new List<(int Start, int End)>();
+        var start = -1;
+        for (var i = 0; i < lines.Count; i++)
         {
-            if (!AnyHeaderLine().IsMatch(lines[k])) continue;
-            if (TableSubHeaderLine().IsMatch(lines[k])) continue;
-            end = k;
-            break;
+            if (TableHeaderLine().IsMatch(lines[i]))
+            {
+                if (start >= 0) spans.Add((start, i));
+                start = i;
+                continue;
+            }
+            if (start < 0 || !AnyHeaderLine().IsMatch(lines[i]) || TableSubHeaderLine().IsMatch(lines[i])) continue;
+            spans.Add((start, i));
+            start = -1;
         }
-        return (start, end);
+        if (start >= 0) spans.Add((start, lines.Count));
+        return spans;
     }
 
     /// <summary>受管表与 live 的逐字段差异（应用预览）。value 不含任何凭据。</summary>
@@ -214,8 +236,9 @@ public static partial class CodexToml
             var change = same ? "keep" : a is null ? "set" : b is null ? "clear" : "change";
             rows.Add(new CodexDiffRow { Field = field, Live = a, Candidate = b, Change = change });
         }
-        Row("model_provider", live.ModelProvider, CodexConnection.FixedProviderId,
-            string.Equals(live.ModelProvider, CodexConnection.FixedProviderId, StringComparison.Ordinal));
+        var expectedId = conn.IsOfficial ? CodexConnection.BuiltInProviderId : CodexConnection.FixedProviderId;
+        Row("model_provider", live.ModelProvider, expectedId,
+            string.Equals(live.ModelProvider, expectedId, StringComparison.Ordinal));
         if (string.IsNullOrWhiteSpace(conn.DefaultModel))
         {
             // 连接未指定默认模型：不改顶层 model，只做展示
@@ -229,14 +252,15 @@ public static partial class CodexToml
         }
         if (conn.IsOfficial)
         {
+            // 官方订阅把整张自定义表删掉：内置 provider 不可覆盖，表里所有字段一并消失。
             Row("base_url", live.BaseUrl, null, live.BaseUrl is null);
-            Row("requires_openai_auth", live.RequiresOpenaiAuth ? "true" : null, "true", live.RequiresOpenaiAuth);
+            Row("requires_openai_auth", live.RequiresOpenaiAuth ? "true" : null, null, !live.RequiresOpenaiAuth);
             Row("supports_websockets",
                 live.SupportsWebSockets is null ? null : (live.SupportsWebSockets == true ? "true" : "false"),
-                "true", live.SupportsWebSockets == true);
+                null, live.SupportsWebSockets is null);
             Row("supports_standalone_web_search",
                 live.SupportsStandaloneWebSearch is null ? null : (live.SupportsStandaloneWebSearch == true ? "true" : "false"),
-                "true", live.SupportsStandaloneWebSearch == true);
+                null, live.SupportsStandaloneWebSearch is null);
             Row("http_headers", live.UserAgent is null && live.Originator is null ? null : "User-Agent/Originator", null,
                 live.UserAgent is null && live.Originator is null);
             Row("auth", live.HasAuthCommand ? live.AuthCommand : null, null, !live.HasAuthCommand);
@@ -272,7 +296,7 @@ public static partial class CodexToml
         if (conn.IsOfficial)
         {
             lines.Add(TableHeader);
-            lines.Add($"name = \"{CodexConnection.FixedProviderId}\"");
+            lines.Add($"name = \"{CodexConnection.DisplayName}\"");
             lines.Add("wire_api = \"responses\"");
             lines.Add("requires_openai_auth = true");
             lines.Add("supports_websockets = true");
@@ -280,7 +304,7 @@ public static partial class CodexToml
             return lines;
         }
         lines.Add(TableHeader);
-        lines.Add($"name = \"{CodexConnection.FixedProviderId}\"");
+        lines.Add($"name = \"{CodexConnection.DisplayName}\"");
         lines.Add($"base_url = \"{Esc(conn.BaseUrl.Trim())}\"");
         lines.Add("wire_api = \"responses\"");
         lines.Add($"supports_websockets = {(conn.SupportsWebSockets ? "true" : "false")}");

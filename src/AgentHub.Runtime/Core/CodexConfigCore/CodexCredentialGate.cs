@@ -4,7 +4,7 @@ using AgentHub.Core.ProxyCore;
 namespace AgentHub.Core.CodexConfigCore;
 
 /// <summary>
-/// `AgentHub.exe codex-credential &lt;connection-id&gt;`：Codex [model_providers.OpenAI].auth.command 入口。
+/// `AgentHub.exe codex-credential &lt;connection-id&gt;`：Codex [model_providers.openai].auth.command 入口。
 /// 必须在任何单实例/服务启动逻辑之前处理：主实例常驻时本进程是合法的第二个 AgentHub 进程。
 /// 只向 stdout 输出明文 Key 后立即退出，不启动 WebView/HTTP/托盘；日志与错误信息禁止包含 Key。
 /// </summary>

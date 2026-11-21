@@ -70,6 +70,8 @@ export interface ConfigRow {
   profileId?: string
   keySet?: boolean
   savedUnapplied?: boolean
+  // 当前生效但 live 配置被外部改过：当前行也要给一次重新应用的机会
+  needsApply?: boolean
 }
 
 export interface RelayForm {

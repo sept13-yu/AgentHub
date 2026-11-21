@@ -2,7 +2,7 @@ using System.Text.Json.Serialization;
 
 namespace AgentHub.Core.CodexConfigCore;
 
-/// <summary>连接类型。官方订阅与 Responses 中转都投影到同一个 [model_providers.OpenAI] 表。</summary>
+/// <summary>连接类型。官方订阅走 Codex 内置 provider（无表）；Responses 中转写自定义 [model_providers.OpenAI] 表。</summary>
 [JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CodexConnectionKind
 {
@@ -14,13 +14,22 @@ public enum CodexConnectionKind
 }
 
 /// <summary>
-/// 一条 Codex 连接配置。Id 只在 AgentHub 内部使用，绝不写入 Codex 的 Provider 标识；
-/// live 配置的 Provider ID 恒为 "OpenAI"（方案 §4.1 不变量）。
+/// 一条 Codex 连接配置。Id 只在 AgentHub 内部使用，绝不写入 Codex 的 Provider 标识。
+/// 官方订阅写内置 provider "openai" 且不写任何 [model_providers.*] 表；
+/// 中转连接写自定义 provider "OpenAI"（大小写与内置不同，Codex 才允许覆盖）。
 /// </summary>
 public sealed class CodexConnection
 {
     public const string OfficialId = "official";
+    /// <summary>中转连接使用的自定义 provider id。Codex 保留内置 id（openai/oss/ollama/lmstudio），
+    /// 写 [model_providers.openai] 会直接报 "reserved built-in provider IDs" 拒绝加载；
+    /// id 大小写敏感，"OpenAI" 是合法的自定义 provider。</summary>
     public const string FixedProviderId = "OpenAI";
+    /// <summary>Codex 内置官方 provider 的 id。官方连接只切顶层 model_provider 到这个值，
+    /// 不写表——内置 provider 不允许覆盖。会话 rollout 里记的也是这个小写 id。</summary>
+    public const string BuiltInProviderId = "openai";
+    /// <summary>配置表里的展示名，Codex 只拿来显示。</summary>
+    public const string DisplayName = "OpenAI";
 
     public string Id { get; set; } = "";
     public string Name { get; set; } = "";

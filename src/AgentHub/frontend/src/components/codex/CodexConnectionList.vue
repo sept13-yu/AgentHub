@@ -48,7 +48,7 @@ function edit(row: ConfigRow) {
           <p v-if="row.savedUnapplied" class="saved-state">修改待应用</p>
         </div>
         <div class="row-actions">
-          <NButton v-if="!row.isCurrent || (!official && row.savedUnapplied)" :disabled="disabled" @click="$emit('apply', row)">
+          <NButton v-if="!row.isCurrent || row.savedUnapplied || row.needsApply" :disabled="disabled" @click="$emit('apply', row)">
             {{ row.isCurrent ? '应用修改' : '切换' }}
           </NButton>
           <NDropdown v-if="row.canDelete || (!official && row.connectionId)" trigger="click" :options="moreOptions(row)" @select="(key) => selectMore(key, row)">
